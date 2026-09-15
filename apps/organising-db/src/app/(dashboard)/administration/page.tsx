@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -135,6 +136,8 @@ function UsersTab() {
   // Not editable here (org-level switch lives in Settings); preserved on save.
   const [editWorkspaceAllowShowEverything, setEditWorkspaceAllowShowEverything] =
     useState<boolean | undefined>(undefined);
+  // WP2.4 (FL-b): the per-user `flags.groups_v2` checkbox; off by default.
+  const [editGroupsV2, setEditGroupsV2] = useState(false);
   // What the three fields above held when the dialog opened, so a name-only
   // edit sends no `workspacePrefs` at all and never rewrites the column.
   const [editWorkspaceInitial, setEditWorkspaceInitial] =
@@ -311,6 +314,7 @@ function UsersTab() {
     mode: editWorkspaceMode,
     modules: editWorkspaceModules,
     allowShowEverything: editWorkspaceAllowShowEverything,
+    groupsV2: editGroupsV2,
   };
   // Organiser mode with an empty list resolves to the registry defaults
   // (resolve.ts R6), so it is never what the admin means: the workspace part
@@ -416,10 +420,12 @@ function UsersTab() {
                 mode: prefs?.mode ?? "default",
                 modules: prefs?.modules ?? null,
                 allowShowEverything: prefs?.allowShowEverything,
+                groupsV2: prefs?.flags?.groups_v2 === true,
               };
               setEditWorkspaceMode(snapshot.mode);
               setEditWorkspaceModules(snapshot.modules);
               setEditWorkspaceAllowShowEverything(snapshot.allowShowEverything);
+              setEditGroupsV2(snapshot.groupsV2 === true);
               setEditWorkspaceInitial(snapshot);
               setEditError(null);
             }}
@@ -851,6 +857,23 @@ function UsersTab() {
                 The role-wide defaults behind &ldquo;Default for role&rdquo; are set in
                 Administration → Settings.
               </p>
+              {/* WP2.4 (FL-b): per-user preview flag; default off for everyone. */}
+              <div className="flex items-start gap-2 border-t pt-3">
+                <Checkbox
+                  id="edit-user-groups-v2"
+                  checked={editGroupsV2}
+                  onCheckedChange={(c) => setEditGroupsV2(c === true)}
+                  className="mt-0.5"
+                />
+                <label htmlFor="edit-user-groups-v2" className="cursor-pointer text-sm">
+                  Groups v2 (wall chart preview)
+                  <span className="block text-xs text-muted-foreground">
+                    Shows this person the new wall chart: a Group selector, Unassigned
+                    per Group, and one campaign-wide Colour by and Filter. Off for
+                    everyone unless ticked here.
+                  </span>
+                </label>
+              </div>
             </div>
             {editError && (
               <p className="text-sm text-destructive">{editError}</p>

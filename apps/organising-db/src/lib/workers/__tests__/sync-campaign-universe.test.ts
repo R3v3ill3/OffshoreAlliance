@@ -629,13 +629,17 @@ describe("universe sync writes only through structure_placements_assign (wp2.2.m
       },
     ]);
     // Membership (not a structure table) is still upserted directly, before the placements.
+    // WP2.4 (SY-c): the only other touch of the table is the paged READ of the
+    // existing members that precedes the upsert (for `membersAdded`).
     expect(fake.trace().filter((t) => t.startsWith("from:campaign_worker_membership"))).toEqual([
+      "from:campaign_worker_membership.select.eq.order.range",
       "from:campaign_worker_membership.upsert",
     ]);
     expect(fake.trace().indexOf("from:campaign_worker_membership.upsert")).toBeLessThan(
       fake.trace().indexOf("rpc:structure_placements_assign")
     );
-    expect(result).toEqual({ workersAdded: 3, ouAssignmentsUpserted: 5, ouAssignmentsSkipped: 1 });
+    // No stored members in this fixture, so every matched worker is newly added.
+    expect(result).toEqual({ workersAdded: 3, membersAdded: 3, ouAssignmentsUpserted: 5, ouAssignmentsSkipped: 1 });
     expect(
       fake
         .fromCalls()
@@ -662,9 +666,48 @@ describe("universe sync writes only through structure_placements_assign (wp2.2.m
     const result = await syncCampaignUniverseFromEmployersWorksites(fake.client, CAMPAIGN);
 
     expect(result.workersAdded).toBe(1);
-    const membershipUpsert = fake.fromCalls().find((c) => c.table === "campaign_worker_membership");
+    const membershipUpsert = fake
+      .fromCalls()
+      .find((c) => c.table === "campaign_worker_membership" && c.ops.some((o) => o.method === "upsert"));
     const upsertOp = membershipUpsert?.ops.find((o) => o.method === "upsert");
     expect(upsertOp?.args[0]).toEqual([{ campaign_id: CAMPAIGN, worker_id: 101 }]);
+  });
+
+  it("WP2.4 (SY-c): membersAdded counts only the matched workers who were not members before — one paged read of the campaign's membership before the upsert; workersAdded keeps its meaning", async () => {
+    const fake = createFakeStructureClient({
+      tables: {
+        campaigns: [{ campaign_id: CAMPAIGN, status: "active", is_sms_episode: false }],
+        campaign_employers: [{ employer_id: 5 }],
+        campaign_worksites: [],
+        workers,
+        campaign_organising_units: units,
+        // 101 is already a member; 102 and 103 are not.
+        campaign_worker_membership: [{ worker_id: 101 }],
+      },
+    });
+
+    const result = await syncCampaignUniverseFromEmployersWorksites(fake.client, CAMPAIGN);
+
+    expect(result.workersAdded).toBe(3);
+    expect(result.membersAdded).toBe(2);
+    const read = fake.fromCalls().find((c) => c.table === "campaign_worker_membership" && c.ops.some((o) => o.method === "range"));
+    expect(read?.ops).toEqual([
+      { method: "select", args: ["worker_id"] },
+      { method: "eq", args: ["campaign_id", CAMPAIGN] },
+      { method: "order", args: ["worker_id"] },
+      { method: "range", args: [0, PAGE_SIZE - 1] },
+    ]);
+    // The read precedes the upsert, which still sends every matched worker.
+    const trace = fake.trace();
+    expect(trace.indexOf("from:campaign_worker_membership.select.eq.order.range")).toBeLessThan(
+      trace.indexOf("from:campaign_worker_membership.upsert")
+    );
+    const upsert = fake.fromCalls().find((c) => c.table === "campaign_worker_membership" && c.ops.some((o) => o.method === "upsert"));
+    expect(upsert?.ops.find((o) => o.method === "upsert")?.args[0]).toEqual([
+      { campaign_id: CAMPAIGN, worker_id: 101 },
+      { campaign_id: CAMPAIGN, worker_id: 102 },
+      { campaign_id: CAMPAIGN, worker_id: 103 },
+    ]);
   });
 
   it("syncWorkersToMatchingCampaigns: the same call shape per campaign and unit, counts from the RPC result", async () => {

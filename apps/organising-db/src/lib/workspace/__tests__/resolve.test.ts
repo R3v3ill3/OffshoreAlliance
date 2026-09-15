@@ -322,3 +322,55 @@ describe("resolveWorkspace", () => {
     expect(resolve({}).canShowEverything).toBe(false);
   });
 });
+
+describe("resolveWorkspace — R11 (WP2.4 FL-b): the per-user groups_v2 flag", () => {
+  it("T17 (R11): off by default for every role and every stored shape, and never affects mode or modules", () => {
+    for (const role of ROLES) {
+      for (const stored of [undefined, null, {}, { mode: "organiser" }, { flags: {} }, { flags: { groups_v2: false } }]) {
+        const r = resolve({ role, userPrefs: stored, orgDefaults: ORG_ORGANISER_MODE });
+        expect(r.flags, `${role}/${JSON.stringify(stored)}`).toEqual({ groupsV2: false });
+      }
+    }
+  });
+
+  it("T18 (R11): on when the user document says so — admins included, because R11 runs before R2's early return", () => {
+    const admin = resolve({ role: "admin", userPrefs: { flags: { groups_v2: true } } });
+    expect(admin.flags).toEqual({ groupsV2: true });
+    expect(admin.mode).toBe("full");
+    expect(admin.source).toBe("role");
+
+    const user = resolve({ orgDefaults: ORG_ORGANISER_MODE, userPrefs: { mode: "full", flags: { groups_v2: true } } });
+    expect(user.flags).toEqual({ groupsV2: true });
+    expect(user.mode).toBe("full");
+    expect(user.source).toBe("user");
+
+    const organiser = resolve({ orgDefaults: ORG_ORGANISER_MODE, userPrefs: { flags: { groups_v2: true } } });
+    expect(organiser.flags).toEqual({ groupsV2: true });
+    expect(organiser.mode).toBe("organiser");
+    expect(ids(organiser.enabledModules)).toEqual([...ORGANISER_DEFAULTS].sort());
+
+    const session = resolve({ orgDefaults: ORG_ORGANISER_MODE, userPrefs: { flags: { groups_v2: true } }, sessionShowEverything: true });
+    expect(session.source).toBe("session");
+    expect(session.flags).toEqual({ groupsV2: true });
+  });
+
+  it("T19 (R11): a malformed or unknown flag is dropped without disturbing the rest of the document; an org default can never set it", () => {
+    for (const userPrefs of [
+      { flags: { groups_v2: "true" } },
+      { flags: { groups_v2: 1 } },
+      { flags: "on" },
+      { flags: ["groups_v2"] },
+      { flags: { future_flag: true } },
+    ]) {
+      const r = resolve({ orgDefaults: ORG_ORGANISER_MODE, userPrefs: { mode: "full", ...userPrefs } });
+      expect(r.flags, JSON.stringify(userPrefs)).toEqual({ groupsV2: false });
+      expect(r.mode, JSON.stringify(userPrefs)).toBe("full");
+      expect(r.source, JSON.stringify(userPrefs)).toBe("user");
+    }
+    const viaOrg = resolve({
+      orgDefaults: { byWorkRole: { organiser: { mode: "organiser", flags: { groups_v2: true } } } },
+    });
+    expect(viaOrg.flags).toEqual({ groupsV2: false });
+    expect(viaOrg.mode).toBe("organiser");
+  });
+});

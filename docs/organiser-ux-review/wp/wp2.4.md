@@ -1119,7 +1119,19 @@ under `supabase/`; `packages/db-types/generated.ts`; any existing e2e spec or he
 
 | # | Deviation | Why | Plan section affected |
 |---|---|---|---|
-| — | _none yet_ | | |
+| D1 | The flag rule is **R11**, not R10. | `resolve.ts:81` and tests T14/T14b/T15 already use R10 for "malformed documents parse to absent"; the user document is now parsed once, before R2, and R11 derives `flags` from it for every role. | §3.2 |
+| D2 | Two assertions in two existing cases of `lib/workers/__tests__/sync-campaign-universe.test.ts` were updated (not the case count: 50 → 51, one added). | The plan's own additive field makes them fail: `expect(result).toEqual({ workersAdded, ouAssignmentsUpserted, ouAssignmentsSkipped })` fails on the extra `membersAdded` key, and the membership trace `["from:campaign_worker_membership.upsert"]` gains the paged read that §3.14 mandates before the upsert (the second case looked up the first membership call, which is now that read). The plan's "existing 53 cases unchanged" was not achievable as written (the suite had 50). Intent of both assertions (membership still written by the direct upsert, before the placements) is kept. | §3.14, §8.4 item 3 |
+| D3 | The `withinGroupId` test is a new file `components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx` (fake structure client, no harness). | §4.1 names the test but §7 lists no file for it; a new file keeps the WP2.2 `wall-chart.structure-writes.test.tsx` unedited. | §4.1, §7 |
+| D4 | `syncNoticeMessage` returns `null` when only the context counts (`ouAssignmentsSkipped`, `manualPlacementsKept`) are non-zero; `syncChangedSomething(result)` is exported for the board's invalidation condition. | Reconciles "null when every count is 0" with "shown only when something changed" and "`ouAssignmentsSkipped` … never as a change" (§3.14, §8.2): `skipped` is > 0 on almost every open of a synced campaign, so a literal reading would show the notice every time. | §3.14 |
+| D5 | `WallChartFilterState.otherGroupUnitIds` and `.participation` are **optional** keys (defaults set by `DEFAULT_FILTER_STATE()`); `WallChartFilterKey` gains `"other_group"` and `"participation"`; a non-`any` participation counts in `hasActiveFilter`/`activeFilterKeys` but is never evaluated by `applyFilters`; with the dimension active and no `unitsByWorkerAllGroups` index nobody passes. | "Existing callers pass states without it" (§3.10) is only true of optional keys; the participation predicate needs a query (§3.10, "computed as today") so it cannot live in the pure filter; the key-list invariant of `activeFilterKeys` is kept. | §3.10 |
+| D6 | `useUserCampaignPrefs`: a change is applied to an in-memory overlay first and the upsert is queued until the stored document is known; `flush()` runs on unmount. | A write issued before the first read lands would merge into `{}` and clobber `compare`/`layout` on the server; the overlay gives the "never waits on prefs" behaviour without that risk. `flush` on unmount keeps a debounced filter change when switching to List. | §3.11 |
+| D7 | `planDrop` takes `placementByWorker` (worker → unit in the selected group, from `deriveGroupView`) and `groupUnitIds` (fix round 1, A3) instead of `workersByUnit`, and returns the re-derived `refs` only (`perSource` dropped in fix round 1: the mutation groups `refs` by source itself). A target outside `groupUnitIds` is a `noop`. | It is the lookup the rule needs ("`fromOuId` = the worker's unit in G"); the refs are what `useMoveWorkersMutation` consumes; the guard stops a stray id moving a row across groups through `p_from_ou_id`. | §3.9 |
+| D8 | `unitsOfGroup` keeps the caller's order (a stable filter) instead of re-sorting by `display_order, name`; `sortUnits` is exported for a caller with unsorted rows. (Fix round 1, A4.) | The units query already orders `display_order, name` under Postgres collation (`use-wall-chart-structure.ts:53–61`); a `localeCompare` re-sort could order case/accent ties differently from the legacy chart ("as today", §3.3). | §3.3 |
+| D9 | `KnownIds.factFieldIds` added: a stale `sortFactFieldId` or `factFilters[].field_id` is dropped on read when the caller supplies the campaign's data-field ids. (Fix round 1, A6; Stage 2 passes the fields query's ids.) | Cosmetic without it (the legacy sorter tolerates an unknown field), but the same stale-id rule as `activityIds`/`ouIds`, and one line. | §3.11 |
+
+Notes (not deviations): the lint ceiling of §5 (294) was measured before the Cursor commits; a clean export of the
+branch base `f05a14d3` lints to **295** (143 errors / 152 warnings), and the Stage-1 tree lints to the same 295
+(§11.4). `lib/hints/registry.ts` (§7, drop `pending: "WP2.4"`) is left for Stage 2 with the hint's wiring.
 
 ### 8.4 Stop conditions (implementer stops and reports; no workaround)
 
@@ -1182,6 +1194,22 @@ _pending._
 
 ---
 
+**Stage 1 — pure library, flag, prefs hook, sync counts (2026-09-15)**
+
+- Orchestrator verification: `tsc` clean; Stage 1 suites + guard + WP2.2 structure-writes suite 262/262 (19 files);
+  nothing under `supabase/` or `packages/db-types/`.
+- **Review 1 (fresh Fable, static, no database): APPROVE** — no blocking finding. Checked against the SQL: the
+  derivations equal `campaign_group_membership` (trigger-derived `group_id`, containers with `group_id` are ordinary
+  units, `NULL` containers count for nothing); precedence edge cases pinned; `planDrop` = one `placements.move` per
+  source, `withinGroupId` only on the Unassigned drop, matching `structure_placements_move`; prefs merge keeps foreign
+  keys; RLS/upsert key correct; flag default off everywhere, single reader, R11 additive; `membersAdded` one paged read,
+  no write changed; filters and mutation additive for legacy callers; metrics SQL read-only. Advisories A1 (out-of-order
+  upsert could drop the newer pref on the server), A2 (failed read left writes queued silently), A3 (`perSource`
+  duplicated `refs`; no target-in-group guard), A4 (`localeCompare` re-sort), A5 (missing unmount-flush test), A6 (no
+  stale-id set for fact fields). **Resolution (fix round 1, §11.6):** all six applied (A1–A3, A5 in code and tests;
+  A4 → D8, A6 → D9). 1,502 tests / 1,501 passing (the render-cost timing case).
+- Fix rounds used at Stage 1: one (of two).
+
 ## 10. Revision history
 
 - **Revision 2** (2026-09-15): operator answers recorded (FL-b, PR-a, CP-a, HU-a, MN-a, CA-a, RD-a approved; **SY-b
@@ -1200,3 +1228,284 @@ _pending._
   derived Unassigned per group and Not in any group as pure functions equivalent to `campaign_group_membership`;
   `placements.move` with `withinGroupId` for the per-group Unassigned drop; `?group=` plus a `wallChart` document in
   `user_campaign_prefs`; no RPC, migration or types change; flows two and three as a new spec with a by-hand fallback.
+
+---
+
+## 11. Stage-1 implementation evidence (2026-09-15)
+
+**Nothing in this stage touched a database**: no Supabase connector call, no `supabase` CLI command, no read of
+`.env.local`, no `pnpm dev`/`start`, no Playwright, nothing under `supabase/` or `packages/db-types/`
+(`git diff --stat main -- supabase/ packages/db-types/` is empty, §11.4). Branch `feat/oux-wp2.4-group-selector`
+at `f05a14d3`; stop condition 11 checked first: neither `lib/workers/sync-campaign-universe.ts` nor
+`workforce-board.tsx` has changed on `origin/main` since `8ad4c1ad` (`git diff --stat 8ad4c1ad origin/main -- …`
+empty). Nothing committed, pushed or stashed. Deviations D1–D7 in §8.3.
+
+### 11.1 Files
+
+New:
+
+| File | Role |
+|---|---|
+| `apps/organising-db/src/lib/campaign/groups/derive-group-view.ts` | §3.3 pure derivations: `unitsOfGroup`, `groupOfUnit`, `unitsByWorker`, `deriveGroupView`, `notInAnyGroup`; structural input types so WP2.6/2.7 pass their own rows. |
+| `apps/organising-db/src/lib/campaign/groups/resolve-group-selection.ts` | §3.11 precedence `?ou` → `?group` → prefs → first group → `none`; `parseGroupParam`, `groupParamValue`, `orderGroups`. |
+| `apps/organising-db/src/lib/campaign/groups/wall-chart-prefs.ts` | §3.11 `wallChart` document: zod per-key lenient parse with stale-id dropping (`KnownIds`), `filterStateToPrefs` / `filterStateFromPrefs` (Sets ⇄ sorted arrays), `mergeWallChartPrefs` (foreign keys at both levels kept). |
+| `apps/organising-db/src/lib/campaign/groups/plan-drop.ts` | §3.9 `planDrop` → `noop` / `move` (per source) / `unassign` (within group); CP-a: no copy. |
+| `apps/organising-db/src/lib/campaign/groups/__tests__/{derive-group-view,resolve-group-selection,wall-chart-prefs,plan-drop}.test.ts` | §4.1; the first transcribes the `campaign_group_membership` SQL (`20260914090100:156–160`) into a fixture generator and checks equivalence over a hand-written and eight seeded fixtures (30 cases). |
+| `apps/organising-db/src/lib/hooks/useUserCampaignPrefs.ts` (+ `__tests__/useUserCampaignPrefs.test.tsx`, jsdom, 7 cases) | PR-a read/merge/write hook (§3.11): `["user-campaign-prefs", id]`, `select("prefs").eq("campaign_id", id).maybeSingle()`, upsert on `user_id,campaign_id`, 400 ms debounce, overlay, one toast on refusal (D6). |
+| `apps/organising-db/src/lib/flags/groups-v2.ts` (+ `__tests__/groups-v2.test.ts`) | FL-b: the one reader — `useGroupsV2()`, `isGroupsV2(flags)`. |
+| `apps/organising-db/src/lib/workers/sync-notice-message.ts` (+ `__tests__/sync-notice-message.test.ts`, 7 cases) | SY-c: `syncNoticeMessage(result): string \| null`, `syncChangedSomething(result)`; accepts the WP2.4b counts (D4). |
+| `apps/organising-db/src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx` (jsdom, 3 cases) | `withinGroupId` forwarded as `p_within_group_id` on the `toOuId: null` move only (D3). |
+| `scripts/data-hygiene/oux-wp2.4/00_phase2_metrics.sql`, `README.md` | RD: read-only phase-2 metric (two SELECTs; `campaign_worker_ou` has no `campaign_id`, so the campaign is reached through the unit); no write keyword in the file. |
+
+Modified (additive, default-preserving):
+
+| File | Change |
+|---|---|
+| `lib/workspace/prefs-schema.ts` | `workspaceFlagsSchema` (strict `{ groups_v2?: boolean }`); `workspacePrefsSchema` = user shape + `flags?`; lenient reader drops unknown flag names / non-boolean / non-object `flags` (`stripUnknownFlags`); role defaults (`workspaceRoleDefaultSchema`, `parseWorkspaceDefaults`) unchanged — `flags` refused strict, dropped lenient. |
+| `lib/workspace/resolve.ts` | `WorkspaceFlags`, `ResolvedWorkspace.flags`; **R11** (D1) before R2's admin return; carried on all four returns. |
+| `lib/workspace/use-workspace.tsx` | `flags` on the context; `DEFAULT_VALUE.flags = { groupsV2: false }`. |
+| `lib/workspace/prefs-payload.ts` | `WorkspaceFormState.groupsV2?`; `workspaceFormChanged` compares it; `buildPrefs(…, groupsV2)` writes `flags: { groups_v2: true }` only when on (off = key absent). |
+| `app/(dashboard)/administration/page.tsx` | `Checkbox` "Groups v2 (wall chart preview)" in the workspace box; snapshot/`editWorkspaceCurrent` carry `groupsV2`. |
+| `components/campaigns/wall-chart/filters.ts` | `otherGroupUnitIds?`, `participation?`; `hasOtherGroupFilter`, `hasParticipationFilter`; keys `other_group`, `participation`; `applyFilters(…, unitsByWorkerAllGroups?)` (D5). |
+| `components/campaigns/wall-chart/types.ts` | `WallChartOU.group_id?: number \| null`. |
+| `components/campaigns/wall-chart/move-worker-mutation.ts` | `MoveWorkerVars.withinGroupId?`; passed as `withinGroupId: vars.withinGroupId ?? null` on the null-target move only. |
+| `lib/analytics/events.ts` | `GroupSelectionControl` + `"group_selector"`, `FilterScope` + `"campaign"`. |
+| `lib/workers/sync-campaign-universe.ts` | `SyncCampaignUniverseResult.membersAdded`; one paged read of `campaign_worker_membership.worker_id` (`.eq("campaign_id").order("worker_id").range`, `PAGE_SIZE`) before `upsertMembership`; `workersAdded` unchanged. |
+| Tests | `filters.test.ts` (+6), `resolve.test.ts` (+3, T17–T19), `prefs-schema.test.ts` (+3), `prefs-payload.test.ts` (+4), `sync-campaign-universe.test.ts` (+1, and D2). |
+| This file | §8.3 D1–D7, §11. |
+
+Not modified: every legacy composition file of §3.1 principle 2; `structure-api.ts`; the sync route; `workforce-board.tsx`
+(Stage 2); `supabase/`; `packages/db-types/`; any e2e spec or helper; `wall-chart.structure-writes.test.tsx`.
+
+### 11.2 Key signatures
+
+```ts
+// lib/campaign/groups/derive-group-view.ts
+unitsOfGroup<U extends GroupUnitLike>(ous: readonly U[], groupId: number): U[]           // display_order, name, ou_id
+groupOfUnit(ous, ouId): number | null
+unitsByWorker(placements): Map<number, Set<number>>                                     // all groups — the applyFilters index
+deriveGroupView(members, ous, placements, groupId): { groupId, units, workersByUnit: Map<number, number[]>, unassignedWorkerIds: number[], placementByWorker: Map<number, number> }
+notInAnyGroup(members, ous, placements): number[]
+
+// lib/campaign/groups/resolve-group-selection.ts
+type GroupSelection = number | "none"
+resolveGroupSelection({ groups, ous, ouParam?, groupParam?, prefsGroup? }): { selection, source: "ou" | "url" | "prefs" | "first" | "none" }
+parseGroupParam(raw): GroupSelection | null;  groupParamValue(sel): string;  orderGroups(groups)
+
+// lib/campaign/groups/wall-chart-prefs.ts
+type WallChartPrefs = { v: 1 } & Partial<{ group, colourBy, filter: SerialisedFilter, sort, sortFactFieldId, participation, showEmptyUnits, displayMode, hiddenOuIds, overlay, badges }>
+parseWallChartPrefs(raw: unknown, known?: { groupIds?, ouIds?, activityIds? }): WallChartPrefs   // never throws
+filterStateToPrefs(state): Pick<WallChartPrefs, "filter" | "sort" | "sortFactFieldId" | "participation">
+filterStateFromPrefs(prefs): WallChartFilterState                                          // DEFAULT_FILTER_STATE() + stored keys
+mergeWallChartPrefs(document: unknown, patch): Record<string, unknown>                     // keeps compare/layout/anything
+
+// lib/campaign/groups/plan-drop.ts
+planDrop({ refs, targetOuId, groupId: number | "none", placementByWorker }): { kind: "noop" } | { kind: "move", toOuId, perSource, refs } | { kind: "unassign", withinGroupId, workerIds, refs }
+
+// lib/hooks/useUserCampaignPrefs.ts
+useUserCampaignPrefs(campaignId, known?): { wallChart, isLoading, isLoaded, setWallChart(patch, { debounce? }), flush }
+PREFS_WRITE_DEBOUNCE_MS = 400;  userCampaignPrefsQueryKey(id) = ["user-campaign-prefs", String(id)]
+
+// lib/flags/groups-v2.ts
+useGroupsV2(): boolean;  isGroupsV2(flags): boolean
+
+// lib/workers/sync-notice-message.ts
+syncNoticeMessage(result: unknown): string | null;  syncChangedSomething(result: unknown): boolean
+
+// lib/workers/sync-campaign-universe.ts
+type SyncCampaignUniverseResult = OuPlacementCounts & { workersAdded: number; membersAdded: number }
+
+// lib/workspace/resolve.ts
+interface WorkspaceFlags { groupsV2: boolean }   // R11; ResolvedWorkspace.flags
+```
+
+Design notes: `wall-chart-prefs.ts` imports `DEFAULT_FILTER_STATE` (runtime, a pure module) and the filter,
+participation and channel types from `components/campaigns/wall-chart/*` so the stored filter shape cannot drift
+from the in-memory one (`satisfies readonly SortKey[]` etc. make a drift a `tsc` error). Serialised key lists
+(`roles`, `ratings`, buckets) are ordered by their declared order; id lists ascending.
+
+### 11.3 Test count
+
+Baseline on this branch before any change (`pnpm vitest run` at `f05a14d3`, code identical to `8ad4c1ad`):
+**100 files, 1404 tests, 1403 passed, 1 failed** (`wall-chart.render-cost.test.tsx`, timing: 6435 ms vs 6000).
+After Stage 1: **108 files, 1496 tests, 1495 passed, 1 failed** (the same timing case, 6023 ms vs 6000).
++92 tests; none skipped, quarantined or deleted. Per edited suite: `sync-campaign-universe` 50 → 51, `resolve`
+19 → 22, `prefs-schema` 13 → 16, `prefs-payload` 9 → 13, `filters` 25 → 31.
+
+### 11.4 Raw command output
+
+```
+$ git log --oneline -1 origin/main ; git diff --stat 8ad4c1ad origin/main -- apps/organising-db/src/lib/workers/sync-campaign-universe.ts apps/organising-db/src/components/campaigns/workforce/workforce-board.tsx
+f05a14d3 docs(oux-wp2.4): plan Revision 2 — …
+(empty: stop condition 11 clear)
+
+$ cd apps/organising-db && pnpm exec tsc --noEmit
+tsc exit=0
+
+$ pnpm vitest run src/lib/campaign/groups src/lib/workspace src/lib/flags src/lib/workers/__tests__/sync-notice-message.test.ts src/lib/workers/__tests__/sync-campaign-universe.test.ts src/lib/hooks/__tests__/useUserCampaignPrefs.test.tsx src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx src/components/campaigns/wall-chart/__tests__/filters.test.ts
+ ✓ src/lib/campaign/groups/__tests__/derive-group-view.test.ts (30 tests) 34ms
+ ✓ src/lib/workers/__tests__/sync-campaign-universe.test.ts (51 tests) 23ms
+ ✓ src/lib/workspace/__tests__/resolve.test.ts (22 tests) 30ms
+ ✓ src/lib/workspace/__tests__/prefs-schema.test.ts (16 tests) 12ms
+ ✓ src/components/campaigns/wall-chart/__tests__/filters.test.ts (31 tests) 9ms
+ ✓ src/lib/campaign/groups/__tests__/wall-chart-prefs.test.ts (10 tests) 10ms
+ ✓ src/lib/workspace/__tests__/prefs-payload.test.ts (13 tests) 5ms
+ ✓ src/lib/workspace/__tests__/modules.test.ts (7 tests) 8ms
+ ✓ src/lib/campaign/groups/__tests__/resolve-group-selection.test.ts (9 tests) 5ms
+ ✓ src/lib/workers/__tests__/sync-notice-message.test.ts (7 tests) 3ms
+ ✓ src/lib/workspace/__tests__/landing.test.ts (10 tests) 4ms
+ ✓ src/lib/campaign/groups/__tests__/plan-drop.test.ts (7 tests) 4ms
+ ✓ src/lib/flags/__tests__/groups-v2.test.ts (2 tests) 2ms
+ ✓ src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx (3 tests) 69ms
+ ✓ src/lib/hooks/__tests__/useUserCampaignPrefs.test.tsx (7 tests) 1672ms
+ Test Files  15 passed (15)
+      Tests  225 passed (225)
+
+$ pnpm vitest run          # whole app
+stdout | wall-chart.render-cost.test.tsx > … within budget
+[wp2.3] render-cost median 6023ms over 3 runs (runs: 7242, 6023, 5974; tiles=250, cards=162)
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx (1 test | 1 failed) 20354ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 20353ms
+     → expected 6023.238865000001 to be less than 6000
+ Test Files  1 failed | 107 passed (108)
+      Tests  1 failed | 1495 passed (1496)
+   Duration  41.53s
+(baseline before any change, same command: Test Files 1 failed | 99 passed (100); Tests 1 failed | 1403 passed (1404); the same case, 6435ms)
+
+$ pnpm exec eslint <every changed file, 30 paths>
+src/app/(dashboard)/administration/page.tsx
+  2882:6  warning  React Hook useEffect has a missing dependency: 'fetchStatus'…   react-hooks/exhaustive-deps
+  2888:9  warning  'getLatencyColor' is assigned a value but never used           @typescript-eslint/no-unused-vars
+src/lib/workers/__tests__/sync-campaign-universe.test.ts
+  159:24  warning  '_ignored' is assigned a value but never used  @typescript-eslint/no-unused-vars
+✖ 3 problems (0 errors, 3 warnings)        # all three on untouched, pre-existing lines
+eslint(changed files) exit=0
+
+$ pnpm lint
+✖ 295 problems (143 errors, 152 warnings)
+lint exit=1
+$ # baseline: git archive HEAD (f05a14d3) → scratch dir, node_modules symlinked, eslint . -f json
+BASELINE at HEAD (clean export): errors 143 warnings 152 total 295      # = the §5 "294" + one warning that arrived on main with the Cursor commits; Stage 1 adds 0
+
+$ pnpm vitest run src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ ✓ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests) 106ms
+ Test Files  1 passed (1) / Tests  3 passed (3)
+
+$ rg -n "groups_v2|groupsV2" apps/organising-db/src --glob '!**/__tests__/**'     # readers
+lib/flags/groups-v2.ts, lib/workspace/{use-workspace.tsx,resolve.ts,prefs-payload.ts,prefs-schema.ts}, app/(dashboard)/administration/page.tsx — and no other file
+$ rg -n --pcre2 "\.from\(['\"]campaign_(organising_units|worker_ou)['\"]\)(\s*as\s+never)?\s*\.\s*(insert|update|upsert|delete)\(" apps/organising-db/src --glob '!**/__tests__/**'
+exit=1 (1 = pass)
+$ rg -n "localStorage" apps/organising-db/src/lib/campaign/groups apps/organising-db/src/lib/hooks/useUserCampaignPrefs.ts apps/organising-db/src/lib/flags apps/organising-db/src/lib/workers/sync-notice-message.ts
+exit=1 (1 = none = pass)
+$ grep -niE "insert|update|delete|truncate|alter|create|drop|set local|begin|commit" scripts/data-hygiene/oux-wp2.4/00_phase2_metrics.sql
+no write keywords in SQL
+$ git diff --stat main -- supabase/ packages/db-types/
+(empty)
+
+$ git status --short
+ M apps/organising-db/src/app/(dashboard)/administration/page.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/filters.test.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/filters.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/move-worker-mutation.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/types.ts
+ M apps/organising-db/src/lib/analytics/events.ts
+ M apps/organising-db/src/lib/workers/__tests__/sync-campaign-universe.test.ts
+ M apps/organising-db/src/lib/workers/sync-campaign-universe.ts
+ M apps/organising-db/src/lib/workspace/__tests__/prefs-payload.test.ts
+ M apps/organising-db/src/lib/workspace/__tests__/prefs-schema.test.ts
+ M apps/organising-db/src/lib/workspace/__tests__/resolve.test.ts
+ M apps/organising-db/src/lib/workspace/prefs-payload.ts
+ M apps/organising-db/src/lib/workspace/prefs-schema.ts
+ M apps/organising-db/src/lib/workspace/resolve.ts
+ M apps/organising-db/src/lib/workspace/use-workspace.tsx
+ M docs/organiser-ux-review/wp/wp2.4.md
+?? apps/organising-db/src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx
+?? apps/organising-db/src/lib/campaign/groups/
+?? apps/organising-db/src/lib/flags/
+?? apps/organising-db/src/lib/hooks/__tests__/useUserCampaignPrefs.test.tsx
+?? apps/organising-db/src/lib/hooks/useUserCampaignPrefs.ts
+?? apps/organising-db/src/lib/workers/__tests__/sync-notice-message.test.ts
+?? apps/organising-db/src/lib/workers/sync-notice-message.ts
+?? scripts/data-hygiene/oux-wp2.4/
+
+$ git diff --stat   (tracked files, before this plan edit)
+ .../src/app/(dashboard)/administration/page.tsx    | 23 +++++++
+ .../campaigns/wall-chart/__tests__/filters.test.ts | 70 ++++++++++++++++++++++
+ .../src/components/campaigns/wall-chart/filters.ts | 63 ++++++++++++++++++-
+ .../campaigns/wall-chart/move-worker-mutation.ts   | 30 ++++++++--
+ .../src/components/campaigns/wall-chart/types.ts   |  7 +++
+ apps/organising-db/src/lib/analytics/events.ts     | 15 +++--
+ .../__tests__/sync-campaign-universe.test.ts       | 47 ++++++++++++++-
+ .../src/lib/workers/sync-campaign-universe.ts      | 29 ++++++++-
+ .../lib/workspace/__tests__/prefs-payload.test.ts  | 41 +++++++++++++
+ .../lib/workspace/__tests__/prefs-schema.test.ts   | 33 ++++++++++
+ .../src/lib/workspace/__tests__/resolve.test.ts    | 52 ++++++++++++++++
+ .../src/lib/workspace/prefs-payload.ts             | 19 ++++--
+ .../src/lib/workspace/prefs-schema.ts              | 48 ++++++++++++++-
+ apps/organising-db/src/lib/workspace/resolve.ts    | 34 ++++++++---
+ .../src/lib/workspace/use-workspace.tsx            |  7 +++
+ 15 files changed, 489 insertions(+), 29 deletions(-)
+```
+
+The whole-app run above preceded one comment-only reword in `useUserCampaignPrefs.ts` (the word "localStorage"
+replaced so the §5 grep stays clean); that file was re-linted (exit 0) and its suite is unaffected by a comment.
+
+### 11.5 Open questions for the orchestrator / operator before Stage 2
+
+1. **D2** — accept the two assertion updates in `sync-campaign-universe.test.ts` (forced by the plan's own
+   `membersAdded`), or direct otherwise; the alternative that leaves the file untouched is not implementable.
+2. **Lint ceiling** — §5 says 294; the branch base is 295 (clean-export measurement). Propose §5 read "≤ the
+   base of the branch (295 at `f05a14d3`)"; Stage 1 adds none.
+3. **D4** — confirm the notice is silent when only "already placed" / "kept" are non-zero (recommended: the
+   plan's "shown only when something changed").
+4. **D5** — confirm `participation` counting as an active filter key (chip + `(n)` badge) is wanted for v2; it
+   changes nothing for the legacy chart, whose state never sets it.
+5. Stage 2 will need `workforce-board.tsx` (shell choice + `syncChangedSomething` invalidation + notice),
+   `lib/hints/registry.ts` (drop `pending`), the harness additions and the v2 tree per §6.1 row 2.
+6. The pre-existing timing failure in `wall-chart.render-cost.test.tsx` is unchanged (6435 → 6023 ms, budget
+   6000) and is the only failing case in both runs.
+
+### 11.6 Fix round 1 (2026-09-15) — review advisories A1–A6
+
+Review verdict APPROVE, six advisories, no blocking items; all six applied (A4 and A6 as D8 and D9). Same
+constraints as Stage 1; nothing committed. Files touched: `lib/hooks/useUserCampaignPrefs.ts` (+ test),
+`lib/campaign/groups/{plan-drop,derive-group-view,wall-chart-prefs}.ts` (+ tests), this file.
+
+| Item | Change | Test |
+|---|---|---|
+| **A1** out-of-order `onSuccess` regresses the cache | `onSuccess` no longer calls `setQueryData` (the cache is already the optimistic `next` set in `flush`); every write now merges the **whole overlay of the mount** (`overlayRef`, kept in step with the `overlay` state) into the last-read document, so two in-flight upserts carry the same union whatever order their responses arrive in; `pending` became a `dirty` flag. | "A1: two concurrent writes resolving in reverse order …" — a deferred-upsert wrapper over the fake client resolves the second response before the first; asserts the second in-flight payload already carries both patches, the cache and `wallChart` carry both after the reversed resolution, and the next upsert carries all three. |
+| **A2** failed read leaves writes queued silently | `isError: query.isError` on the result; `PREFS_READ_FAILED_MESSAGE` toasted once (`readErrorToasted` ref) when the read errors; writes stay queued (never written over an unknown document). | "A2: a failed read reports isError, toasts once, and keeps every write queued …" — `errors` set before mount; after the one retry (`retry: 1`, 1 s) `isError` true, `isLoaded`/`isLoading` false, one toast with the read message, an immediate and a debounced write produce no upsert, the overlay still shows both. |
+| **A3** two encodings of one plan; no target guard | `perSource` removed from the `move` plan (`refs` is the executable form; `useMoveWorkersMutation` groups by `fromOuId`); new required input `groupUnitIds: ReadonlySet<number>`; a `targetOuId` outside it → `noop`. D7 updated. | plan-drop 7 → 8 cases: the per-source case now asserts the exact `refs`; new "a target that is not a unit of the selected group is a no-op". |
+| **A4** `localeCompare` re-sort vs Postgres order | **D8**: `unitsOfGroup` is a stable filter in the caller's order; `sortUnits` exported for unsorted rows. The `SMALL` fixture is now in query order. | derive-group-view 30 → 31: "keeps input order even when it is not sorted" (a case tie) and `sortUnits` order pinned; the equivalence cases are order-independent and unchanged. |
+| **A5** hook test gaps | — | "A5 (D6): unmounting with a debounced change pending sends it at once" (exact upsert payload after `root.unmount()`); the refused-write case now asserts the second upsert's payload carries the refused `group: "none"` and `isError` false. |
+| **A6** fact-field ids not stale-checked | **D9**: `KnownIds.factFieldIds`; `sortFactFieldId` and `factFilters` filtered against it when given (`null` sort id always kept). | wall-chart-prefs 10 → 11: stale and live sets, and the `null` case. |
+
+Raw output:
+
+```
+$ cd apps/organising-db && pnpm exec tsc --noEmit
+tsc exit=0
+
+$ pnpm vitest run src/lib/campaign/groups src/lib/workspace src/lib/flags src/lib/workers/__tests__/sync-notice-message.test.ts src/lib/workers/__tests__/sync-campaign-universe.test.ts src/lib/hooks/__tests__/useUserCampaignPrefs.test.tsx src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx src/components/campaigns/wall-chart/__tests__/filters.test.ts src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ ✓ move-worker-mutation.test.tsx (3)   ✓ sync-campaign-universe.test.ts (51)   ✓ resolve.test.ts (22)
+ ✓ derive-group-view.test.ts (31)      ✓ wall-chart-prefs.test.ts (11)         ✓ prefs-schema.test.ts (16)
+ ✓ filters.test.ts (31)                ✓ prefs-payload.test.ts (13)            ✓ modules.test.ts (7)
+ ✓ no-direct-structure-writes.test.ts (3)  ✓ resolve-group-selection.test.ts (9)  ✓ plan-drop.test.ts (8)
+ ✓ sync-notice-message.test.ts (7)     ✓ landing.test.ts (10)                  ✓ useUserCampaignPrefs.test.tsx (10)
+ ✓ groups-v2.test.ts (2)               ✓ wall-chart.structure-writes.test.tsx (46)
+ Test Files  17 passed (17)
+      Tests  280 passed (280)
+
+$ pnpm vitest run          # whole app
+[wp2.3] render-cost median 6369ms over 3 runs (runs: 7116, 6369, 6076; tiles=250, cards=162)
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget
+ Test Files  1 failed | 107 passed (108)
+      Tests  1 failed | 1501 passed (1502)        # Stage 1: 1496 / 1495; +6 cases this round, same single timing failure
+
+$ pnpm exec eslint src/lib/hooks/useUserCampaignPrefs.ts src/lib/hooks/__tests__/useUserCampaignPrefs.test.tsx src/lib/campaign/groups/plan-drop.ts src/lib/campaign/groups/__tests__/plan-drop.test.ts src/lib/campaign/groups/derive-group-view.ts src/lib/campaign/groups/__tests__/derive-group-view.test.ts src/lib/campaign/groups/wall-chart-prefs.ts src/lib/campaign/groups/__tests__/wall-chart-prefs.test.ts
+eslint exit=0 (no output)
+```
+
+Stage-2 consequences: the shell passes `groupUnitIds` (`new Set(view.units.map(u => u.ou_id))`) to `planDrop`
+and `plan.refs` to `useMoveWorkersMutation`; passes the data-field ids in `KnownIds.factFieldIds`; reads
+`isError` from `useUserCampaignPrefs` for a "settings will not be saved" line if wanted (the toast already fires).

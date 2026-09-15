@@ -16,9 +16,21 @@ export type MoveWorkerVars = {
    * For copy mode, `fromOuId` is ignored.
    */
   refs: { workerId: number; fromOuId: number | null }[];
-  /** Target OU; null = Unassigned (remove from all units in this campaign). */
+  /**
+   * Target OU; null = Unassigned: remove from all units in this campaign, or
+   * — with `withinGroupId` — from the unit in that group only (WP2.4).
+   */
   toOuId: number | null;
   mode: "move" | "copy";
+  /**
+   * WP2.4 (wp2.4.md §3.7, §3.9; the parameter wp2.2.md §3.11 row 1 reserved):
+   * a drop on a group's Unassigned card. Forwarded as `p_within_group_id`
+   * only on the `toOuId: null` move, where the RPC removes the workers'
+   * placement in that group and leaves their other groups alone. Ignored
+   * with a target unit (the RPC refuses the pair) and by copy. Legacy
+   * callers never set it, so their strip-all behaviour is unchanged.
+   */
+  withinGroupId?: number | null;
   /**
    * When true (default), moving or copying a worker INTO a sub-unit also
    * keeps (or creates) the worker's placement on the sub-unit's parent OU —
@@ -58,7 +70,9 @@ export type MoveWorkerResult = {
  *                            a same-group copy is refused with
  *                            `duplicate_in_group` (K1, C-c).
  * - move + toOuId == null  : every placement of the workers in this campaign
- *                            is removed (the worker becomes "Unassigned").
+ *                            is removed (the worker becomes "Unassigned");
+ *                            with `withinGroupId`, only the placement in that
+ *                            group (WP2.4: "Unassigned in <group>").
  * - copy + toOuId == null  : no-op.
  *
  * The RPC takes one `p_from_ou_id`, so a move whose refs come from several
@@ -92,9 +106,17 @@ export function useMoveWorkersMutation(campaignId: string | number) {
       };
 
       if (vars.toOuId == null) {
-        // "Move to Unassigned" = strip all OU assignments for these workers in this campaign.
+        // "Move to Unassigned" = strip all OU assignments for these workers in
+        // this campaign — or, within a group (WP2.4), only that group's.
         if (vars.mode !== "move") return { inserted: 0, deleted: 0, skipped: workerIds.length };
-        tally(await api.placements.move({ campaignId: campaignIdNum, workerIds, toOuId: null }));
+        tally(
+          await api.placements.move({
+            campaignId: campaignIdNum,
+            workerIds,
+            toOuId: null,
+            withinGroupId: vars.withinGroupId ?? null,
+          })
+        );
       } else if (vars.mode === "copy") {
         // Copy ignores the source: one call, `p_from_ou_id` null, keep_source.
         tally(

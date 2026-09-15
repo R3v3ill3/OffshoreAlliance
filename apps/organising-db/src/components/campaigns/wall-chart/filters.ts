@@ -8,6 +8,7 @@ import type {
   WallChartRatingSummary,
   WallChartWorker,
 } from "./types";
+import type { ParticipationSource } from "./participation-selector";
 
 /** When rating filter runs against per-activity rows, pass this for binary-aware buckets. */
 export type RatingFilterAssessmentContext = {
@@ -80,6 +81,21 @@ export type WallChartFilterState = {
   assessmentFilters: AssessmentRatingFilter[];
   factFilters: FactFilter[];
   sortFactFieldId: number | null;
+  /**
+   * WP2.4 (§3.10) "in unit of another group": keep a worker iff they hold a
+   * placement on one of these units. Empty/absent = inactive. Optional so a
+   * state built before WP2.4 is still a complete state; `applyFilters` needs
+   * `unitsByWorkerAllGroups` to evaluate it.
+   */
+  otherGroupUnitIds?: Set<number>;
+  /**
+   * WP2.4 (§3.10): the participation source, moved into the one campaign-wide
+   * filter. `{ kind: "any" }`/absent = inactive. Carried here so it is
+   * persisted and reported with the rest of the filter; the predicate itself
+   * is computed by the view-metrics hook as today (it needs a query), never
+   * by `applyFilters`.
+   */
+  participation?: ParticipationSource;
 };
 
 export const DEFAULT_FILTER_STATE = (): WallChartFilterState => ({
@@ -94,7 +110,19 @@ export const DEFAULT_FILTER_STATE = (): WallChartFilterState => ({
   assessmentFilters: [],
   factFilters: [],
   sortFactFieldId: null,
+  otherGroupUnitIds: new Set(),
+  participation: { kind: "any" },
 });
+
+/** WP2.4: true when the "in unit of another group" dimension constrains. */
+export function hasOtherGroupFilter(s: WallChartFilterState): boolean {
+  return (s.otherGroupUnitIds?.size ?? 0) > 0;
+}
+
+/** WP2.4: true when a participation source other than "any" is chosen. */
+export function hasParticipationFilter(s: WallChartFilterState): boolean {
+  return s.participation != null && s.participation.kind !== "any";
+}
 
 /** Assessment filters that actually constrain (at least one bucket chosen). */
 export function activeAssessmentFilters(
@@ -113,7 +141,9 @@ export function hasActiveFilter(s: WallChartFilterState): boolean {
     s.phone !== "any" ||
     s.email !== "any" ||
     activeAssessmentFilters(s).length > 0 ||
-    s.factFilters.length > 0
+    s.factFilters.length > 0 ||
+    hasOtherGroupFilter(s) ||
+    hasParticipationFilter(s)
   );
 }
 
@@ -126,7 +156,9 @@ export type WallChartFilterKey =
   | "phone"
   | "email"
   | "assessments"
-  | "facts";
+  | "facts"
+  | "other_group"
+  | "participation";
 
 /**
  * The dimensions that are currently constraining, as closed-union key names.
@@ -148,6 +180,8 @@ export function activeFilterKeys(s: WallChartFilterState): WallChartFilterKey[] 
   if (s.email !== "any") keys.push("email");
   if (activeAssessmentFilters(s).length > 0) keys.push("assessments");
   if (s.factFilters.length > 0) keys.push("facts");
+  if (hasOtherGroupFilter(s)) keys.push("other_group");
+  if (hasParticipationFilter(s)) keys.push("participation");
   return keys;
 }
 
@@ -193,11 +227,19 @@ export function applyFilters(
   ratingAssessmentContext?: RatingFilterAssessmentContext,
   factsByWorker?: Map<number, Map<number, WorkerCampaignFact>>,
   /** Ratings + metadata for evaluating per-assessment rating filters. */
-  assessmentLookup?: AssessmentFilterLookup
+  assessmentLookup?: AssessmentFilterLookup,
+  /**
+   * WP2.4: worker id → every unit the worker holds across ALL groups, for the
+   * "in unit of another group" dimension. When that dimension constrains and
+   * this index is absent, no worker can be confirmed to be in such a unit, so
+   * none passes (as an assessment filter treats ratings not yet loaded).
+   */
+  unitsByWorkerAllGroups?: ReadonlyMap<number, ReadonlySet<number>>
 ): number[] {
   if (!hasActiveFilter(state)) return ids;
 
   const assessmentFilters = activeAssessmentFilters(state);
+  const otherGroupUnitIds = hasOtherGroupFilter(state) ? state.otherGroupUnitIds : undefined;
 
   return ids.filter((id) => {
     const w = workerById.get(id);
@@ -269,6 +311,21 @@ export function applyFilters(
       }
     }
 
+    // WP2.4: in unit of another group (OR within the chosen units).
+    if (otherGroupUnitIds) {
+      const held = unitsByWorkerAllGroups?.get(id);
+      if (!held) return false;
+      let inOne = false;
+      for (const ouId of otherGroupUnitIds) {
+        if (held.has(ouId)) {
+          inOne = true;
+          break;
+        }
+      }
+      if (!inOne) return false;
+    }
+
+    // `participation` is not evaluated here (see WallChartFilterState).
     return true;
   });
 }

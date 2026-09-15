@@ -124,8 +124,12 @@ export function tabOpenKey(
 // wallchart_group_selected
 // ---------------------------------------------------------------------------
 
-/** Which group control produced the event. Phase 0 has exactly one. */
-export type GroupSelectionControl = "assessment_charts_ou_type";
+/**
+ * Which group control produced the event. Phase 0 had exactly one; WP2.4
+ * adds the v2 wall chart's Group selector (wp2.4.md §3.16). The event name is
+ * unchanged so the phase-0 series continues.
+ */
+export type GroupSelectionControl = "assessment_charts_ou_type" | "group_selector";
 
 export type WallchartGroupSelectedProps = {
   campaign_id: number;
@@ -165,8 +169,11 @@ export function trackWallchartGroupSelected(p: {
 // wallchart_filter_applied
 // ---------------------------------------------------------------------------
 
-/** Which filter bar produced the event. */
-export type FilterScope = "unit" | "unassigned" | "all";
+/**
+ * Which filter bar produced the event. `"campaign"` is the v2 wall chart's
+ * one campaign-wide Filter (WP2.4, wp2.4.md §3.10).
+ */
+export type FilterScope = "unit" | "unassigned" | "all" | "campaign";
 
 export type WallchartFilterAppliedProps = {
   campaign_id: number;

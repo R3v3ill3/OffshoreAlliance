@@ -58,6 +58,58 @@ export function cardTiles(card: HTMLElement): string[] {
     .map((t) => `${t.getAttribute("data-worker-id")} ${t.getAttribute("data-worker-name")}`);
 }
 
+/** The "Assessing: …" line a card renders in its own header, or null while it is hidden. */
+export function cardAssessing(card: HTMLElement): string | null {
+  return (
+    [...card.querySelectorAll("p")]
+      .filter((p) => p.parentElement?.closest(CARD_ROOT) === card)
+      .map((p) => collapse(p.textContent))
+      .find((t) => t.startsWith("Assessing:")) ?? null
+  );
+}
+
+/**
+ * A card's own per-unit View control: the select trigger under its "View"
+ * label. Nested cards carry one too, so ownership is checked the same way as
+ * for the filter trigger.
+ */
+export function viewTrigger(card: HTMLElement): HTMLButtonElement {
+  const labels = [...card.querySelectorAll("label")].filter(
+    (l) => l.parentElement?.closest(CARD_ROOT) === card && collapse(l.textContent) === "View"
+  );
+  const trigger = labels[0]?.parentElement?.querySelector<HTMLButtonElement>(
+    'button[role="combobox"]'
+  );
+  if (labels.length !== 1 || !trigger) {
+    fail(
+      `Expected one View control on this card, found ${labels.length}`,
+      [...card.querySelectorAll("label")].map((l) => collapse(l.textContent))
+    );
+  }
+  return trigger;
+}
+
+/**
+ * An option in the open select listbox, addressed by its visible text. Radix
+ * portals the listbox to the document body, so this searches the document
+ * and requires exactly one match.
+ */
+export function selectOption(label: string): HTMLElement {
+  const options = [...document.body.querySelectorAll('[role="option"]')].filter(
+    (o) => collapse(o.textContent) === label
+  );
+  if (options.length === 0) {
+    fail(
+      `No select option labelled "${label}"`,
+      [...document.body.querySelectorAll('[role="option"]')].map((o) => collapse(o.textContent))
+    );
+  }
+  if (options.length > 1) {
+    throw new Error(`${options.length} select options labelled "${label}"`);
+  }
+  return options[0] as HTMLElement;
+}
+
 /**
  * A card's own filter trigger. The label gains an active count once a filter is
  * set (`Filter` → `Filter (1)`), so it is matched on shape; nested sub-unit

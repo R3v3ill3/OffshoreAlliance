@@ -70,6 +70,7 @@ export function useWallChartViewMetrics({
     unassignedWorkerIds,
     workersByOu,
     childrenByParent,
+    parentByOu,
   } = index;
 
   const estimate = (campaign?.total_worker_estimate as number | null) ?? 0;
@@ -255,7 +256,8 @@ export function useWallChartViewMetrics({
       const effective = effectiveAssessmentForScope(
         ouId,
         campaignAssessmentDefault,
-        unitAssessmentOverride
+        unitAssessmentOverride,
+        parentByOu
       );
       const input = buildAssessmentMetricsInput(effective, activityRatingsByActivityId);
       const multiUnitWorkerIds = new Set(
@@ -276,6 +278,7 @@ export function useWallChartViewMetrics({
     participationPredicate,
     campaignAssessmentDefault,
     unitAssessmentOverride,
+    parentByOu,
     activityRatingsByActivityId,
     unitsByWorker,
   ]);

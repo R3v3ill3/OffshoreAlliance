@@ -22,7 +22,7 @@ import { WallChartTile, type WallChartTileContext } from "./wall-chart-tile";
 import { participationSourceLabel } from "./participation-selector";
 import { applyFilters, applySort, factSortOpts } from "./filters";
 import { computeMetrics } from "./metrics";
-import { humanizeOuType, type WallChartOU } from "./types";
+import { humanizeOuType, type AssessmentSelection, type WallChartOU } from "./types";
 import {
   buildAssessmentMetricsInput,
   effectiveAssessmentForScope,
@@ -89,6 +89,7 @@ export function WallChartUnitHierarchy(props: WallChartHierarchyProps): ReactNod
     compareWorkerIds,
     workersByOu,
     childrenByParent,
+    parentByOu,
     unitsByWorker,
     visibleWorkersForOu,
   } = struct.index;
@@ -174,7 +175,8 @@ export function WallChartUnitHierarchy(props: WallChartHierarchyProps): ReactNod
                     ou.ou_id,
                     campaignAssessmentDefault,
                     unitAssessmentOverride,
-                    activityRatingsByActivityId
+                    activityRatingsByActivityId,
+                    parentByOu
                   );
                   const filtered = applyFilters(
                     ids,
@@ -201,7 +203,8 @@ export function WallChartUnitHierarchy(props: WallChartHierarchyProps): ReactNod
                   const effScope = effectiveAssessmentForScope(
                     ou.ou_id,
                     campaignAssessmentDefault,
-                    unitAssessmentOverride
+                    unitAssessmentOverride,
+                    parentByOu
                   );
                   const unitMetrics =
                     hasSubUnits && !showSubUnitCards
@@ -518,8 +521,12 @@ export function WallChartUnitHierarchy(props: WallChartHierarchyProps): ReactNod
  * WP2.3 — the nested sub-unit cards, moved verbatim out of the top-level
  * card's `subUnits` prop (`WC:2154–2383`). Holds filter → sort → metrics
  * pipeline #3 for the child cards (`WC:2159–2198`) and pipeline #4 for the
- * depth-2 grandchild cards (`WC:2310–2323`), which keep their hard-coded
- * `assessmentLabel="Cumulative"` (a documented divergence, §1.4).
+ * depth-2 grandchild cards (`WC:2310–2323`).
+ *
+ * Every nested scope resolves its assessment view through `parentByOu`: a
+ * sub-unit with no View override of its own follows its nearest overridden
+ * ancestor, then the campaign default. Child and grandchild cards carry their
+ * own View control whose "Default (…)" entry names that inherited selection.
  *
  * Drops on a nested card still bubble to the parent card's drop target. That is
  * current behaviour and is preserved, not fixed, here.
@@ -539,18 +546,28 @@ export function WallChartSubUnits(
     setSplitTargetOu,
     setDeleteTargetOu,
   } = shell.dialogs;
-  const { campaignAssessmentDefault, unitAssessmentOverride } = core.scopeState;
+  const { campaignAssessmentDefault, unitAssessmentOverride, setUnitAssessmentOverride } =
+    core.scopeState;
   const activityRatingsByActivityId = core.activityRatings;
   const assessmentFilterLookup = core.activityRatingLookup;
   const factsByWorker = core.facts.factsByWorker;
   const allLinks = core.leaderLinks;
   const { coverageByOu, wocRepByUnit } = core.coverage;
-  const { workerById, ratingByWorker, workersByOu, childrenByParent } = struct.index;
+  const { workerById, ratingByWorker, workersByOu, childrenByParent, parentByOu } = struct.index;
   const { getFilter } = view.filters;
   const displayMode = view.displayMode.mode;
   const participationSource = view.participation.source;
   const { metricsByOu } = view.metrics;
   const { handleWorkerDrop } = actions;
+
+  const setOverrideFor = (ouId: number) => (next: AssessmentSelection | undefined) => {
+    setUnitAssessmentOverride((prev) => {
+      const copy = new Map(prev);
+      if (next === undefined) copy.delete(ouId);
+      else copy.set(ouId, next);
+      return copy;
+    });
+  };
 
   // Same body and same laziness as the JSX IIFE it replaces (§3.3 bans IIFEs
   // in JSX); only the call site moved.
@@ -570,7 +587,23 @@ export function WallChartSubUnits(
                                               gc.ou_id,
                                               campaignAssessmentDefault,
                                               unitAssessmentOverride,
-                                              activityRatingsByActivityId
+                                              activityRatingsByActivityId,
+                                              parentByOu
+                                            );
+                                            const gcEffScope = effectiveAssessmentForScope(
+                                              gc.ou_id,
+                                              campaignAssessmentDefault,
+                                              unitAssessmentOverride,
+                                              parentByOu
+                                            );
+                                            const gcAssessmentLabel =
+                                              gcEffScope.kind === "assessment" ? gcEffScope.title : "Cumulative";
+                                            // What this grandchild shows when it has no override of its own.
+                                            const gcInherited = effectiveAssessmentForScope(
+                                              child.ou_id,
+                                              campaignAssessmentDefault,
+                                              unitAssessmentOverride,
+                                              parentByOu
                                             );
                                             const gcFiltered = applyFilters(gcIds, workerById, ratingByWorker, gcFilter, gcFa.activityRatings, gcFa.ratingCtx, factsByWorker, assessmentFilterLookup);
                                             const gcSorted = applySort(gcFiltered, workerById, ratingByWorker, gcFilter.sort, {
@@ -593,7 +626,7 @@ export function WallChartSubUnits(
                                                   workerCount={gcSorted.length}
                                                   estimate={gc.total_workers_estimated ?? 0}
                                                   placeholders={0}
-                                                  assessmentLabel="Cumulative"
+                                                  assessmentLabel={gcAssessmentLabel}
                                                   onWorkerDrop={handleWorkerDrop}
                                                   dropDisabled={!canWrite}
                                                   nested
@@ -613,12 +646,20 @@ export function WallChartSubUnits(
                                                     />
                                                   }
                                                   toolbar={
-                                                    canWrite ? (
-                                                      <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs print:hidden"
-                                                        onClick={() => { setAddWorkerContextOu(gc); setAddWorkerFormKey((k) => k + 1); setAddWorkerOpen(true); }}
-                                                        title="Add worker to this sub-unit"
-                                                      >Add worker</Button>
-                                                    ) : null
+                                                    <div className="flex items-center gap-1">
+                                                      <UnitAssessmentViewControl
+                                                        campaignId={campaignId}
+                                                        campaignDefault={gcInherited}
+                                                        override={unitAssessmentOverride.get(gc.ou_id)}
+                                                        onChangeOverride={setOverrideFor(gc.ou_id)}
+                                                      />
+                                                      {canWrite && (
+                                                        <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs print:hidden"
+                                                          onClick={() => { setAddWorkerContextOu(gc); setAddWorkerFormKey((k) => k + 1); setAddWorkerOpen(true); }}
+                                                          title="Add worker to this sub-unit"
+                                                        >Add worker</Button>
+                                                      )}
+                                                    </div>
                                                   }
                                                 >
                                                   {gcSorted.map((wid) => (
@@ -647,7 +688,8 @@ export function WallChartSubUnits(
                                 child.ou_id,
                                 campaignAssessmentDefault,
                                 unitAssessmentOverride,
-                                activityRatingsByActivityId
+                                activityRatingsByActivityId,
+                                parentByOu
                               );
                               const childFiltered = applyFilters(
                                 childIds,
@@ -676,7 +718,15 @@ export function WallChartSubUnits(
                               const childEffScope = effectiveAssessmentForScope(
                                 child.ou_id,
                                 campaignAssessmentDefault,
-                                unitAssessmentOverride
+                                unitAssessmentOverride,
+                                parentByOu
+                              );
+                              // What this child shows when it has no override of its own.
+                              const childInherited = effectiveAssessmentForScope(
+                                ou.ou_id,
+                                campaignAssessmentDefault,
+                                unitAssessmentOverride,
+                                parentByOu
                               );
                               const childAssessmentTitle =
                                 childEffScope.kind === "assessment" ? childEffScope.title : null;
@@ -742,8 +792,15 @@ export function WallChartSubUnits(
                                       ) : null
                                     }
                                     toolbar={
-                                      canWrite ? (
-                                        <div className="flex items-center gap-1">
+                                      <div className="flex items-center gap-1">
+                                        <UnitAssessmentViewControl
+                                          campaignId={campaignId}
+                                          campaignDefault={childInherited}
+                                          override={unitAssessmentOverride.get(child.ou_id)}
+                                          onChangeOverride={setOverrideFor(child.ou_id)}
+                                        />
+                                        {canWrite && (
+                                          <>
                                           <Button
                                             type="button"
                                             size="sm"
@@ -796,8 +853,9 @@ export function WallChartSubUnits(
                                               </DropdownMenuItem>
                                             </DropdownMenuContent>
                                           </DropdownMenu>
-                                        </div>
-                                      ) : null
+                                          </>
+                                        )}
+                                      </div>
                                     }
                                     subUnits={renderGrandchildren(child)}
                                   >

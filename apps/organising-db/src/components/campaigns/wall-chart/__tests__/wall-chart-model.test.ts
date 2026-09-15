@@ -7,6 +7,7 @@ import {
   effectiveAssessmentForScope,
   hierarchyViewKey,
   readHierarchyView,
+  resolveScopeOverride,
   scopeAssessmentFilterAndSort,
 } from "../wall-chart-model";
 import { DEFAULT_FILTER_STATE, applyFilters, applySort } from "../filters";
@@ -167,6 +168,137 @@ describe("effectiveAssessmentForScope", () => {
   });
 });
 
+/**
+ * Unit tree for the inheritance tests, every id a fixed literal:
+ *
+ *   10 (top level)
+ *     └─ 12
+ *          └─ 13
+ *   20 (top level, unrelated)
+ */
+const TREE = new Map<number, number | null>([
+  [10, null],
+  [12, 10],
+  [13, 12],
+  [20, null],
+]);
+
+describe("effectiveAssessmentForScope — inheritance through parentByOu", () => {
+  it("a child with no override follows its parent's override", () => {
+    const overrides = new Map<number, AssessmentSelection>([[10, assessment(7)]]);
+    expect(effectiveAssessmentForScope(12, CUMULATIVE, overrides, TREE)).toEqual(assessment(7));
+  });
+
+  it("a grandchild with no override follows its grandparent's override", () => {
+    const overrides = new Map<number, AssessmentSelection>([[10, assessment(7)]]);
+    expect(effectiveAssessmentForScope(13, CUMULATIVE, overrides, TREE)).toEqual(assessment(7));
+  });
+
+  it("a unit's own override wins over every ancestor's", () => {
+    const overrides = new Map<number, AssessmentSelection>([
+      [10, assessment(7)],
+      [13, CUMULATIVE],
+    ]);
+    expect(effectiveAssessmentForScope(13, assessment(9), overrides, TREE)).toEqual({
+      kind: "cumulative",
+    });
+  });
+
+  it("the nearest overridden ancestor wins over a farther one", () => {
+    const overrides = new Map<number, AssessmentSelection>([
+      [10, assessment(7)],
+      [12, assessment(9)],
+    ]);
+    expect(effectiveAssessmentForScope(13, CUMULATIVE, overrides, TREE)).toEqual(assessment(9));
+  });
+
+  it("falls back to the campaign default when no ancestor has an override", () => {
+    const overrides = new Map<number, AssessmentSelection>([[20, assessment(7)]]);
+    expect(effectiveAssessmentForScope(13, assessment(9), overrides, TREE)).toEqual(assessment(9));
+  });
+
+  it("does not let a sibling subtree's override leak across", () => {
+    const overrides = new Map<number, AssessmentSelection>([[12, assessment(7)]]);
+    expect(effectiveAssessmentForScope(20, CUMULATIVE, overrides, TREE)).toEqual({
+      kind: "cumulative",
+    });
+  });
+
+  it("keeps the flat lookup when no parent map is given", () => {
+    const overrides = new Map<number, AssessmentSelection>([[10, assessment(7)]]);
+    expect(effectiveAssessmentForScope(12, CUMULATIVE, overrides)).toEqual({ kind: "cumulative" });
+  });
+
+  it("resolves the unassigned scope flat, since it is never in the tree", () => {
+    const overrides = new Map<number, AssessmentSelection>([[10, assessment(7)]]);
+    expect(effectiveAssessmentForScope(UNASSIGNED_KEY, assessment(9), overrides, TREE)).toEqual(
+      assessment(9)
+    );
+  });
+
+  it("terminates on a cyclic parent chain and falls back to the campaign default", () => {
+    const cyclic = new Map<number, number | null>([
+      [1, 2],
+      [2, 3],
+      [3, 1],
+    ]);
+    expect(effectiveAssessmentForScope(1, assessment(9), new Map(), cyclic)).toEqual(assessment(9));
+    // A unit listed as its own parent is the degenerate cycle.
+    const selfParent = new Map<number, number | null>([[5, 5]]);
+    expect(effectiveAssessmentForScope(5, CUMULATIVE, new Map(), selfParent)).toEqual({
+      kind: "cumulative",
+    });
+  });
+
+  it("still honours an override found before a cycle closes", () => {
+    const cyclic = new Map<number, number | null>([
+      [1, 2],
+      [2, 1],
+    ]);
+    const overrides = new Map<number, AssessmentSelection>([[2, assessment(7)]]);
+    expect(effectiveAssessmentForScope(1, CUMULATIVE, overrides, cyclic)).toEqual(assessment(7));
+  });
+
+  it("stops at a parent that is missing from the map", () => {
+    const dangling = new Map<number, number | null>([[12, 999]]);
+    const overrides = new Map<number, AssessmentSelection>([[10, assessment(7)]]);
+    expect(effectiveAssessmentForScope(12, CUMULATIVE, overrides, dangling)).toEqual({
+      kind: "cumulative",
+    });
+  });
+});
+
+describe("resolveScopeOverride", () => {
+  // The same resolver serves the per-unit list-badge override, whose values
+  // are Sets rather than assessment selections.
+  const phone = new Set(["phone"]);
+  const email = new Set(["email"]);
+
+  it("returns the unit's own value ahead of an ancestor's", () => {
+    const overrides = new Map<number, Set<string> | undefined>([
+      [10, phone],
+      [13, email],
+    ]);
+    expect(resolveScopeOverride(13, overrides, TREE)).toBe(email);
+  });
+
+  it("returns the nearest ancestor's value when the unit has none", () => {
+    const overrides = new Map<number, Set<string> | undefined>([[10, phone]]);
+    expect(resolveScopeOverride(13, overrides, TREE)).toBe(phone);
+  });
+
+  it("returns undefined when neither the unit nor any ancestor has a value", () => {
+    const overrides = new Map<number, Set<string> | undefined>([[20, phone]]);
+    expect(resolveScopeOverride(13, overrides, TREE)).toBeUndefined();
+  });
+
+  it("looks up only the unit itself without a parent map", () => {
+    const overrides = new Map<number, Set<string> | undefined>([[10, phone]]);
+    expect(resolveScopeOverride(12, overrides)).toBeUndefined();
+    expect(resolveScopeOverride(10, overrides)).toBe(phone);
+  });
+});
+
 describe("activityIdsForWallChartSelections", () => {
   it("collects distinct ids from the campaign default and every override, ascending", () => {
     const overrides = new Map<number, AssessmentSelection>([
@@ -249,6 +381,21 @@ describe("scopeAssessmentFilterAndSort", () => {
 
   it("falls back to the campaign default when the scope has no override", () => {
     const result = scopeAssessmentFilterAndSort(99, assessment(7), new Map(), ratingsByActivity());
+    expect([...(result.activityRatings?.keys() ?? [])]).toEqual([101, 102, 103]);
+  });
+
+  it("resolves a child scope through its parent's override, with that activity's ratings", () => {
+    const overrides = new Map<number, AssessmentSelection>([[10, assessment(9)]]);
+    const result = scopeAssessmentFilterAndSort(13, assessment(7), overrides, ratingsByActivity(), TREE);
+
+    expect([...(result.activityRatings?.keys() ?? [])]).toEqual([101]);
+    expect(result.ratingCtx?.selection).toEqual(assessment(9));
+    expect(result.sortAssessment?.selection).toEqual(assessment(9));
+  });
+
+  it("ignores the parent's override without a parent map, as before", () => {
+    const overrides = new Map<number, AssessmentSelection>([[10, assessment(9)]]);
+    const result = scopeAssessmentFilterAndSort(13, assessment(7), overrides, ratingsByActivity());
     expect([...(result.activityRatings?.keys() ?? [])]).toEqual([101, 102, 103]);
   });
 

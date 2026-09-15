@@ -37,6 +37,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import type { QueryClient } from "@tanstack/react-query";
 
 import {
   authContextMock,
@@ -51,11 +53,14 @@ import {
 import { buildWallChartFixture } from "./harness/fixture";
 import {
   button,
+  cardAssessing,
   cardTiles,
   filterCheckbox,
   filterTrigger,
+  selectOption,
   unitCard,
   unitTitles,
+  viewTrigger,
 } from "./harness/locate";
 import { click, mountWallChart, type MountedWallChart } from "./harness/mount";
 
@@ -96,6 +101,21 @@ async function mount(): Promise<MountedWallChart> {
 /** Tiles a card renders itself, addressed by heading so the card is re-read after each render. */
 function tilesOf(container: HTMLElement, title: string): string[] {
   return cardTiles(unitCard(container, title));
+}
+
+/**
+ * Choosing an assessment enables the activity-ratings query for it (and the
+ * selector refetches its options on open), so flush until nothing is fetching
+ * before reading a filter that depends on those ratings.
+ */
+async function settleQueries(queryClient: QueryClient): Promise<void> {
+  for (let i = 0; i < 30; i++) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    if (i > 0 && queryClient.isFetching() === 0) return;
+  }
+  throw new Error("Queries never settled after changing the assessment view");
 }
 
 /** Reveal both nested levels through the product's own expand chevrons. */
@@ -209,6 +229,50 @@ describe("nested scopes — filtering", () => {
 
     expect(tilesOf(container, SOUTH_DECK)).toEqual(DECK_ALL);
     expect(tilesOf(container, ACME_SOUTH)).toEqual([]);
+    expect(tilesOf(container, ACME_NORTH)).toEqual([]);
+  });
+});
+
+describe("nested scopes — assessment view inheritance", () => {
+  it("a child and a grandchild follow the parent's View selection, for both label and filter", async () => {
+    // Operator report: changing a unit's View had no effect on its sub-units,
+    // because each sub-unit resolved under its own ou_id and fell through to
+    // the campaign default. A sub-unit with no override of its own must now
+    // follow its nearest overridden ancestor.
+    const { container, queryClient } = await mount();
+    await revealNestedScopes(container);
+    // A child card hides its header details until its summary is open.
+    await click(button(unitCard(container, ACME_SOUTH), "Show unit summary"));
+
+    expect(cardAssessing(unitCard(container, ACME_SOUTH))).toBe("Assessing: Cumulative");
+    expect(cardAssessing(unitCard(container, SOUTH_DECK))).toBe("Assessing: Cumulative");
+
+    // Change the parent's View through its own control.
+    await click(viewTrigger(unitCard(container, ACME_GROUP)));
+    await click(selectOption("Petition ask"));
+    await settleQueries(queryClient);
+
+    expect(cardAssessing(unitCard(container, ACME_GROUP))).toBe("Assessing: Petition ask");
+    // Depth 1 and depth 2 both follow …
+    expect(cardAssessing(unitCard(container, ACME_SOUTH))).toBe("Assessing: Petition ask");
+    expect(cardAssessing(unitCard(container, SOUTH_DECK))).toBe("Assessing: Petition ask");
+    // … and an unrelated top-level unit does not.
+    expect(cardAssessing(unitCard(container, "Port Alpha"))).toBe("Assessing: Cumulative");
+    // The child's own control offers the inherited selection as its default.
+    await click(viewTrigger(unitCard(container, ACME_SOUTH)));
+    expect(selectOption("Default (Petition ask)")).toBeTruthy();
+    await click(selectOption("Default (Petition ask)"));
+
+    // The filter follows too. Rating bucket 4 over the inherited assessment:
+    // Cara is rated 4 on "Petition ask" but 3 cumulatively, so she stays only
+    // because the child scope reads the parent's assessment; Dan is 4
+    // cumulatively but unrated on the assessment, so the grandchild empties.
+    await click(filterTrigger(unitCard(container, ACME_GROUP)));
+    await click(filterCheckbox("4 (4–<5)"));
+    await click(button(document.body, "Apply to all units"));
+
+    expect(tilesOf(container, ACME_SOUTH)).toEqual(["103 Cara Carter"]);
+    expect(tilesOf(container, SOUTH_DECK)).toEqual([]);
     expect(tilesOf(container, ACME_NORTH)).toEqual([]);
   });
 });

@@ -281,7 +281,12 @@ export function AssessmentSelector({
 
 export type UnitAssessmentViewControlProps = {
   campaignId: string;
-  /** Campaign-level default (for labels when inheriting). */
+  /**
+   * What this unit shows when it has no override of its own: the campaign
+   * default for a top-level unit, or the parent's resolved selection for a
+   * sub-unit (see `effectiveAssessmentForScope`). Names the "Default (…)"
+   * entry and decides whether the control is highlighted as overridden.
+   */
   campaignDefault: AssessmentSelection;
   /** When undefined, this unit uses `campaignDefault`. */
   override: AssessmentSelection | undefined;
@@ -293,7 +298,8 @@ function campaignDefaultShortLabel(s: AssessmentSelection): string {
 }
 
 /**
- * Per-unit override: inherit campaign default, cumulative, or a specific assessment.
+ * Per-unit override: inherit (the campaign default, or for a sub-unit the
+ * parent's resolved view), cumulative, or a specific assessment.
  */
 export function UnitAssessmentViewControl({
   campaignId,
@@ -356,9 +362,8 @@ export function UnitAssessmentViewControl({
   const inheritHint = campaignDefaultShortLabel(campaignDefault);
 
   // Highlight the selector when this unit is showing a different assessment
-  // than the campaign summary section — i.e. it has been overridden away from
-  // the campaign default. Inheriting units resolve to the campaign default and
-  // are never highlighted.
+  // than it would inherit — i.e. it has been overridden away from its default.
+  // Inheriting units resolve to that default and are never highlighted.
   const differsFromCampaignDefault = !assessmentSelectionsEqual(
     effective,
     campaignDefault
@@ -383,7 +388,7 @@ export function UnitAssessmentViewControl({
           )}
           title={
             differsFromCampaignDefault
-              ? `Overridden for this unit — differs from campaign default (${inheritHint})`
+              ? `Overridden for this unit — differs from its inherited default (${inheritHint})`
               : undefined
           }
         >

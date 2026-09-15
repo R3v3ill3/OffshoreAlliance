@@ -28,12 +28,45 @@ export function activityIdsForWallChartSelections(
   return [...s].sort((a, b) => a - b);
 }
 
+/**
+ * ou_id -> parent ou_id (null for a top-level unit). `UNASSIGNED_KEY` is never
+ * a key here, so the unassigned scope always resolves flat.
+ */
+export type ParentByOu = ReadonlyMap<number, number | null>;
+
+/**
+ * The override that applies to a scope: its own, else the nearest ancestor's,
+ * else nothing. Without `parentByOu` this is the flat per-scope lookup it
+ * always was. A malformed parent chain (a cycle, or a parent missing from the
+ * map) ends the walk rather than looping or throwing.
+ */
+export function resolveScopeOverride<T>(
+  scopeKey: number,
+  overrides: ReadonlyMap<number, T | undefined>,
+  parentByOu?: ParentByOu
+): T | undefined {
+  const visited = new Set<number>();
+  let key: number | null | undefined = scopeKey;
+  while (key != null && !visited.has(key)) {
+    visited.add(key);
+    const own = overrides.get(key);
+    if (own !== undefined) return own;
+    key = parentByOu?.get(key);
+  }
+  return undefined;
+}
+
+/**
+ * A sub-unit follows the nearest ancestor unit that has a View override unless
+ * it has its own; otherwise the campaign default.
+ */
 export function effectiveAssessmentForScope(
   scopeKey: number,
   campaignDefault: AssessmentSelection,
-  overrides: Map<number, AssessmentSelection>
+  overrides: ReadonlyMap<number, AssessmentSelection>,
+  parentByOu?: ParentByOu
 ): AssessmentSelection {
-  return overrides.get(scopeKey) ?? campaignDefault;
+  return resolveScopeOverride(scopeKey, overrides, parentByOu) ?? campaignDefault;
 }
 
 export function buildAssessmentMetricsInput(
@@ -52,8 +85,9 @@ export function buildAssessmentMetricsInput(
 export function scopeAssessmentFilterAndSort(
   scopeKey: number,
   campaignDefault: AssessmentSelection,
-  overrides: Map<number, AssessmentSelection>,
-  byActivity: Map<number, Map<number, ActivityRating>>
+  overrides: ReadonlyMap<number, AssessmentSelection>,
+  byActivity: Map<number, Map<number, ActivityRating>>,
+  parentByOu?: ParentByOu
 ): {
   activityRatings?: Map<number, ActivityRating>;
   ratingCtx?: RatingFilterAssessmentContext;
@@ -62,7 +96,7 @@ export function scopeAssessmentFilterAndSort(
     activityRatings: Map<number, ActivityRating>;
   };
 } {
-  const effective = effectiveAssessmentForScope(scopeKey, campaignDefault, overrides);
+  const effective = effectiveAssessmentForScope(scopeKey, campaignDefault, overrides, parentByOu);
   if (effective.kind !== "assessment") return {};
   const activityRatings = byActivity.get(effective.activityId) ?? new Map();
   return {

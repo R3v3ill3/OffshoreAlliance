@@ -365,6 +365,17 @@ export function useWallChartStructure({
   }, [ous]);
 
   /**
+   * ou_id -> parent ou_id (null at the top level). The per-unit View and badge
+   * overrides resolve up this chain, so a sub-unit follows its nearest
+   * overridden ancestor (`resolveScopeOverride` in `wall-chart-model.ts`).
+   */
+  const parentByOu = useMemo(() => {
+    const m = new Map<number, number | null>();
+    for (const ou of ous) m.set(ou.ou_id, ou.parent_ou_id ?? null);
+    return m;
+  }, [ous]);
+
+  /**
    * For roll-up rendering: a worker assigned to BOTH a parent and one of its
    * sub-units should be displayed under the sub-unit only (not also under the
    * parent's own grid). Parent-level metrics still see them via metricsByOu
@@ -430,6 +441,7 @@ export function useWallChartStructure({
       unassignedWorkerIds,
       workersByOu,
       childrenByParent,
+      parentByOu,
       parentExclusiveWorkersByOu,
       visibleWorkersForOu,
     },

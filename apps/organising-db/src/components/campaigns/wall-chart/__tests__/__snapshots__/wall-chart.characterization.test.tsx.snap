@@ -178,6 +178,7 @@ exports[`CampaignWallChart characterization > build-list-open: ?buildList=1 1`] 
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -201,6 +202,7 @@ exports[`CampaignWallChart characterization > build-list-open: ?buildList=1 1`] 
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -558,6 +560,7 @@ exports[`CampaignWallChart characterization > count-mode: stored display mode is
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -581,6 +584,7 @@ exports[`CampaignWallChart characterization > count-mode: stored display mode is
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -776,13 +780,13 @@ exports[`CampaignWallChart characterization > default: structural skeleton 1`] =
           <div>
             <div>
               <label>
-              <button aria-autocomplete="none" aria-controls="radix-_r_3u_" aria-expanded="false" data-state="closed" role="combobox">
+              <button aria-autocomplete="none" aria-controls="radix-_r_4c_" aria-expanded="false" data-state="closed" role="combobox">
           <div>
             <div>
               <h2>
               <p>
             <div>
-              <button aria-autocomplete="none" aria-controls="radix-_r_3v_" aria-expanded="false" data-state="closed" role="combobox">
+              <button aria-autocomplete="none" aria-controls="radix-_r_4d_" aria-expanded="false" data-state="closed" role="combobox">
               <div>
               <div>
               <button aria-pressed="false">
@@ -1017,6 +1021,7 @@ exports[`CampaignWallChart characterization > default: writable, hint dismissed,
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -1040,6 +1045,7 @@ exports[`CampaignWallChart characterization > default: writable, hint dismissed,
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -1379,6 +1385,7 @@ exports[`CampaignWallChart characterization > hidden-unit: one unit hidden via s
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -1402,6 +1409,7 @@ exports[`CampaignWallChart characterization > hidden-unit: one unit hidden via s
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -1655,6 +1663,7 @@ exports[`CampaignWallChart characterization > hint-visible: rating hint not yet 
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -1678,6 +1687,7 @@ exports[`CampaignWallChart characterization > hint-visible: rating hint not yet 
         "Rate 4 — Weak",
         "Rate 5 — Hostile",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
         "Add worker",
         "Unit actions | expanded=false | state=closed",
       ],
@@ -2296,6 +2306,7 @@ exports[`CampaignWallChart characterization > read-only: canWrite false 1`] = `
         "Rate 4 — Weak | disabled",
         "Rate 5 — Hostile | disabled",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
       ],
       "header": null,
       "level": 1,
@@ -2317,6 +2328,7 @@ exports[`CampaignWallChart characterization > read-only: canWrite false 1`] = `
         "Rate 4 — Weak | disabled",
         "Rate 5 — Hostile | disabled",
         "Expand unit | expanded=false",
+        "Default (Cumulative) | expanded=false | state=closed",
       ],
       "header": null,
       "level": 1,

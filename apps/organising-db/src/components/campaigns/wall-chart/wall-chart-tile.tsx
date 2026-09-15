@@ -1,6 +1,6 @@
 import { WorkerTile } from "./worker-tile";
 import { effectiveBadgesForScope } from "./list-badge-selector";
-import { effectiveAssessmentForScope } from "./wall-chart-model";
+import { effectiveAssessmentForScope, resolveScopeOverride } from "./wall-chart-model";
 import type { ActivityRating } from "./types";
 import type { Interaction } from "@/lib/analytics/events";
 import type { WallChartCoreData } from "./hooks/use-wall-chart-core-data";
@@ -22,7 +22,7 @@ export type WallChartTileContext = {
   canWrite: boolean;
   index: Pick<
     WallChartStructure["index"],
-    "workerById" | "unitsByWorker" | "ouNameById" | "ouTypeById" | "ratingByWorker"
+    "workerById" | "unitsByWorker" | "ouNameById" | "ouTypeById" | "ratingByWorker" | "parentByOu"
   >;
   scopeState: Pick<
     WallChartCoreData["scopeState"],
@@ -65,7 +65,7 @@ export function WallChartTile({
   ouId: number | null;
   scopeKey: number;
 }) {
-  const { workerById, unitsByWorker, ouNameById, ouTypeById, ratingByWorker } = index;
+  const { workerById, unitsByWorker, ouNameById, ouTypeById, ratingByWorker, parentByOu } = index;
   const {
     campaignAssessmentDefault,
     unitAssessmentOverride,
@@ -81,10 +81,13 @@ export function WallChartTile({
     .map((id) => ouNameById.get(id))
     .filter((n): n is string => Boolean(n));
   const inMultipleUnits = (unitsByWorker.get(workerId) ?? []).length > 1;
+  // Both per-unit overrides inherit down the unit tree: a tile in a sub-unit
+  // shows what its nearest overridden ancestor shows.
   const effective = effectiveAssessmentForScope(
     scopeKey,
     campaignAssessmentDefault,
-    unitAssessmentOverride
+    unitAssessmentOverride,
+    parentByOu
   );
   const rMap =
     effective.kind === "assessment"
@@ -93,7 +96,7 @@ export function WallChartTile({
   const activityRating =
     effective.kind === "assessment" ? rMap.get(workerId) ?? null : null;
   const enabledListBadges = effectiveBadgesForScope(
-    unitBadgeOverride.get(scopeKey),
+    resolveScopeOverride(scopeKey, unitBadgeOverride, parentByOu),
     campaignBadgeDefault
   );
   return (

@@ -121,6 +121,10 @@ export function subUnitsProps(setup: NestedScopeSetup): SubUnitsProps {
     ])
   );
   const allOus = [setup.parentOu, ...setup.visibleChildList, ...[...setup.childrenByParent.values()].flat()];
+  // Same shape as the structure index's memo: ou_id -> parent ou_id (null at the top).
+  const parentByOu = new Map<number, number | null>(
+    allOus.map((o) => [o.ou_id, o.parent_ou_id ?? null])
+  );
 
   const getFilter = (scopeId: number): WallChartFilterState => {
     const found = setup.filterByScope.get(scopeId);
@@ -143,6 +147,7 @@ export function subUnitsProps(setup: NestedScopeSetup): SubUnitsProps {
       ouNameById: new Map(allOus.map((o) => [o.ou_id, o.name])),
       ouTypeById: new Map(allOus.map((o) => [o.ou_id, o.ou_type])),
       ratingByWorker,
+      parentByOu,
     },
     scopeState: {
       campaignAssessmentDefault: { kind: "cumulative" as const },
@@ -195,6 +200,7 @@ export function subUnitsProps(setup: NestedScopeSetup): SubUnitsProps {
       scopeState: {
         campaignAssessmentDefault: { kind: "cumulative" as const },
         unitAssessmentOverride: new Map(),
+        setUnitAssessmentOverride: noop,
       },
       activityRatings: new Map(),
       activityRatingLookup: { ratingsByActivity: new Map(), selectionByActivity: new Map() },
@@ -208,6 +214,7 @@ export function subUnitsProps(setup: NestedScopeSetup): SubUnitsProps {
         ratingByWorker,
         workersByOu: setup.workersByOu,
         childrenByParent: setup.childrenByParent,
+        parentByOu,
       },
     },
     view: {

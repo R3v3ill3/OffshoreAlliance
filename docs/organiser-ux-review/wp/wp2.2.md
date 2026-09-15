@@ -2604,6 +2604,19 @@ Call log:
 exit=1
 ```
 
+#### e2e acceptance by hand on the branch preview (2026-09-15, operator)
+
+Per the operator decision in §9.1 (no repository secrets; the `e2e-preview` workflow unused for WP2.2), the operator
+ran §4.5 items 1–6 by hand on the branch preview
+`https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app` (branch at `41bd57d6`, code
+unchanged since `15d5dc9b`; preview talks to normal dev at WP2.1 + 2.2a + `10` + `20` + 2.2b), signed in as the dev
+e2e user, following the orchestrator's checklist: (1) same-group drag leaves one placement, drag to Unassigned leaves
+none; (2) same-group copy shows the K1 message and changes nothing, cross-group copy leaves two placements; (3) split
+with same-group children moves the members out of the source, no keep-in-parent switch; (4) merge from the Units tab;
+(5) settings save-units round trip incl. the blank-name sentence; (6) a `user` without write permission on campaign 3
+sees a visible error. **Operator report 2026-09-15: "all six tests passed."** No anomalies reported. The automated
+spec `tests/e2e/structure-api.spec.ts` remains unrun (D80/D81); it can run from the workflow whenever secrets exist.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

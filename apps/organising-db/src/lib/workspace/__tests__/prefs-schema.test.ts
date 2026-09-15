@@ -4,6 +4,7 @@ import {
   parseWorkspaceDefaults,
   parseWorkspacePrefs,
   workspaceDefaultsSchema,
+  workspaceFlagsSchema,
   workspaceModeSchema,
   workspacePrefsSchema,
 } from "../prefs-schema";
@@ -144,5 +145,37 @@ describe("droppedRoleKeys", () => {
     expect(droppedRoleKeys({})).toEqual([]);
     for (const v of NOT_DOCUMENTS) expect(droppedRoleKeys(v), String(v)).toEqual([]);
     expect(droppedRoleKeys({ byWorkRole: 5 })).toEqual([]);
+  });
+});
+
+describe("WP2.4 (FL-b) — flags.groups_v2 on the per-user document", () => {
+  it("strict write path: accepts flags.groups_v2 (with or without the other keys) and rejects unknown flag names or a non-boolean", () => {
+    expect(workspacePrefsSchema.safeParse({ flags: { groups_v2: true } }).success).toBe(true);
+    expect(workspacePrefsSchema.safeParse({ mode: "organiser", modules: ["actions"], flags: { groups_v2: false } }).success).toBe(true);
+    expect(workspacePrefsSchema.safeParse({ flags: {} }).success).toBe(true);
+    expect(workspacePrefsSchema.safeParse({ flags: { groups_v3: true } }).success).toBe(false);
+    expect(workspacePrefsSchema.safeParse({ flags: { groups_v2: "yes" } }).success).toBe(false);
+    expect(workspacePrefsSchema.safeParse({ flags: "on" }).success).toBe(false);
+    expect(workspaceFlagsSchema.safeParse({ groups_v2: true }).success).toBe(true);
+    expect(workspaceFlagsSchema.safeParse({ nope: true }).success).toBe(false);
+  });
+
+  it("the org-wide role defaults do not accept flags (per user only)", () => {
+    expect(
+      workspaceDefaultsSchema.safeParse({ byWorkRole: { organiser: { mode: "organiser", flags: { groups_v2: true } } } }).success
+    ).toBe(false);
+    // ...and the lenient reader drops it from a role entry as an unknown key.
+    expect(
+      parseWorkspaceDefaults({ byWorkRole: { organiser: { mode: "organiser", flags: { groups_v2: true } } } })
+    ).toEqual({ byWorkRole: { organiser: { mode: "organiser" } } });
+  });
+
+  it("lenient reader: keeps groups_v2, drops unknown flag names and a non-boolean, and a non-object flags value, without losing the rest", () => {
+    expect(parseWorkspacePrefs({ mode: "full", flags: { groups_v2: true } })).toEqual({ mode: "full", flags: { groups_v2: true } });
+    expect(parseWorkspacePrefs({ flags: { groups_v2: true, future: 1 } })).toEqual({ flags: { groups_v2: true } });
+    expect(parseWorkspacePrefs({ flags: { groups_v2: "true" } })).toEqual({ flags: {} });
+    expect(parseWorkspacePrefs({ mode: "organiser", flags: "on" })).toEqual({ mode: "organiser" });
+    expect(parseWorkspacePrefs({ mode: "organiser", flags: [true] })).toEqual({ mode: "organiser" });
+    expect(parseWorkspacePrefs({ mode: "organiser", flags: null })).toEqual({ mode: "organiser" });
   });
 });

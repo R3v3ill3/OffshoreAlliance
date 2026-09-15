@@ -22,8 +22,12 @@ export interface Hint {
   copy: string;
   /** Prose statement of the trigger; the executable form is shouldShowHint(). */
   showWhen: string;
-  /** Set when the target does not exist yet. Never rendered while set. */
-  pending?: "WP2.4";
+  /**
+   * Set when the target does not exist yet. Never rendered while set. No entry
+   * is pending today: WP2.4 wired the Group selector; the field stays for the
+   * next hint that ships ahead of its control.
+   */
+  pending?: string;
 }
 
 export const HINTS: readonly Hint[] = [
@@ -39,8 +43,7 @@ export const HINTS: readonly Hint[] = [
     target: "the wall chart's Group selector",
     copy: "Choose one Group at a time — Unassigned holds anyone not in a Unit.",
     showWhen:
-      "the first time this user opens a wall chart after the Group selector ships",
-    pending: "WP2.4",
+      "the first time this user opens a wall chart that has the Group selector (the WP2.4 chart, per-user flag)",
   },
 ];
 

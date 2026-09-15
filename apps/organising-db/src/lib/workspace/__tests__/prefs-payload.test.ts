@@ -155,3 +155,44 @@ describe("workspacePrefsPayload", () => {
     ).toEqual({});
   });
 });
+
+describe("WP2.4 (FL-b) — the Groups v2 checkbox in the payload", () => {
+  it("ticking the flag alone changes the form and sends a document carrying flags.groups_v2", () => {
+    const current: WorkspaceFormState = { ...NO_OVERRIDE, groupsV2: true };
+    expect(workspaceFormChanged(NO_OVERRIDE, current)).toBe(true);
+    expect(workspacePrefsPayload({ initial: NO_OVERRIDE, current, effectiveMode: "full", defaultsAvailable: true })).toEqual({
+      flags: { groups_v2: true },
+    });
+  });
+
+  it("unticking sends a document WITHOUT the key (off = absence), and the other fields still ride along", () => {
+    const initial: WorkspaceFormState = { mode: "organiser", modules: ["inbox"], allowShowEverything: false, groupsV2: true };
+    const current: WorkspaceFormState = { ...initial, groupsV2: false };
+    expect(workspaceFormChanged(initial, current)).toBe(true);
+    expect(workspacePrefsPayload({ initial, current, effectiveMode: "organiser", defaultsAvailable: true })).toEqual({
+      mode: "organiser",
+      modules: ["inbox"],
+      allowShowEverything: false,
+    });
+  });
+
+  it("absent and false are the same state: no change, nothing sent", () => {
+    expect(workspaceFormChanged(NO_OVERRIDE, { ...NO_OVERRIDE, groupsV2: false })).toBe(false);
+    expect(workspaceFormChanged({ ...NO_OVERRIDE, groupsV2: false }, NO_OVERRIDE)).toBe(false);
+    expect(workspacePrefsPayload({ initial: NO_OVERRIDE, current: { ...NO_OVERRIDE, groupsV2: false }, effectiveMode: "full", defaultsAvailable: true })).toBeUndefined();
+  });
+
+  it("the flag survives the defaults-unavailable branch (stored modules kept) and the full-mode branch (modules dropped)", () => {
+    const initial: WorkspaceFormState = { mode: "organiser", modules: ["inbox"], allowShowEverything: undefined };
+    const current: WorkspaceFormState = { ...initial, groupsV2: true };
+    expect(workspacePrefsPayload({ initial, current, effectiveMode: "full", defaultsAvailable: false })).toEqual({
+      mode: "organiser",
+      modules: ["inbox"],
+      flags: { groups_v2: true },
+    });
+    expect(workspacePrefsPayload({ initial, current: { ...current, mode: "full" }, effectiveMode: "full", defaultsAvailable: true })).toEqual({
+      mode: "full",
+      flags: { groups_v2: true },
+    });
+  });
+});

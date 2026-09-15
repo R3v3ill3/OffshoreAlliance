@@ -37,11 +37,21 @@ export interface ResolveWorkspaceInput {
   sessionShowEverything: boolean;
 }
 
+/**
+ * WP2.4 (FL-b) — per-user feature flags, resolved beside the mode. Not
+ * permission: `groupsV2` only chooses which wall-chart shell renders.
+ */
+export interface WorkspaceFlags {
+  /** `workspace_prefs.flags.groups_v2 === true`; off when absent, malformed, or there is no profile. */
+  groupsV2: boolean;
+}
+
 export interface ResolvedWorkspace {
   mode: WorkspaceMode;
   enabledModules: Set<WorkspaceModuleId>;
   canShowEverything: boolean;
   source: WorkspaceSource;
+  flags: WorkspaceFlags;
 }
 
 /** Every module the role may see: all ids, minus `adminOnly` for non-admins (R3). */
@@ -73,15 +83,23 @@ export function resolveWorkspace(input: ResolveWorkspaceInput): ResolvedWorkspac
   const { role, workRole, sessionShowEverything } = input;
   const allForRole = modulesForRole(role);
 
-  // R2 — admins are always full; org defaults and user prefs are ignored.
-  if (role === "admin") {
-    return { mode: "full", enabledModules: allForRole, canShowEverything: false, source: "role" };
-  }
-
   // R10 — malformed documents parse to "absent"; a bad user document must
   // not drag the user back to `full` if the role default says otherwise.
-  const defaults = parseWorkspaceDefaults(input.orgDefaults);
+  // (The user document is parsed here, before R2, because R11 reads it for
+  // every role; the parse is pure and R2 still ignores mode and modules.)
   const prefs = parseWorkspacePrefs(input.userPrefs);
+
+  // R11 (WP2.4, FL-b) — per-user flags are read for EVERY role, admins
+  // included, so the operator can be flagged on; they never affect mode or
+  // modules, and they default off. Carried through every return below.
+  const flags: WorkspaceFlags = { groupsV2: prefs?.flags?.groups_v2 === true };
+
+  // R2 — admins are always full; org defaults and user prefs (mode, modules) are ignored.
+  if (role === "admin") {
+    return { mode: "full", enabledModules: allForRole, canShowEverything: false, source: "role", flags };
+  }
+
+  const defaults = parseWorkspaceDefaults(input.orgDefaults);
 
   // R4 — role default lookup key.
   const lookupKey: WorkRole | null = isWorkRole(workRole)
@@ -110,12 +128,12 @@ export function resolveWorkspace(input: ResolveWorkspaceInput): ResolvedWorkspac
 
   // R9 — session expansion; only meaningful when the resolved mode is organiser.
   if (mode === "organiser" && sessionShowEverything && canShowEverything) {
-    return { mode: "full", enabledModules: allForRole, canShowEverything: true, source: "session" };
+    return { mode: "full", enabledModules: allForRole, canShowEverything: true, source: "session", flags };
   }
 
   // Full mode always means every module the role may see (R6, second sentence).
   if (mode === "full") {
-    return { mode, enabledModules: allForRole, canShowEverything, source };
+    return { mode, enabledModules: allForRole, canShowEverything, source, flags };
   }
 
   // R6 — organiser mode module list: user prefs → role entry → registry default.
@@ -132,5 +150,5 @@ export function resolveWorkspace(input: ResolveWorkspaceInput): ResolvedWorkspac
   // already dropped by the lenient parsers and duplicates collapse in the Set.
   const enabledModules = new Set(list.filter((id) => allForRole.has(id)));
 
-  return { mode: "organiser", enabledModules, canShowEverything, source };
+  return { mode: "organiser", enabledModules, canShowEverything, source, flags };
 }

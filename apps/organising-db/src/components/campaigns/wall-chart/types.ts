@@ -137,6 +137,13 @@ export type WallChartOU = {
   is_group_container?: boolean;
   /** FK to the group container OU that owns this member unit. Null for standalone units. */
   ou_group_id?: number | null;
+  /**
+   * WP2.1 `campaign_groups` membership of the unit (WP2.4 §3.3): set on every
+   * leaf unit and on the Employer containers that carry the Employer group;
+   * `null` only for legacy custom-kind containers. The `select("*")` already
+   * returns it; the v2 chart bands by it, the legacy chart never reads it.
+   */
+  group_id?: number | null;
   parent_ou_id?: number | null;
   /** Subjective organiser rating, 1 (extremely strong) .. 5 (hostile). */
   user_rating?: number | null;

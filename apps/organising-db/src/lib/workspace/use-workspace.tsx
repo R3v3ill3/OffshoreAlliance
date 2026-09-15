@@ -20,6 +20,7 @@ import {
   modulesForRole,
   resolveWorkspace,
   type ModuleState,
+  type WorkspaceFlags,
   type WorkspaceMode,
   type WorkspaceSource,
 } from "./resolve";
@@ -41,6 +42,11 @@ export interface WorkspaceContextValue {
   moduleState: (id: WorkspaceModuleId) => ModuleState;
   source: WorkspaceSource;
   /**
+   * WP2.4 (FL-b): per-user feature flags from `resolveWorkspace()` R11. Read
+   * through `lib/flags/groups-v2.ts` only, never here directly.
+   */
+  flags: WorkspaceFlags;
+  /**
    * Auth, a post-sign-in profile re-fetch, or org defaults still loading; the
    * resolver already returns full meanwhile, so nothing that routes on `mode`
    * (the landing gate) may act while this is true.
@@ -60,6 +66,7 @@ const DEFAULT_VALUE: WorkspaceContextValue = {
   isModuleEnabled: (id) => DEFAULT_MODULES.has(id),
   moduleState: (id) => moduleStateFor(DEFAULT_MODULES, id),
   source: "default",
+  flags: { groupsV2: false },
   loading: false,
 };
 

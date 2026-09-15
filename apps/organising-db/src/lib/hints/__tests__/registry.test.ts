@@ -50,9 +50,10 @@ describe("hint registry", () => {
     expect(copy).toContain("Unassigned");
   });
 
-  it("exactly one entry is pending, and it is the group selector waiting on WP2.4", () => {
-    const pending = HINTS.filter((h) => h.pending);
-    expect(pending.map((h) => h.id)).toEqual(["wall_chart_group_selector"]);
-    expect(pending[0].pending).toBe("WP2.4");
+  it("no entry is pending: WP2.4 wired the group selector, so both hints are live", () => {
+    // Until WP2.4 the group-selector entry carried `pending: "WP2.4"` and
+    // shouldShowHint() refused it; the v2 wall chart now anchors it
+    // (wp2.4.md §3.16), so the registry has no data-only entry left.
+    expect(HINTS.filter((h) => h.pending).map((h) => h.id)).toEqual([]);
   });
 });

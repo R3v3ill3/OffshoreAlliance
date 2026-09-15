@@ -87,6 +87,18 @@ export type CampaignUnitCardProps = {
   /** Fired when the unit drag handle starts / ends a drag (build list). */
   onUnitDragSessionStart?: () => void;
   onUnitDragSessionEnd?: () => void;
+  /**
+   * WP2.4 (wp2.4.md §3.6): when set, the "N named" count in the header is a
+   * button — "Select all" becomes a click on the card count (plan 5.6). Off by
+   * default, so the legacy chart renders the plain paragraph it always did.
+   */
+  countAction?: {
+    onClick: () => void;
+    /** Accessible name, e.g. "Select all in Acme North" / "Deselect all in Acme North". */
+    label: string;
+    /** Rendered as `aria-pressed` so the state reads back. */
+    pressed: boolean;
+  };
 };
 
 const PLACEHOLDER_CAP = 24;
@@ -116,6 +128,7 @@ export function CampaignUnitCard({
   unitDragPayload,
   onUnitDragSessionStart,
   onUnitDragSessionEnd,
+  countAction,
 }: CampaignUnitCardProps) {
   const title = ou ? ouDisplayName(ou) : (fallbackTitle ?? "Unit");
   const typeChip = ou?.ou_type ? humanizeOuType(ou.ou_type) : null;
@@ -242,9 +255,24 @@ export function CampaignUnitCard({
                 </button>
               )}
             </div>
-            {showHeaderDetails && (
+            {showHeaderDetails && !countAction && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 {workerCount} named{est > 0 && ` / ${est} est.`}{unfilledSlots != null && unfilledSlots > 0 && ` · ${unfilledSlots} unfilled`}
+              </p>
+            )}
+            {showHeaderDetails && countAction && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                <button
+                  type="button"
+                  className="rounded px-0.5 -mx-0.5 underline-offset-2 hover:underline hover:text-foreground print:no-underline"
+                  onClick={countAction.onClick}
+                  aria-label={countAction.label}
+                  aria-pressed={countAction.pressed}
+                  title={countAction.label}
+                >
+                  {workerCount} named
+                </button>
+                {est > 0 && ` / ${est} est.`}{unfilledSlots != null && unfilledSlots > 0 && ` · ${unfilledSlots} unfilled`}
               </p>
             )}
             {showHeaderDetails && assessmentLabel && (

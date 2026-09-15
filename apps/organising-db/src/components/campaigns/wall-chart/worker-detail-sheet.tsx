@@ -7,6 +7,7 @@ import { useRemoveWorkerFromCampaign } from "@/lib/hooks/useRemoveWorkerFromCamp
 import { useSaveActivityRating } from "@/lib/hooks/useSaveActivityRating";
 import { createClient } from "@/lib/supabase/client";
 import { structureApi } from "@/lib/campaign/structure-api";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -126,6 +127,12 @@ export type WorkerDetailSheetProps = {
   detailFocusField?: WallChartWorkerContactFocusField | null;
   onClose: () => void;
   onRequestCopyToUnit?: (workerId: number) => void;
+  /**
+   * WP2.4 (wp2.4.md §3.13): group id → group name, so the Units tab prefixes
+   * each placement with its Group ("Worksite › KGP"). Absent on the legacy
+   * path, which renders the unit name alone as today.
+   */
+  groupNameById?: ReadonlyMap<number, string>;
 };
 
 export function WorkerDetailSheet({
@@ -140,6 +147,7 @@ export function WorkerDetailSheet({
   detailFocusField = null,
   onClose,
   onRequestCopyToUnit,
+  groupNameById,
 }: WorkerDetailSheetProps) {
   return (
     <Tabs defaultValue="details" className="mt-2">
@@ -198,6 +206,7 @@ export function WorkerDetailSheet({
           assignedOuIds={assignedOuIds}
           primaryOuId={primaryOuId}
           canWrite={canWrite}
+          groupNameById={groupNameById}
           onRequestCopyToUnit={onRequestCopyToUnit}
         />
       </TabsContent>
@@ -1564,6 +1573,7 @@ export function UnitsTab({
   primaryOuId,
   canWrite,
   onRequestCopyToUnit,
+  groupNameById,
 }: {
   campaignId: string;
   workerId: number;
@@ -1572,6 +1582,8 @@ export function UnitsTab({
   primaryOuId: number | null;
   canWrite: boolean;
   onRequestCopyToUnit?: (workerId: number) => void;
+  /** WP2.4 (§3.13): when given, each row reads "<Group> › <Unit>". */
+  groupNameById?: ReadonlyMap<number, string>;
 }) {
   const supabase = createClient();
   const qc = useQueryClient();
@@ -1597,6 +1609,9 @@ export function UnitsTab({
       });
     },
     onSuccess: invalidate,
+    // WP2.4 A8 (wp2.2.md §8.2 advisory carried; wp2.4.md §3.13): a refused
+    // write is announced instead of failing silently.
+    onError: (e: Error) => toast.error(structureErrorMessage(e, "Setting the primary unit failed.")),
   });
 
   // WP2.2 §3.11 row 5: `structure_placements_unassign` for this one placement.
@@ -1609,6 +1624,7 @@ export function UnitsTab({
       });
     },
     onSuccess: invalidate,
+    onError: (e: Error) => toast.error(structureErrorMessage(e, "Removing the worker from the unit failed.")),
   });
 
   return (
@@ -1628,7 +1644,11 @@ export function UnitsTab({
               className="rounded border px-2 py-1.5 flex items-center justify-between gap-2 text-xs"
             >
               <div className="min-w-0">
-                <p className="font-medium truncate">{ouDisplayName(ou)}</p>
+                <p className="font-medium truncate">
+                  {groupNameById && ou.group_id != null && groupNameById.has(ou.group_id)
+                    ? `${groupNameById.get(ou.group_id)} › ${ouDisplayName(ou)}`
+                    : ouDisplayName(ou)}
+                </p>
                 {isPrimary && (
                   <span className="inline-block mt-0.5 text-[10px] uppercase tracking-wide text-primary">
                     Primary

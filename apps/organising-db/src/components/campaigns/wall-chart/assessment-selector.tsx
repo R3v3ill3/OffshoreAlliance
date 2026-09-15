@@ -158,6 +158,10 @@ export type AssessmentSelectorProps = {
   campaignId: string;
   value: AssessmentSelection;
   onChange: (next: AssessmentSelection) => void;
+  /** WP2.4: the v2 toolbar labels this control "Colour by". Default unchanged. */
+  label?: string;
+  /** WP2.4: an accessible name for the trigger (the visible `<Label>` is not associated). Default none, so the legacy DOM is unchanged. */
+  triggerAriaLabel?: string;
 };
 
 /**
@@ -168,6 +172,8 @@ export function AssessmentSelector({
   campaignId,
   value,
   onChange,
+  label = "Assessment view (campaign default)",
+  triggerAriaLabel,
 }: AssessmentSelectorProps) {
   const { data: options = [], isLoading, refetch } = useWallChartAssessmentOptions(campaignId);
 
@@ -215,7 +221,7 @@ export function AssessmentSelector({
   return (
     <div className="flex flex-col gap-1 min-w-[14rem]">
       <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        Assessment view (campaign default)
+        {label}
       </Label>
       <Select
         value={selectValue}
@@ -223,7 +229,7 @@ export function AssessmentSelector({
         onOpenChange={handleSelectOpenChange}
         disabled={isLoading}
       >
-        <SelectTrigger className="h-8 text-xs">
+        <SelectTrigger className="h-8 text-xs" aria-label={triggerAriaLabel}>
           <SelectValue placeholder={isLoading ? "Loading…" : "Select assessment view…"} />
         </SelectTrigger>
         <SelectContent>

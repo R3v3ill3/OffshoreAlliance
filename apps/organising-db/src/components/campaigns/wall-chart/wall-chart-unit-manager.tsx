@@ -19,6 +19,17 @@ export type WallChartUnitManagerProps = {
   onReorder: (orderedOuIds: number[]) => void;
   onOpenCreateUnit: () => void;
   onDeleteUnit?: (ou: WallChartOU) => void;
+  /**
+   * WP2.4 (HU-a, wp2.4.md §3.12): the hidden set is saved per user on the
+   * server, so the sentence says so. Default off — the legacy chart keeps its
+   * per-browser copy.
+   */
+  serverSide?: boolean;
+  /**
+   * WP2.4 (§3.3, §3.12): every unit is an ordinary unit of one group — no
+   * parent/child tree, no un-hideable containers. Default off.
+   */
+  flat?: boolean;
 };
 
 export function WallChartUnitManager({
@@ -30,6 +41,8 @@ export function WallChartUnitManager({
   onReorder,
   onOpenCreateUnit,
   onDeleteUnit,
+  serverSide,
+  flat,
 }: WallChartUnitManagerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -39,6 +52,7 @@ export function WallChartUnitManager({
   // Build parent → children map and isolate top-level OUs.
   const { topLevelOus, childrenByParent } = useMemo(() => {
     const cbp = new Map<number, WallChartOU[]>();
+    if (flat) return { topLevelOus: [...ous], childrenByParent: cbp };
     for (const ou of ous) {
       const pid = (ou as WallChartOU & { parent_ou_id?: number | null }).parent_ou_id;
       if (pid == null) continue;
@@ -50,7 +64,7 @@ export function WallChartUnitManager({
       (o) => (o as WallChartOU & { parent_ou_id?: number | null }).parent_ou_id == null
     );
     return { topLevelOus: top, childrenByParent: cbp };
-  }, [ous]);
+  }, [ous, flat]);
 
   const hiddenCount = useMemo(() => {
     let n = 0;
@@ -112,7 +126,9 @@ export function WallChartUnitManager({
           {/* Header row */}
           <div className="px-3 pt-3 pb-2 space-y-2 border-b">
             <p className="text-xs text-muted-foreground">
-              Visibility is stored in this browser only. Ordering is saved for everyone.
+              {serverSide
+                ? "Hidden units are remembered for you on every device. Ordering is saved for everyone."
+                : "Visibility is stored in this browser only. Ordering is saved for everyone."}
             </p>
             <Input
               placeholder="Search units…"
@@ -137,7 +153,8 @@ export function WallChartUnitManager({
           <ul className="overflow-y-auto flex-1 p-2 space-y-0.5">
             {topLevelOus.map((ou, topIndex) => {
               const children = childrenByParent.get(ou.ou_id) ?? [];
-              const isContainer = (ou as WallChartOU & { is_group_container?: boolean }).is_group_container;
+              const isContainer =
+                !flat && (ou as WallChartOU & { is_group_container?: boolean }).is_group_container;
               const isCollapsed = collapsedContainers.has(ou.ou_id);
               const label = ouDisplayName(ou);
               const matchesSearch = !q || label.toLowerCase().includes(q);

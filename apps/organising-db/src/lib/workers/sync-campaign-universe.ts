@@ -581,11 +581,22 @@ export async function syncWorkersToMatchingCampaigns(
 }
 
 export type SyncCampaignUniverseResult = OuPlacementCounts & {
+  /**
+   * Every matched member — the whole universe, not the newly enrolled
+   * (historical meaning, kept unchanged for its callers; wp2.4.md §2.8).
+   */
   workersAdded: number;
+  /**
+   * WP2.4 (SY-c, wp2.4.md §3.14): matched workers who were NOT members of the
+   * campaign before this sync — the truthful "added" count the open-time
+   * notice reports.
+   */
+  membersAdded: number;
 };
 
 const EMPTY_CAMPAIGN_SYNC_RESULT: SyncCampaignUniverseResult = {
   workersAdded: 0,
+  membersAdded: 0,
   ouAssignmentsUpserted: 0,
   ouAssignmentsSkipped: 0,
 };
@@ -680,6 +691,22 @@ export async function syncCampaignUniverseFromEmployersWorksites(
     return { ...EMPTY_CAMPAIGN_SYNC_RESULT };
   }
 
+  // WP2.4 (SY-c): who was a member before this sync, so `membersAdded` can
+  // say how many the upsert actually enrolled (the upsert ignores duplicates
+  // and reports rows sent, not inserted). One paged read, the file's idiom.
+  const existingMembers = await fetchAllRows<{ worker_id: number }>(
+    (from, to) =>
+      supabase
+        .from("campaign_worker_membership")
+        .select("worker_id")
+        .eq("campaign_id", campaignId)
+        .order("worker_id")
+        .range(from, to),
+    PAGE_SIZE
+  );
+  const existingMemberIds = new Set(existingMembers.map((r) => r.worker_id));
+  const membersAdded = matching.filter((w) => !existingMemberIds.has(w.workerId)).length;
+
   const membershipRows = matching.map((w) => ({
     campaign_id: campaignId,
     worker_id: w.workerId,
@@ -694,7 +721,7 @@ export async function syncCampaignUniverseFromEmployersWorksites(
     }
   }
   const placementCounts = await assignOuPlacements(supabase, ouRows);
-  return { workersAdded: matching.length, ...placementCounts };
+  return { workersAdded: matching.length, membersAdded, ...placementCounts };
 }
 
 /**

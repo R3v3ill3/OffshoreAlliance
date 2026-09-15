@@ -35,11 +35,23 @@ import {
   type RawCampaignMemberRow,
 } from "./wall-chart/normalize-members";
 
+/**
+ * WP2.4 (wp2.4.md §3.13): the groups the mounted wall chart knows about, so
+ * the sheet's Units tab can prefix each placement with its Group and the
+ * "Add to another unit" dialog can lock same-group targets. Registered by the
+ * v2 shell while it is mounted and cleared when it unmounts; the legacy chart
+ * never registers, so nothing changes on the legacy path and the provider
+ * needs no query and no flag of its own.
+ */
+export type CampaignWorkerDetailGroups = ReadonlyArray<{ group_id: number; name: string }>;
+
 type CampaignWorkerDetailContextValue = {
   openWorkerDetail: (
     workerId: number,
     options?: { focusField?: WallChartWorkerContactFocusField | null }
   ) => void;
+  /** WP2.4: see `CampaignWorkerDetailGroups`. `null` clears. Optional so older test doubles still satisfy the type. */
+  registerGroups?: (groups: CampaignWorkerDetailGroups | null) => void;
 };
 
 const CampaignWorkerDetailContext =
@@ -61,6 +73,7 @@ export function CampaignWorkerDetailProvider({
   const [detailFocusField, setDetailFocusField] =
     useState<WallChartWorkerContactFocusField | null>(null);
   const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
+  const [groups, setGroups] = useState<CampaignWorkerDetailGroups | null>(null);
 
   const { data: members = [] } = useQuery({
     queryKey: ["campaign-members-full", campaignId],
@@ -150,10 +163,23 @@ export function CampaignWorkerDetailProvider({
     setDetailFocusField(null);
   }, []);
 
+  const registerGroups = useCallback((next: CampaignWorkerDetailGroups | null) => {
+    setGroups(next);
+  }, []);
+
   const contextValue = useMemo(
-    () => ({ openWorkerDetail }),
-    [openWorkerDetail]
+    () => ({ openWorkerDetail, registerGroups }),
+    [openWorkerDetail, registerGroups]
   );
+
+  // One array per registration, not per render (fix round 2, A8).
+  const dialogGroups = useMemo(() => (groups ? [...groups] : undefined), [groups]);
+  const groupNameById = useMemo(() => {
+    if (!groups) return undefined;
+    const m = new Map<number, string>();
+    for (const g of groups) m.set(g.group_id, g.name);
+    return m;
+  }, [groups]);
 
   return (
     <CampaignWorkerDetailContext.Provider value={contextValue}>
@@ -198,6 +224,7 @@ export function CampaignWorkerDetailProvider({
               detailFocusField={detailFocusField}
               onClose={closeWorkerDetail}
               onRequestCopyToUnit={(id) => setCopyWorkerId(id)}
+              groupNameById={groupNameById}
             />
           )}
         </SheetContent>
@@ -215,6 +242,7 @@ export function CampaignWorkerDetailProvider({
         }
         ous={ous}
         currentOuIds={copyWorkerId != null ? unitsByWorker.get(copyWorkerId) ?? [] : []}
+        groups={dialogGroups}
       />
     </CampaignWorkerDetailContext.Provider>
   );

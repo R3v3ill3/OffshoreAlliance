@@ -24,6 +24,11 @@ export interface WorkspaceFormState {
   modules: WorkspaceModuleId[] | null;
   /** Not editable in the dialog; preserved from the stored document. */
   allowShowEverything: boolean | undefined;
+  /**
+   * WP2.4 (FL-b): the "Groups v2 (wall chart preview)" checkbox. Absent or
+   * false = off (no `flags` key is stored); true = `flags.groups_v2: true`.
+   */
+  groupsV2?: boolean;
 }
 
 export interface WorkspacePrefsPayloadInput {
@@ -57,7 +62,8 @@ export function workspaceFormChanged(
   return (
     initial.mode !== current.mode ||
     initial.allowShowEverything !== current.allowShowEverything ||
-    !sameModuleList(initial.modules, current.modules)
+    !sameModuleList(initial.modules, current.modules) ||
+    (initial.groupsV2 ?? false) !== (current.groupsV2 ?? false)
   );
 }
 
@@ -83,12 +89,15 @@ export function workspaceSelectionEmpty(input: {
 function buildPrefs(
   mode: "default" | WorkspaceMode,
   modules: WorkspaceModuleId[] | null,
-  allowShowEverything: boolean | undefined
+  allowShowEverything: boolean | undefined,
+  groupsV2: boolean | undefined
 ): WorkspacePrefs {
   return {
     ...(mode !== "default" ? { mode } : {}),
     ...(modules !== null ? { modules } : {}),
     ...(allowShowEverything !== undefined ? { allowShowEverything } : {}),
+    // Off is the absence of the key (WP2.8 deletes the key altogether).
+    ...(groupsV2 === true ? { flags: { groups_v2: true } } : {}),
   };
 }
 
@@ -107,15 +116,15 @@ export function workspacePrefsPayload(
   if (!defaultsAvailable) {
     // The role default is unknown, so whether a pinned list is meaningful is
     // unknowable too: keep whatever was stored rather than clearing it.
-    return buildPrefs(current.mode, initial.modules, current.allowShowEverything);
+    return buildPrefs(current.mode, initial.modules, current.allowShowEverything, current.groupsV2);
   }
 
   if (effectiveMode === "organiser") {
     if (workspaceSelectionEmpty({ current, effectiveMode, defaultsAvailable })) return undefined;
-    return buildPrefs(current.mode, current.modules, current.allowShowEverything);
+    return buildPrefs(current.mode, current.modules, current.allowShowEverything, current.groupsV2);
   }
 
   // Full mode shows every module, so a pinned list is dropped rather than
   // stored to reappear on a later switch back to organiser mode.
-  return buildPrefs(current.mode, null, current.allowShowEverything);
+  return buildPrefs(current.mode, null, current.allowShowEverything, current.groupsV2);
 }

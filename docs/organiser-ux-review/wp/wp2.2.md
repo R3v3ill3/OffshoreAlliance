@@ -2687,6 +2687,18 @@ ou_dependant rows: `_oux_wp21_canonical_basis 13`, `_oux_wp21_placement_mapping 
 rest 0; all ten dependent views present with checksums (recorded verbatim in the operator's paste; step 6 compares
 against them). H9 = 2 from steps 1–2 → step 5 (`03b`) required.
 
+#### Production step 5 — `03b` refused (2026-09-15) → step 5a read-only listing, then a targeted resolution
+
+`prod-step5-03b_resolve_future_group_conflicts.sql` stopped in its required-objects block, nothing changed:
+`P0001: 03b STOP: an applied cleanup has active audit rows; run 03b_rollback before reapplying`. `03b` is one-shot per
+environment by design (its own WP2.1 audit rows in `_oux_hygiene_log` are `rolled_back_at IS NULL`); rolling the WP2.1
+cleanup back to re-run it is not acceptable. §6.4 step 3 ("`03b` if H9 > 0") did not anticipate this: the clone
+rehearsal had H9 = 0 (no sync-on-open there), so the re-run guard was never met. Resolution path (**D82**): a
+read-only listing of the H9 partitions with every row (step 5a, `prod-step5a-read-h9-partitions.sql`), then the
+duplicate rows are removed either through the product (Unassign from the extra unit in the wall chart, i.e. the
+reviewed `structure_placements_unassign`) or, if the operator prefers a script, by a targeted, id-explicit delete
+logged to `_oux_hygiene_log` under a WP2.2 script name — decided after the listing.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

@@ -11,6 +11,12 @@
  * one unit with `user_rating`, two multi-unit workers, one unassigned worker,
  * one delegate / activist / contact, one HSR, one non-OA union member.
  * `large` — 305 members / 161 units, used only by the render-cost baseline.
+ *
+ * WP2.4 (wp2.4.md §4.3): every unit row also carries `group_id` (WP2.1), the
+ * `campaign_groups` and `user_campaign_prefs` tables exist (empty prefs), and
+ * the sync-on-open route answers with zeros. None of that is read by the
+ * legacy chart, so its characterisation is unchanged; the v2 suites build on
+ * it through `buildWallChartFixtureV2`.
  */
 
 import type {
@@ -22,6 +28,14 @@ import type {
 import type { RawCampaignMemberRow } from "../../normalize-members";
 
 export type WallChartFixtureSize = "small" | "large";
+
+export type CampaignGroupFixtureRow = {
+  group_id: number;
+  campaign_id: number;
+  kind: string;
+  name: string;
+  display_order: number;
+};
 
 export type WallChartFixture = {
   campaignId: string;
@@ -143,12 +157,50 @@ const SMALL_WORKERS: readonly WorkerSeed[] = [
  * Expand-all / Collapse-all control meaningful.
  */
 const SMALL_OUS: readonly WallChartOU[] = [
-  { ou_id: 10, campaign_id: 1, name: "Acme Group", ou_type: "employer", total_workers_estimated: 8, display_order: 1, is_group_container: true, parent_ou_id: null, user_rating: 2 },
-  { ou_id: 11, campaign_id: 1, name: "Acme North", ou_type: "employer", total_workers_estimated: 4, display_order: 2, is_group_container: false, parent_ou_id: 10, user_rating: null },
-  { ou_id: 12, campaign_id: 1, name: "Acme South", ou_type: "employer", total_workers_estimated: 3, display_order: 3, is_group_container: false, parent_ou_id: 10, user_rating: null },
-  { ou_id: 13, campaign_id: 1, name: "South Deck", ou_type: "employer", total_workers_estimated: 2, display_order: 4, is_group_container: false, parent_ou_id: 12, user_rating: null },
-  { ou_id: 20, campaign_id: 1, name: "Port Alpha", ou_type: "worksite", total_workers_estimated: 6, display_order: 5, is_group_container: false, parent_ou_id: null, user_rating: null },
+  { ou_id: 10, campaign_id: 1, name: "Acme Group", ou_type: "employer", total_workers_estimated: 8, display_order: 1, is_group_container: true, parent_ou_id: null, user_rating: 2, group_id: null },
+  { ou_id: 11, campaign_id: 1, name: "Acme North", ou_type: "employer", total_workers_estimated: 4, display_order: 2, is_group_container: false, parent_ou_id: 10, user_rating: null, group_id: 1 },
+  { ou_id: 12, campaign_id: 1, name: "Acme South", ou_type: "employer", total_workers_estimated: 3, display_order: 3, is_group_container: false, parent_ou_id: 10, user_rating: null, group_id: 1 },
+  { ou_id: 13, campaign_id: 1, name: "South Deck", ou_type: "employer", total_workers_estimated: 2, display_order: 4, is_group_container: false, parent_ou_id: 12, user_rating: null, group_id: 3 },
+  { ou_id: 20, campaign_id: 1, name: "Port Alpha", ou_type: "worksite", total_workers_estimated: 6, display_order: 5, is_group_container: false, parent_ou_id: null, user_rating: null, group_id: 2 },
 ];
+
+/**
+ * WP2.4 — the `small` fixture's groups (wp2.4.md §4.3). Employer holds the
+ * two leaf employer units, Worksite the site, Shift the grandchild; the
+ * legacy container (ou 10) carries no group, so its two placements count for
+ * no group (§3.3, §8.2): worker 101 sits only there and is therefore "Not in
+ * any group" beside the unassigned worker 112. Worker 107 (11 and 20) and
+ * 108 (10 and 12) are the multi-unit workers, each in ONE unit per group.
+ */
+const SMALL_GROUPS: readonly CampaignGroupFixtureRow[] = [
+  { group_id: 1, campaign_id: 1, kind: "employer", name: "Employer", display_order: 1 },
+  { group_id: 2, campaign_id: 1, kind: "worksite", name: "Worksite", display_order: 2 },
+  { group_id: 3, campaign_id: 1, kind: "shift", name: "Shift", display_order: 3 },
+];
+
+/** The `withEmployerGroup` variant: ou 10 becomes an ordinary unit of a fourth group (§3.3 containers under v2). */
+const EMPLOYER_CONTAINER_GROUP: CampaignGroupFixtureRow = {
+  group_id: 4,
+  campaign_id: 1,
+  kind: "employer",
+  name: "Company",
+  display_order: 4,
+};
+
+/** `large`: the 8 containers form the Employer group; the 32 vessels and 121 sites the Worksite group, listed first. */
+const LARGE_GROUPS: readonly CampaignGroupFixtureRow[] = [
+  { group_id: 2, campaign_id: 1, kind: "worksite", name: "Worksite", display_order: 1 },
+  { group_id: 1, campaign_id: 1, kind: "employer", name: "Employer", display_order: 2 },
+];
+
+/** The sync-on-open route's JSON with nothing changed (wp2.4.md §3.14). */
+export const SYNC_NOTHING_CHANGED = {
+  success: true,
+  workersAdded: 12,
+  membersAdded: 0,
+  ouAssignmentsUpserted: 0,
+  ouAssignmentsSkipped: 0,
+};
 
 const SMALL_ASSIGNMENTS: readonly WallChartOUAssignment[] = [
   { ou_id: 10, worker_id: 101, is_primary: true },
@@ -245,13 +297,13 @@ function buildLarge(): { members: RawCampaignMemberRow[]; ous: WallChartOU[]; as
   let order = 1;
   for (let p = 0; p < 8; p++) {
     const parentId = 500 + p;
-    ous.push({ ou_id: parentId, campaign_id: 1, name: `Group ${p}`, ou_type: "employer", total_workers_estimated: 40, display_order: order++, is_group_container: true, parent_ou_id: null, user_rating: (p % 5) + 1 });
+    ous.push({ ou_id: parentId, campaign_id: 1, name: `Group ${p}`, ou_type: "employer", total_workers_estimated: 40, display_order: order++, is_group_container: true, parent_ou_id: null, user_rating: (p % 5) + 1, group_id: 1 });
     for (let c = 0; c < 4; c++) {
-      ous.push({ ou_id: parentId * 100 + c, campaign_id: 1, name: `Group ${p} vessel ${c}`, ou_type: "employer", total_workers_estimated: 10, display_order: order++, is_group_container: false, parent_ou_id: parentId, user_rating: null });
+      ous.push({ ou_id: parentId * 100 + c, campaign_id: 1, name: `Group ${p} vessel ${c}`, ou_type: "employer", total_workers_estimated: 10, display_order: order++, is_group_container: false, parent_ou_id: parentId, user_rating: null, group_id: 2 });
     }
   }
   for (let s = 0; s < 121; s++) {
-    ous.push({ ou_id: 900 + s, campaign_id: 1, name: `Site ${s}`, ou_type: "worksite", total_workers_estimated: 3, display_order: order++, is_group_container: false, parent_ou_id: null, user_rating: null });
+    ous.push({ ou_id: 900 + s, campaign_id: 1, name: `Site ${s}`, ou_type: "worksite", total_workers_estimated: 3, display_order: order++, is_group_container: false, parent_ou_id: null, user_rating: null, group_id: 2 });
   }
 
   const assignableOus = ous.filter((o) => !o.is_group_container);
@@ -314,11 +366,74 @@ export function buildWallChartFixture(
       user_hint_dismissals: dismissals.map((hint_id) => ({ hint_id })),
       workers: [],
       worker_tags: [],
+      // WP2.4: read by the v2 chart only.
+      campaign_groups: size === "small" ? SMALL_GROUPS : LARGE_GROUPS,
+      user_campaign_prefs: [],
     },
     apiRoutes: {
       [`/api/campaigns/${campaignId}/data-fields`]: { fields: [], fieldsets: [] },
       [`/api/campaigns/${campaignId}/facts`]: { facts: [] },
       [`/api/campaigns/${campaignId}/worker-lists`]: [],
+      // WP2.4 (SY-c): the board's sync-on-open POST; answered with zeros unless a test overrides it.
+      [`/api/campaigns/${campaignId}/sync-universe-workers`]: SYNC_NOTHING_CHANGED,
+    },
+  };
+}
+
+export type BuildWallChartFixtureV2Options = BuildWallChartFixtureOptions & {
+  /** The stored `user_campaign_prefs.prefs` document for this user, or none. */
+  prefs?: Record<string, unknown> | null;
+  /** ou 10 (the legacy container) carries a fourth group, "Company" (§3.3 containers under v2). */
+  withEmployerGroup?: boolean;
+  /** The sync-on-open route's answer. */
+  syncResult?: Record<string, unknown>;
+  /**
+   * `campaign_groups` rows (e.g. `[]` for the zero-groups state). A unit whose
+   * group is not listed gets `group_id: null`, as the WP2.1 trigger would
+   * leave it (a group that does not exist cannot be on a unit).
+   */
+  groups?: readonly CampaignGroupFixtureRow[];
+};
+
+/**
+ * WP2.4 (wp2.4.md §4.3) — the base fixture with both hints dismissed (the
+ * group-selector callout would otherwise open over every v2 mount) and the
+ * v2-only knobs: a seeded prefs document, the container-with-group variant,
+ * a scripted sync answer, a group list.
+ */
+export function buildWallChartFixtureV2(
+  size: WallChartFixtureSize,
+  opts: BuildWallChartFixtureV2Options = {}
+): WallChartFixture {
+  const base = buildWallChartFixture(size, {
+    hintDismissals: opts.hintDismissals ?? ["wall_chart_rating", "wall_chart_group_selector"],
+  });
+  const groups =
+    opts.groups ??
+    (opts.withEmployerGroup
+      ? [...(base.tables.campaign_groups as CampaignGroupFixtureRow[]), EMPLOYER_CONTAINER_GROUP]
+      : (base.tables.campaign_groups as CampaignGroupFixtureRow[]));
+  const groupIds = new Set(groups.map((g) => g.group_id));
+  const ous = (base.tables.campaign_organising_units as WallChartOU[]).map((ou) => {
+    const withContainer =
+      opts.withEmployerGroup && ou.ou_id === 10 ? { ...ou, group_id: EMPLOYER_CONTAINER_GROUP.group_id } : ou;
+    return withContainer.group_id != null && !groupIds.has(withContainer.group_id)
+      ? { ...withContainer, group_id: null }
+      : withContainer;
+  });
+  return {
+    ...base,
+    tables: {
+      ...base.tables,
+      campaign_organising_units: ous,
+      campaign_groups: groups,
+      user_campaign_prefs: opts.prefs ? [{ prefs: opts.prefs }] : [],
+    },
+    apiRoutes: {
+      ...base.apiRoutes,
+      ...(opts.syncResult
+        ? { [`/api/campaigns/${base.campaignId}/sync-universe-workers`]: opts.syncResult }
+        : {}),
     },
   };
 }

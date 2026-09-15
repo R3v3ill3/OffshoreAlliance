@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -8,16 +8,30 @@ import { Download, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { fetchApi } from "@/lib/api/fetch-api";
 import { useDevice } from "@/contexts/device-context";
+import { useGroupsV2 } from "@/lib/flags/groups-v2";
+import { syncChangedSomething } from "@/lib/workers/sync-notice-message";
 import {
   resolveWorkforceView,
   type WorkforceView,
 } from "@/lib/campaign/workforce-view";
 import { CampaignWallChart } from "../campaign-wall-chart";
+import { CampaignWallChartV2 } from "../campaign-wall-chart-v2";
 import { ImportParticipationDialog } from "../wall-chart/participation-import/import-participation-dialog";
 import { FindDuplicatesButton } from "../wall-chart/find-duplicate-workers-dialog";
+import { SyncOnOpenNotice } from "./sync-on-open-notice";
 import { WorkforceListView } from "./workforce-list-view";
 
 export type { WorkforceView } from "@/lib/campaign/workforce-view";
+
+/** The sync route's JSON as the board reads it (wp2.4.md §3.14; counts are D62's plus `membersAdded`). */
+type SyncUniverseResponse = {
+  success?: boolean;
+  workersAdded?: number;
+  membersAdded?: number;
+  ouAssignmentsUpserted?: number;
+  ouAssignmentsSkipped?: number;
+  error?: string;
+};
 
 export function WorkforceBoard({
   campaignId,
@@ -36,6 +50,8 @@ export function WorkforceBoard({
     () => resolveWorkforceView(searchParams.get("view"), isMobile),
     [searchParams, isMobile]
   );
+  // WP2.4 (FL-b, wp2.4.md §3.1 principle 1): the one place that chooses a shell.
+  const groupsV2 = useGroupsV2();
 
   const setView = useCallback(
     (next: WorkforceView) => {
@@ -52,23 +68,20 @@ export function WorkforceBoard({
   const [importOpen, setImportOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  useQuery({
+  // Sync-on-open (SY-c, wp2.4.md §3.14): the same POST on every board mount
+  // when the user can write; what it changed is announced below, and the
+  // members / placements are refetched only when something changed
+  // (`membersAdded` or placements made — not `workersAdded`, which counts
+  // every matched member and is > 0 on almost every open).
+  const sync = useQuery({
     queryKey: ["sync-universe-workers", campaignId],
     queryFn: async () => {
       const res = await fetchApi(`/api/campaigns/${campaignId}/sync-universe-workers`, {
         method: "POST",
       });
-      const json = (await res.json()) as {
-        success?: boolean;
-        workersAdded?: number;
-        error?: string;
-      };
+      const json = (await res.json()) as SyncUniverseResponse;
       if (!res.ok || !json.success) {
         throw new Error(json.error || "Universe sync failed");
-      }
-      if ((json.workersAdded ?? 0) > 0) {
-        queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
-        queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
       }
       return json;
     },
@@ -77,6 +90,12 @@ export function WorkforceBoard({
     refetchOnWindowFocus: false,
     retry: false,
   });
+  const syncResult = sync.data;
+  useEffect(() => {
+    if (!syncResult || !syncChangedSomething(syncResult)) return;
+    queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
+    queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+  }, [syncResult, queryClient, campaignId]);
 
   return (
     <div className="space-y-3">
@@ -98,8 +117,11 @@ export function WorkforceBoard({
           </div>
         )}
       </div>
+      {syncResult && <SyncOnOpenNotice key={sync.dataUpdatedAt} result={syncResult} />}
       {view === "list" ? (
         <WorkforceListView campaignId={campaignId} canWrite={canWrite} />
+      ) : groupsV2 ? (
+        <CampaignWallChartV2 campaignId={campaignId} canWrite={canWrite} />
       ) : (
         <CampaignWallChart campaignId={campaignId} canWrite={canWrite} />
       )}

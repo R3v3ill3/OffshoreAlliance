@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { HINT_BY_ID } from "../registry";
 import { shouldShowHint, type ShouldShowHintInput } from "../should-show";
 
 const ALL_TRUE: ShouldShowHintInput = {
@@ -24,8 +25,19 @@ describe("shouldShowHint", () => {
     expect(shouldShowHint("wall_chart_rating", { ...ALL_TRUE, ...override })).toBe(false);
   });
 
+  it("shows the group-selector hint now that WP2.4 wired the control", () => {
+    expect(shouldShowHint("wall_chart_group_selector", ALL_TRUE)).toBe(true);
+  });
+
   it("refuses a pending entry even when every input is true", () => {
-    // wall_chart_group_selector is data only until WP2.4 wires the control.
-    expect(shouldShowHint("wall_chart_group_selector", ALL_TRUE)).toBe(false);
+    // No registered entry is pending any more (wp2.4.md §3.16), so the guard
+    // is exercised by marking one pending for the duration of this case.
+    const entry = HINT_BY_ID.wall_chart_group_selector;
+    entry.pending = "WPx.y";
+    try {
+      expect(shouldShowHint("wall_chart_group_selector", ALL_TRUE)).toBe(false);
+    } finally {
+      delete entry.pending;
+    }
   });
 });

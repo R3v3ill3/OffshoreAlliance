@@ -1128,6 +1128,17 @@ under `supabase/`; `packages/db-types/generated.ts`; any existing e2e spec or he
 | D7 | `planDrop` takes `placementByWorker` (worker → unit in the selected group, from `deriveGroupView`) and `groupUnitIds` (fix round 1, A3) instead of `workersByUnit`, and returns the re-derived `refs` only (`perSource` dropped in fix round 1: the mutation groups `refs` by source itself). A target outside `groupUnitIds` is a `noop`. | It is the lookup the rule needs ("`fromOuId` = the worker's unit in G"); the refs are what `useMoveWorkersMutation` consumes; the guard stops a stray id moving a row across groups through `p_from_ou_id`. | §3.9 |
 | D8 | `unitsOfGroup` keeps the caller's order (a stable filter) instead of re-sorting by `display_order, name`; `sortUnits` is exported for a caller with unsorted rows. (Fix round 1, A4.) | The units query already orders `display_order, name` under Postgres collation (`use-wall-chart-structure.ts:53–61`); a `localeCompare` re-sort could order case/accent ties differently from the legacy chart ("as today", §3.3). | §3.3 |
 | D9 | `KnownIds.factFieldIds` added: a stale `sortFactFieldId` or `factFilters[].field_id` is dropped on read when the caller supplies the campaign's data-field ids. (Fix round 1, A6; Stage 2 passes the fields query's ids.) | Cosmetic without it (the legacy sorter tolerates an unknown field), but the same stale-id rule as `activityIds`/`ouIds`, and one line. | §3.11 |
+| D10 | Block A (`hooks/use-wall-chart-shell-state.ts`) is **not** mounted by the v2 shell; `wall-chart/v2/use-wall-chart-shell-v2.ts` (A′) is the same code minus the two localStorage-backed preferences (`wallchart:overlay:*`, `useWallChartUnitVisibility`), which the v2 chart reads from prefs, plus the v2 dialog state (`editUnit`, `mergeSourceOu`, `bulkMoveOpen`). Block B is reused unchanged. | §3.4 lists A as "reused unchanged", but two of its `useState` initialisers read `wallchart:*` keys on mount and principle 6 says the v2 chart reads none; the §5 grep is over `v2/` and the v2 shell, which are clean. | §3.4, §3.1 principle 6 |
+| D11 | Additive, default-preserving props on four leaf components §7 does not list: `WallChartFilterBar` (`sortInPopover`, `extraSections`; the `(n)` count adds the two WP2.4 dimensions, both inactive on a legacy state), `WallChartSelectionBar` (`onCopy` optional → no Copy button when absent; `removeLabel`), `AssessmentSelector` (`label`), and the §7-optional `CampaignUnitCard.countAction` (taken: the "N named" count becomes a button "Select all in <Unit>" / "Deselect all in <Unit>", `aria-pressed`). `WallChartUnitManager` (`serverSide`, `flat`) is the §7 edit. | §3.5 puts Sort, Participation and "In unit of another group" inside the one Filter popover and names the trigger "Colour by"; CP-a removes Copy; §3.6 offers `countAction` as the preferred design. The legacy chart passes none of them; every legacy snapshot is unchanged. | §3.5, §3.6, §7 |
+| D12 | `campaign-worker-detail-provider.tsx` gains an additive `registerGroups(groups \| null)` on its context (React state in the provider); the v2 shell registers the campaign's groups while mounted and clears them on unmount; the provider passes `groupNameById` to the sheet and `groups` to `CopyWorkerToUnitDialog`. The legacy chart never registers, so the provider's legacy output is byte-for-byte. | §3.13 needs the provider (the mount point of the sheet and the copy dialog) to pass the groups under v2; a flag reader there is stop condition 7 and a groups query there would be a new query on the legacy path. The provider is not one of principle 2's composition files. | §3.13, §7 |
+| D13 | `lib/hints/registry.ts` drops `pending: "WP2.4"` (per §7) and widens the field to `pending?: string`; two hint tests are updated (D2 precedent): `registry.test.ts` "exactly one entry is pending" → "no entry is pending"; `should-show.test.ts` gains "shows the group-selector hint now that WP2.4 wired the control" and its "refuses a pending entry" case marks the entry pending for the duration of the case. | `shouldShowHint()` refuses a pending entry unconditionally, so the hint of §3.16 cannot render without dropping the flag, and both tests pinned the pending state by name. Not a weakening: the guard is still exercised. | §3.16, §7, §8.4 item 3 |
+| D14 | In the Not in any group view the tiles are still `draggable` (the unchanged `WallChartTile` always passes `onDragStartRefs`); the view has no drop target, so a drag does nothing. | §3.8 says `onDragStartRefs` undefined, which needs a tile prop; §3.13 says the tile is unchanged. The latter was kept. | §3.8 |
+| D15 | The activity-ratings query is issued by D′ (`use-wall-chart-view-v2.ts`) under block B's exact key `["campaign-activity-ratings", id, ids]` with the v2 Colour by + filter assessments; block B's own copy stays disabled (`ids = ""`) because the v2 shell never touches block B's per-scope state. The units query is issued by the groups hook under block C's key `["campaign-ous", id]` (the `?ou=` step needs the units' groups before the group view runs). `KnownIds` passed to `useUserCampaignPrefs` are `activityIds` and `factFieldIds`; group and unit ids are validated where consumed (`resolveGroupSelection`, the hidden / other-group sets against the live units). | Block B derives its ratings id list from its own state (§3.10 "v2 feeds one" is not possible without editing block B); the group/unit sets come from hooks that consume the prefs (a render-order cycle otherwise). Same cache keys, no extra fetch. | §3.4, §3.10, §3.11 |
+| D16 | The Units manager's "Show all" clears the selected Group's units from the hidden set only; other Groups' hidden units stay hidden. Hidden-set writes are immediate; filter/sort writes are debounced (§3.11). | §3.12 "Units of other groups are neither listed nor affected". | §3.12 |
+| D17 | `delete-organising-unit-dialog.tsx:258` ("Unassigned only removes them from this unit") is **not** reworded to "this Unit". The delete dialog receives `allOus = unitsOfGroup` and `childOuIds = []`; its own same-parent / same-container rule then applies within the Group's units. | §1.5 "under `groups_v2` off, every legacy file renders byte-for-byte"; the dialog is legacy-visible. The target rule is what §3.13 describes ("no edit is needed"). | §3.13 |
+| D18 | Census counting rule (`wall-chart-v2.control-census.test.tsx`): the five level buttons of one rating control count as one control; the "Select all" click on the card count is reported on its own line (appendix A #37 becomes a click on existing text); the build-list drag handle is reported on its own line. With the build list closed the selection bar has 5 controls (Add to build list needs the panel), so the fixed page is **24**; with it open, **25**. | §2.3's 25 assumes Add to build list is on screen; the count is reported both ways so the reviewer sees each. | §2.3, §4.3 |
+| D19 | The v2 render-cost test mounts the legacy chart in the same file (same process) and asserts the v2 medians are ≤ 1.1 × the legacy median, printing every number and the legacy 6 s budget; it does not assert the absolute budget. | §4.4 makes "not worse in the same run" the standard because the legacy budget fails on sandboxed runners (8.1–8.5 s here). | §4.4, §8.4 item 5 |
+| D20 | Toolbar order: `WallChartSummaryHeader` fixes its control row, so the row reads Group, Show empty units, Colour by, Filter (+ chips) in the `assessmentSelector` slot, then Badges, %, #, Links, Find worker, Add worker, Import Workers, Units — the same twelve controls as §3.5, not its exact left→right order. `trackWallchartGroupSelected.ou_type` carries the group's `kind` (the nearest value the event has). | The header is reused unchanged (principle 3). | §3.5, §3.16 |
 
 Notes (not deviations): the lint ceiling of §5 (294) was measured before the Cursor commits; a clean export of the
 branch base `f05a14d3` lints to **295** (143 errors / 152 warnings), and the Stage-1 tree lints to the same 295
@@ -1509,3 +1520,226 @@ eslint exit=0 (no output)
 Stage-2 consequences: the shell passes `groupUnitIds` (`new Set(view.units.map(u => u.ou_id))`) to `planDrop`
 and `plan.refs` to `useMoveWorkersMutation`; passes the data-field ids in `KnownIds.factFieldIds`; reads
 `isError` from `useUserCampaignPrefs` for a "settings will not be saved" line if wanted (the toast already fires).
+
+## 11.7 Stage-2 implementation evidence (2026-09-15)
+
+**Nothing in this stage touched a database**: no Supabase connector call, no `supabase` CLI command, no read of
+`.env.local`, no `pnpm dev`/`start`, no Playwright, nothing under `supabase/` or `packages/db-types/`. Branch
+`feat/oux-wp2.4-group-selector` at `2823bdb1` (Stage 1 committed). Stop condition 11 re-checked: `origin/main` is
+still `f05a14d3`; the two files are unchanged since `8ad4c1ad`. Nothing committed, pushed or stashed. Deviations
+D10–D20 in §8.3. No package added; `structureApi` is the only structure writer (guard test green).
+
+### 11.7.1 Files
+
+New:
+
+| File | Role |
+|---|---|
+| `components/campaigns/campaign-wall-chart-v2.tsx` (298 lines) | The v2 shell (§3.4): A′, B (legacy, unchanged), groups hook, C′, D′, E (unchanged tile), F′; the card description of §3.6; `prefs.isError` line; registers the groups with the worker-detail provider (D12). |
+| `wall-chart/v2/use-wall-chart-shell-v2.ts` | A′ (D10). |
+| `wall-chart/v2/use-wall-chart-groups.ts` | `campaign_groups` read (`select("group_id, kind, name, display_order").eq("campaign_id").order("display_order").order("group_id")`), the units query (D15), `resolveGroupSelection`, first-render `?group=` write, the setter (URL with `?ou=` dropped, prefs, telemetry `control: "group_selector"`, selection cleared). |
+| `wall-chart/v2/use-wall-chart-group-view.ts` | C′: placements/campaign queries (legacy keys), `deriveGroupView` / `notInAnyGroup`, hidden set (HU-a), group-scoped tile index, search and jump (§3.12), rating-hint anchor in v2 order (`firstTileAnchor`, pure), build list, `units.reorder`. |
+| `wall-chart/v2/use-wall-chart-view-v2.ts` | D′: Colour by, the one filter (Sort, Participation inside), ratings query (D15), participation predicate, one `filter → sort` pipeline per card, metrics, Show empty units, `%`/`#`, Links, badges — all from/to prefs. |
+| `wall-chart/v2/use-wall-chart-actions-v2.ts` | F′: `planDrop` (`groupUnitIds`, `plan.refs`) → `useMoveWorkersMutation` (`withinGroupId` on the Unassigned drop), Remove from Group (`placements.unassign({ withinGroupId })`), Select all, delete-dialog workers, split members. |
+| `wall-chart/v2/wall-chart-toolbar.tsx`, `group-selector.tsx`, `filter-chips.tsx` (with pure `clearFilterKey`/`chipLabel`), `wall-chart-group-band.tsx` (+ `UnitCardV2`), `wall-chart-unassigned-card-v2.tsx`, `not-in-any-group-view.tsx`, `unit-card-menu.tsx`, `edit-unit-dialog.tsx` (MN-a, `units.update`), `move-to-unit-dialog.tsx`, `wall-chart-dialogs-v2.tsx` (+ the two-step Merge with…) | §3.5–§3.9, §3.13. |
+| `components/campaigns/workforce/sync-on-open-notice.tsx` | SY-c notice (`role="status"`, Dismiss ×). |
+| `wall-chart/v2/__tests__/wall-chart-v2.{interaction,control-census,characterization,render-cost}.test.tsx` (+ 8 snapshots), `workforce/__tests__/workforce-board.test.tsx` | §4.3, §4.4, §3.14 tests: 38 + 2 + 8 + 1 + 7 = 56 cases. |
+
+Modified (additive, default-preserving):
+
+| File | Change |
+|---|---|
+| `workforce/workforce-board.tsx` | `useGroupsV2()` chooses the shell; the sync query returns the JSON; invalidation moves to an effect on `syncChangedSomething(data)`; `<SyncOnOpenNotice key={dataUpdatedAt}>`. |
+| `wall-chart/worker-detail-sheet.tsx` | A8 `onError` toasts on `setPrimary` / `removeFromUnit`; `groupNameById?` prop on the sheet and `UnitsTab` ("Group › Unit"). |
+| `wall-chart/copy-worker-to-unit-dialog.tsx` | `groups?` prop (D12): "Group › Unit" labels; in copy mode a target in a group the worker already holds a unit in is disabled with the K1 sentence. |
+| `wall-chart/campaign-unit-card.tsx`, `wall-chart-filter-bar.tsx`, `wall-chart-selection-bar.tsx`, `assessment-selector.tsx`, `wall-chart-unit-manager.tsx` | D11 / §7 additive props. |
+| `campaign-worker-detail-provider.tsx` | D12. |
+| `wall-chart/__tests__/harness/fixture.ts` | `group_id` on every unit row (small: 11, 12 → Employer 1; 20 → Worksite 2; 13 → Shift 3; container 10 → `null`; large: containers → Employer, vessels + sites → Worksite, listed first), `campaign_groups`, `user_campaign_prefs: []`, the sync route (zeros); `buildWallChartFixtureV2(size, { hintDismissals, prefs, withEmployerGroup, syncResult, groups })`. |
+| `lib/hints/registry.ts`, `__tests__/{registry,should-show}.test.ts` | D13. |
+| This file | §8.3 D10–D20, §11.7. |
+
+Not modified: every legacy composition file of §3.1 principle 2 (`campaign-wall-chart.tsx`, the header, hierarchy,
+Unassigned card, dialogs, the four hooks), `wall-chart-tile.tsx`, `wall-chart-model.ts`, `WallChartAssessmentCharts.tsx`,
+`structure-api.ts`, the sync route, `harness/{backend,mount,locate,characterize}.ts(x)`, `supabase/`, `packages/db-types/`,
+any e2e spec or helper, `delete-organising-unit-dialog.tsx` (D17).
+
+### 11.7.2 Control census (§2.3 re-count; raw console output of the census test)
+
+```
+[wp2.4 census] build list closed, one worker selected
+ region                                   elements controls countClick buildListHandle names
+ board (outside the chart card)                  4        4          0               0 Wall chart | List | Find duplicates | Import participation
+ selection bar                                   5        5          0               0 Move to unit… | Remove from Employer | Clear ratings… | Link to leader… | Clear
+ toolbar (sticky header)                        12       12          0               0 Group | Show empty units | Cumulative | Filter | Badges: none | % | # | Links | Find worker | Add worker | Import Workers | Units (2)
+ charts card                                     2        2          0               0 Employer (4 units) | Expand assessment distribution
+ print                                           1        1          0               0 Print
+ unit card: Acme North                           7        2          1               0 Select all in Acme North | Rating (5 levels) | Unit actions
+ unit card: Acme South                           7        2          1               0 Select all in Acme South | Rating (5 levels) | Unit actions
+ unassigned card: Unassigned in Employer         1        0          1               0 Select all in Unassigned in Employer
+ tile: Ben Baker                                 4        4          0               0 2Ben Baker2Activist | Quick-rate Ben Baker… | No phone. Open worker details, focus phone. | email on file. Open worker details, focus email.
+
+[wp2.4 census] build list open, one worker selected
+ selection bar                                   6        6          0               0 Add to build list | Move to unit… | Remove from Employer | Clear ratings… | Link to leader… | Clear
+ unit card: Acme North                           8        2          1               1 … | [build-list drag handle] Drag entire unit Acme North into the build list
+ unit card: Acme South                           8        2          1               1 …
+ (board, toolbar, charts, print, unassigned card, tile: as above)
+```
+
+Against §2.3's expected **25 / 2 / 0 / 0 / 5**: fixed page **24** with the build list closed and **25** with it open
+(D18: Add to build list is only on screen with the panel); per unit card **2** (rating, ⋯ menu) plus the count click
+(+1 drag handle with the panel); Unassigned card **0** toolbar controls (the count click only); sub-unit and grandchild
+cards **0** (not rendered); per tile **4** interactive DOM elements (the tile button, the rating badge, the two contact
+badges) — the plan's "5" counted affordances (click, ⌘-click select, drag, right-click move, rating), of which
+Shift-copy is gone. Asserted: no `View` / `Badges` / `Sort` / `Filter` inside any unit card; no `Apply to all units`,
+`Unit view`, `Show sub-units`, `Expand all`, `Collapse all`, `Copy to unit…` anywhere. **Per-unit filter or view
+overrides: 0.**
+
+### 11.7.3 Test count
+
+Stage 1 (§11.6): 108 files, 1502 tests, 1501 passing. After Stage 2: **113 files, 1559 tests, 1558 passing, 1 failed**
+(`wall-chart.render-cost.test.tsx`, timing: 8542 ms vs 6000, the pre-existing sandbox case; 8100–8542 ms in every
+run today). +57 tests; none skipped, quarantined or deleted; the eight legacy characterisation snapshots unchanged;
+every legacy suite unchanged except the two hint tests of D13.
+
+### 11.7.4 Raw command output
+
+```
+$ git log --oneline -1 origin/main ; git diff --stat 8ad4c1ad origin/main -- apps/organising-db/src/lib/workers/sync-campaign-universe.ts apps/organising-db/src/components/campaigns/workforce/workforce-board.tsx
+f05a14d3 docs(oux-wp2.4): plan Revision 2 — …
+(empty: stop condition 11 clear)
+
+$ cd apps/organising-db && pnpm exec tsc --noEmit
+tsc exit=0
+
+$ pnpm vitest run          # whole app
+ ✓ src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.interaction.test.tsx (38 tests) 13232ms
+ ✓ src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.control-census.test.tsx (2 tests) 1525ms
+ ✓ src/components/campaigns/workforce/__tests__/workforce-board.test.tsx (7 tests) 4095ms
+ ✓ src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.characterization.test.tsx (8 tests) 2985ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx (46 tests) 11575ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.interaction.test.tsx (21 tests) 8889ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.characterization.test.tsx (8 tests) 4903ms
+[wp2.4] render-cost legacy: median 8313ms over 3 runs (runs: 8964, 7706, 8313; tiles=250, cards=162; legacy budget 6000ms)
+[wp2.4] render-cost v2 largest group (Worksite): median 3121ms over 3 runs (runs: 3121, 3087, 3169; tiles=305, cards=155; legacy budget 6000ms)
+[wp2.4] render-cost v2 all-Unassigned (decision 4): median 1484ms over 3 runs (runs: 1655, 1484, 1319; tiles=305, cards=2; legacy budget 6000ms)
+ ✓ src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.render-cost.test.tsx (1 test) 41927ms
+[wp2.3] render-cost median 8542ms over 3 runs (runs: 9276, 8441, 8542; tiles=250, cards=162)
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx (1 test | 1 failed) 27819ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget
+     → expected 8542.22292 to be less than 6000
+ Test Files  1 failed | 112 passed (113)
+      Tests  1 failed | 1558 passed (1559)
+   Duration  73.91s
+(an earlier run of the two render-cost files alone: legacy 8352 ms; v2 largest group 2765 ms; v2 all-Unassigned 1152 ms)
+
+$ pnpm exec eslint <the 16 tracked changed files>
+src/components/campaigns/wall-chart/worker-detail-sheet.tsx
+   253:3  warning  'ous' is defined but never used                    @typescript-eslint/no-unused-vars
+  1217:9  warning  The 'rows' logical expression could make the dependencies of useMemo Hook … react-hooks/exhaustive-deps
+✖ 2 problems (0 errors, 2 warnings)        # both on untouched, pre-existing lines (DetailsTab, line 253; RatingsTab, line 1217)
+eslint(changed) exit=0
+$ pnpm exec eslint campaign-wall-chart-v2.tsx wall-chart/v2 workforce/__tests__/workforce-board.test.tsx workforce/sync-on-open-notice.tsx harness/fixture.ts lib/hints/registry.ts
+eslint(new) exit=0 (no output)
+
+$ pnpm lint
+✖ 295 problems (143 errors, 152 warnings)      # = the branch base (295, §8.3 note); Stage 2 adds 0
+lint exit=1
+
+$ pnpm vitest run src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ ✓ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests) 118ms
+ Test Files  1 passed (1) / Tests  3 passed (3)
+
+$ rg -n "groups_v2|groupsV2" apps/organising-db/src --glob '!**/__tests__/**' -l
+lib/flags/groups-v2.ts, lib/workspace/{use-workspace.tsx,resolve.ts,prefs-payload.ts,prefs-schema.ts}, app/(dashboard)/administration/page.tsx, components/campaigns/workforce/workforce-board.tsx — and no other file
+$ rg -n "localStorage" apps/organising-db/src/components/campaigns/wall-chart/v2 apps/organising-db/src/components/campaigns/campaign-wall-chart-v2.tsx --glob '!**/__tests__/**'
+exit=1 (1 = none = pass)      # the one hit with tests included is the interaction test asserting `window.localStorage.length` is 0 after %/# and Links
+$ rg -n --pcre2 "\.from\(['\"]campaign_(organising_units|worker_ou)['\"]\)(\s*as\s+never)?\s*\.\s*(insert|update|upsert|delete)\(" apps/organising-db/src --glob '!**/__tests__/**'
+exit=1 (1 = pass)
+$ rg -n "UnitAssessmentViewControl|UnitListBadgeControl|applyToAllScopes|UNASSIGNED_KEY" apps/organising-db/src/components/campaigns/wall-chart/v2 apps/organising-db/src/components/campaigns/campaign-wall-chart-v2.tsx
+exit=1 (1 = no per-unit overrides in v2 = pass)
+$ git diff --stat main -- supabase/ packages/db-types/
+(empty)
+
+$ git status --short
+ M apps/organising-db/src/components/campaigns/campaign-worker-detail-provider.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/harness/fixture.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/assessment-selector.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/campaign-unit-card.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/copy-worker-to-unit-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/wall-chart-filter-bar.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/wall-chart-selection-bar.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/wall-chart-unit-manager.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/worker-detail-sheet.tsx
+ M apps/organising-db/src/components/campaigns/workforce/workforce-board.tsx
+ M apps/organising-db/src/lib/hints/__tests__/registry.test.ts
+ M apps/organising-db/src/lib/hints/__tests__/should-show.test.ts
+ M apps/organising-db/src/lib/hints/registry.ts
+ M docs/organiser-ux-review/wp/wp2.4.md
+?? apps/organising-db/src/components/campaigns/campaign-wall-chart-v2.tsx
+?? apps/organising-db/src/components/campaigns/wall-chart/v2/
+?? apps/organising-db/src/components/campaigns/workforce/__tests__/workforce-board.test.tsx
+?? apps/organising-db/src/components/campaigns/workforce/sync-on-open-notice.tsx
+
+$ git diff --stat   (tracked files, before this plan edit)
+ .../campaigns/campaign-worker-detail-provider.tsx  |  30 ++++-
+ .../wall-chart/__tests__/harness/fixture.ts        | 131 +++++++++++++++++++--
+ .../campaigns/wall-chart/assessment-selector.tsx   |   5 +-
+ .../campaigns/wall-chart/campaign-unit-card.tsx    |  30 ++++-
+ .../wall-chart/copy-worker-to-unit-dialog.tsx      |  50 +++++++-
+ .../campaigns/wall-chart/wall-chart-filter-bar.tsx |  60 +++++++---
+ .../wall-chart/wall-chart-selection-bar.tsx        |  33 ++++--
+ .../wall-chart/wall-chart-unit-manager.tsx         |  23 +++-
+ .../campaigns/wall-chart/worker-detail-sheet.tsx   |  22 +++-
+ .../campaigns/workforce/workforce-board.tsx        |  44 +++++--
+ .../src/lib/hints/__tests__/registry.test.ts       |   9 +-
+ .../src/lib/hints/__tests__/should-show.test.ts    |  16 ++-
+ apps/organising-db/src/lib/hints/registry.ts       |  11 +-
+ 13 files changed, 395 insertions(+), 69 deletions(-)
+$ wc -l campaign-wall-chart-v2.tsx wall-chart/v2/*.ts*    # 3,171 lines across the shell and 15 v2 modules; the shell is 298 (≤ 320, §3.4)
+```
+
+### 11.7.5 What the interaction suite pins (§4.3 list, each a literal expectation)
+
+Selector lists groups in display order then Not in any group, opens on the first group; `?group=` written on first
+render (`/campaigns/1?group=1`) and on change (`?group=3`, `?ou=` dropped), never rewritten when valid; the prefs read
+chain `select("prefs").eq("campaign_id", 1).maybeSingle()`; a stored `group` wins over the first group; the upsert
+payload `{ user_id: "test-user", campaign_id: 1, prefs: { layout: "list", wallChart: { v: 1, group: 3 } } }` (foreign
+key kept); `?ou=20` picks Worksite (link becomes `?ou=20&group=2`); an invalid `?group=99` falls through. A drop on a
+unit is one `structure_placements_move` per source with `p_from_ou_id` from the group view (a worker Unassigned in the
+group has `null`; a worker already at the target is not sent); a drop on Unassigned is `p_to_ou_id: null,
+p_within_group_id: 1`; Shift-drop sends `p_keep_source: false`; the selection bar reads `Move to unit… | Remove from
+Employer | Clear ratings… | Link to leader… | Clear`; Remove from Employer is one `structure_placements_unassign`
+with `p_ou_id: null, p_within_group_id: 1`; a refused move toasts the `forbidden` sentence; Select all is the count
+click; right-click opens the move-only dialog (`Unassigned in Employer | Acme North | Acme South`) and Move issues the
+call. One Filter applies to every card, shows a chip, its × clears it; the filter is written to prefs after the 400 ms
+debounce with Sets as sorted arrays; Show empty units reveals a unit the filter emptied (`1 empty unit hidden`
+otherwise); Participation lives inside the Filter popover and counts as a filter; "In unit of another group" keeps
+only holders of the ticked unit; Colour by changes every card's "Assessing:" and every tile's title and is written to
+prefs; `%`/`#` and Links are written to prefs and `window.localStorage` stays empty. The Units manager lists the
+group's two units with the server-side sentence, hides one (`Units (1/2)`, prefs `hiddenOuIds: [11]`); Show all clears
+the group's units only (`[11, 20]` → `[20]`); Find worker names the unit in the selected group, un-hides it, highlights
+the card and opens the sheet. Not in any group holds Ada (only on the group-less container) and Lena; from it, Move to
+unit… lists `Employer › Acme North | Employer › Acme South | Worksite › Port Alpha | Shift › South Deck` and moves
+into that unit's group; with the container carrying a group its two placements count; zero groups → only Not in any
+group, the decision-4 sentence, 12 tiles, `?group=none` written. The ⋯ menu carries exactly `Rename… | Set estimate… |
+Assign people… | Split… | Merge… | Delete…`; Rename is `structure_unit_update` with `p_patch: { name }`; Set estimate
+with `{ total_workers_estimated: 7 }` and a refusal toasts and keeps the dialog open; Assign people opens the
+add-worker dialog with the unit as context; the unit card's buttons are exactly the count click, the five rating
+levels and Unit actions, with no combobox. A8: a refused Remove in the sheet's Units tab toasts, and rows read
+`Employer › Acme South`.
+
+### 11.7.6 Open questions for the orchestrator / reviewer
+
+1. **D12** — the provider's additive `registerGroups` context method as the way the sheet and the copy dialog learn
+   the groups (the alternatives were a flag reader in the provider — stop condition 7 — or a `campaign_groups` query
+   on the legacy path).
+2. **D13** — accept the two hint-test updates forced by dropping `pending` (D2 precedent), or direct otherwise.
+3. **D11** — the four leaf-component additive props beyond §7 (`WallChartFilterBar`, `WallChartSelectionBar`,
+   `AssessmentSelector`, and `CampaignUnitCard.countAction` as §7 offered).
+4. **D17** — the `:258` "this unit" → "this Unit" wording was left alone for byte-for-byte legacy rendering; say if
+   it should be made.
+5. **D18/D19** — the census counting rule (24 closed / 25 open; count click on its own line) and the relative
+   render-cost assertion (v2 ≤ 1.1 × legacy in the same run; v2 is 2.7–3.1 s against legacy 8.1–8.5 s here).
+6. **D20** — the toolbar's row order is the reused header's, not §3.5's exact left→right.
+7. Not in this stage (Stage 3): `tests/e2e/groups-v2/*`, `tests/e2e/user-prefs.ts`, the E2-b checklist, the metrics
+   SQL run on dev, `PROGRESS.md` ledger row.

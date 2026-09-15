@@ -7,13 +7,19 @@ export type WallChartSelectionBarProps = {
   count: number;
   canWrite: boolean;
   onMove: () => void;
-  onCopy: () => void;
+  /**
+   * WP2.4 (CP-a): optional — when absent, no "Copy to unit…" button renders.
+   * The legacy chart always passes it, so nothing changes there.
+   */
+  onCopy?: () => void;
   onLinkToLeader: () => void;
   onClear: () => void;
   /** When true, the "Link to leader" button is disabled (used during v2.1 before the dialog lands). */
   linkDisabled?: boolean;
   /** When provided, shows a "Remove from unit" button. Pass undefined to hide (e.g. when all selected are already unassigned). */
   onRemove?: () => void;
+  /** WP2.4: label for the remove button ("Remove from <Group>"). Default "Remove from unit". */
+  removeLabel?: string;
   /** When provided, shows a "Clear ratings…" button for bulk-removing ratings from selected workers. */
   onClearRatings?: () => void;
   /** When provided, shows an "Add to build list" button that pushes the current selection into the open build-list panel. Visible only while the panel is open. */
@@ -29,6 +35,7 @@ export function WallChartSelectionBar({
   onClear,
   linkDisabled,
   onRemove,
+  removeLabel = "Remove from unit",
   onClearRatings,
   onAddToBuildList,
 }: WallChartSelectionBarProps) {
@@ -70,16 +77,18 @@ export function WallChartSelectionBar({
         >
           Move to unit…
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-7 px-2 text-xs"
-          onClick={onCopy}
-          disabled={!canWrite}
-        >
-          Copy to unit…
-        </Button>
+        {onCopy && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            onClick={onCopy}
+            disabled={!canWrite}
+          >
+            Copy to unit…
+          </Button>
+        )}
         {onRemove && (
           <Button
             type="button"
@@ -89,7 +98,7 @@ export function WallChartSelectionBar({
             onClick={onRemove}
             disabled={!canWrite}
           >
-            Remove from unit
+            {removeLabel}
           </Button>
         )}
         {onClearRatings && (

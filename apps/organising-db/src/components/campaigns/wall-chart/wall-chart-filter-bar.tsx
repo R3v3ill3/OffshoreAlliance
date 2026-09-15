@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ import {
   activeAssessmentFilters,
   DEFAULT_FILTER_STATE,
   hasActiveFilter,
+  hasParticipationFilter,
   type ContactPresence,
   type RatingBucket,
   type RoleFilterKey,
@@ -78,6 +79,18 @@ export type WallChartFilterBarProps = {
   compact?: boolean;
   dataFields?: CampaignDataField[];
   assessmentOptions?: AssessmentFilterOption[];
+  /**
+   * WP2.4 (wp2.4.md §3.5 item 4): render the Sort select as the first section
+   * inside the popover instead of beside the trigger, so the toolbar shows one
+   * "Filter" control. Default off — the legacy chart's bars are unchanged.
+   */
+  sortInPopover?: boolean;
+  /**
+   * WP2.4: extra sections the v2 chart hosts inside the one campaign-wide
+   * popover (Participation, "In unit of another group"), rendered after the
+   * built-in sections and before Clear. Default none.
+   */
+  extraSections?: ReactNode;
 };
 
 export function WallChartFilterBar({
@@ -89,6 +102,8 @@ export function WallChartFilterBar({
   compact,
   dataFields = [],
   assessmentOptions = [],
+  sortInPopover,
+  extraSections,
 }: WallChartFilterBarProps) {
   const active = hasActiveFilter(state);
   const activeCount =
@@ -100,7 +115,10 @@ export function WallChartFilterBar({
     (state.phone !== "any" ? 1 : 0) +
     (state.email !== "any" ? 1 : 0) +
     activeAssessmentFilters(state).length +
-    state.factFilters.length;
+    state.factFilters.length +
+    // WP2.4 dimensions; both are absent/inactive on a legacy state.
+    (state.otherGroupUnitIds?.size ?? 0) +
+    (hasParticipationFilter(state) ? 1 : 0);
   const sortableFields = dataFields.filter((f) => f.sortable);
 
   const toggle = <T,>(set: Set<T>, value: T): Set<T> => {
@@ -146,23 +164,27 @@ export function WallChartFilterBar({
 
   const reset = () => onChange(DEFAULT_FILTER_STATE());
 
+  const sortSelect = (
+    <Select
+      value={state.sort}
+      onValueChange={(v) => onChange({ ...state, sort: v as SortKey })}
+    >
+      <SelectTrigger className="h-7 text-xs" aria-label={sortInPopover ? "Sort" : undefined}>
+        <SelectValue placeholder="Sort" />
+      </SelectTrigger>
+      <SelectContent>
+        {SORT_OPTIONS.map((o) => (
+          <SelectItem key={o.key} value={o.key}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <div className="flex items-center gap-1">
-      <Select
-        value={state.sort}
-        onValueChange={(v) => onChange({ ...state, sort: v as SortKey })}
-      >
-        <SelectTrigger className="h-7 text-xs">
-          <SelectValue placeholder="Sort" />
-        </SelectTrigger>
-        <SelectContent>
-          {SORT_OPTIONS.map((o) => (
-            <SelectItem key={o.key} value={o.key}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {!sortInPopover && sortSelect}
 
       <Popover>
         <PopoverTrigger asChild>
@@ -177,6 +199,8 @@ export function WallChartFilterBar({
         </PopoverTrigger>
         <PopoverContent align="end" className="w-80 max-h-[70vh] overflow-y-auto">
           <div className="space-y-4">
+            {sortInPopover && <Section label="Sort">{sortSelect}</Section>}
+
             <Section label="Role">
               <div className="grid grid-cols-2 gap-1.5">
                 {ROLE_OPTIONS.map((r) => (
@@ -389,6 +413,8 @@ export function WallChartFilterBar({
                 </Select>
               </Section>
             )}
+
+            {extraSections}
 
             <div className="flex items-center justify-between gap-2 pt-2 border-t">
               <Button

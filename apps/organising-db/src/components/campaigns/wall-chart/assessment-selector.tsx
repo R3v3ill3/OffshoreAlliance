@@ -158,6 +158,8 @@ export type AssessmentSelectorProps = {
   campaignId: string;
   value: AssessmentSelection;
   onChange: (next: AssessmentSelection) => void;
+  /** WP2.4: the v2 toolbar labels this control "Colour by". Default unchanged. */
+  label?: string;
 };
 
 /**
@@ -168,6 +170,7 @@ export function AssessmentSelector({
   campaignId,
   value,
   onChange,
+  label = "Assessment view (campaign default)",
 }: AssessmentSelectorProps) {
   const { data: options = [], isLoading, refetch } = useWallChartAssessmentOptions(campaignId);
 
@@ -215,7 +218,7 @@ export function AssessmentSelector({
   return (
     <div className="flex flex-col gap-1 min-w-[14rem]">
       <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        Assessment view (campaign default)
+        {label}
       </Label>
       <Select
         value={selectValue}

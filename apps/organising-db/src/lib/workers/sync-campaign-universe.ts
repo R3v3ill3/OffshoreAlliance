@@ -6,10 +6,10 @@ import { fetchAllRows, POSTGREST_PAGE_SIZE } from "@/lib/supabase/fetch-all-rows
  * with the global worker record.
  *
  * Employer and worksite live on `workers` (one primary of each). Campaigns
- * declare a universe via `campaign_employers` / `campaign_worksites`. When a
- * worker is placed at an employer or worksite, they should appear in every
- * active/planning (non-SMS-episode) campaign whose universe includes that
- * employer or worksite — and in any matching employer/worksite units.
+ * declare a universe via `campaign_employers` / `campaign_worksites`. Default
+ * membership is AND: every declared dimension must match. Sector-wide
+ * campaigns (`campaigns.sector_wide` or a `campaign_worksites.sector_wide`
+ * row) use OR — employer or worksite — which is the previous default.
  *
  * WP2.2 Stage 6 (wp2.2.md §3.11 row 15, §3.7, §3.8 R1, §3.10): every
  * placement this module writes goes through `structureApi(client)
@@ -28,10 +28,17 @@ export type WorkerPlacement = {
   worksiteId: number | null;
 };
 
+export type UniverseMatchMode = "and" | "or";
+
 export type CampaignUniverse = {
   campaignId: number;
   employerIds: number[];
   worksiteIds: number[];
+  /**
+   * Default `"and"`: every non-empty declared list must match.
+   * `"or"` is the sector-campaign rule (employer or worksite).
+   */
+  matchMode?: UniverseMatchMode;
 };
 
 export type OuPlacementTarget = {
@@ -107,17 +114,32 @@ export function futureGroupKeyForLegacyOu(
   return `type:${ou.ouType}`;
 }
 
+export function universeMatchModeFromFlags(flags: {
+  campaignSectorWide?: boolean | null;
+  worksiteSectorWide?: boolean | null;
+}): UniverseMatchMode {
+  if (flags.campaignSectorWide || flags.worksiteSectorWide) return "or";
+  return "and";
+}
+
 export function workerMatchesCampaignUniverse(
   worker: WorkerPlacement,
   campaign: CampaignUniverse
 ): boolean {
-  if (worker.employerId != null && campaign.employerIds.includes(worker.employerId)) {
-    return true;
+  const employerHit =
+    worker.employerId != null && campaign.employerIds.includes(worker.employerId);
+  const worksiteHit =
+    worker.worksiteId != null && campaign.worksiteIds.includes(worker.worksiteId);
+  const hasEmployers = campaign.employerIds.length > 0;
+  const hasWorksites = campaign.worksiteIds.length > 0;
+  if (!hasEmployers && !hasWorksites) return false;
+
+  if ((campaign.matchMode ?? "and") === "or") {
+    return employerHit || worksiteHit;
   }
-  if (worker.worksiteId != null && campaign.worksiteIds.includes(worker.worksiteId)) {
-    return true;
-  }
-  return false;
+  if (hasEmployers && !employerHit) return false;
+  if (hasWorksites && !worksiteHit) return false;
+  return true;
 }
 
 export function matchingOusForWorker(
@@ -237,18 +259,26 @@ async function loadWorkerPlacements(
 async function loadActiveCampaignUniverses(supabase: Supa): Promise<CampaignUniverse[]> {
   const { data: campaigns, error: campErr } = await supabase
     .from("campaigns")
-    .select("campaign_id")
+    .select("campaign_id, sector_wide")
     .in("status", ["planning", "active"])
     .eq("is_sms_episode", false);
   if (campErr) throw new Error(campErr.message);
-  const campaignIds = (campaigns ?? []).map((c: { campaign_id: number }) => c.campaign_id);
+  const campaignRows = (campaigns ?? []) as Array<{
+    campaign_id: number;
+    sector_wide?: boolean | null;
+  }>;
+  const campaignIds = campaignRows.map((c) => c.campaign_id);
   if (campaignIds.length === 0) return [];
 
+  const sectorWideByCampaign = new Map<number, boolean>();
   const employerIdsByCampaign = new Map<number, number[]>();
   const worksiteIdsByCampaign = new Map<number, number[]>();
-  for (const id of campaignIds) {
-    employerIdsByCampaign.set(id, []);
-    worksiteIdsByCampaign.set(id, []);
+  const worksiteSectorWideByCampaign = new Map<number, boolean>();
+  for (const row of campaignRows) {
+    sectorWideByCampaign.set(row.campaign_id, Boolean(row.sector_wide));
+    employerIdsByCampaign.set(row.campaign_id, []);
+    worksiteIdsByCampaign.set(row.campaign_id, []);
+    worksiteSectorWideByCampaign.set(row.campaign_id, false);
   }
 
   for (const batch of chunk(campaignIds, 200)) {
@@ -263,13 +293,16 @@ async function loadActiveCampaignUniverses(supabase: Supa): Promise<CampaignUniv
 
     const { data: worksites, error: wsErr } = await supabase
       .from("campaign_worksites")
-      .select("campaign_id, worksite_id")
-      .in("campaign_id", batch)
-      .not("worksite_id", "is", null);
+      .select("campaign_id, worksite_id, sector_wide")
+      .in("campaign_id", batch);
     if (wsErr) throw new Error(wsErr.message);
     for (const row of worksites ?? []) {
+      const campaignId = row.campaign_id as number;
+      if (row.sector_wide) {
+        worksiteSectorWideByCampaign.set(campaignId, true);
+      }
       if (row.worksite_id == null) continue;
-      worksiteIdsByCampaign.get(row.campaign_id as number)?.push(row.worksite_id as number);
+      worksiteIdsByCampaign.get(campaignId)?.push(row.worksite_id as number);
     }
   }
 
@@ -277,6 +310,10 @@ async function loadActiveCampaignUniverses(supabase: Supa): Promise<CampaignUniv
     campaignId,
     employerIds: employerIdsByCampaign.get(campaignId) ?? [],
     worksiteIds: worksiteIdsByCampaign.get(campaignId) ?? [],
+    matchMode: universeMatchModeFromFlags({
+      campaignSectorWide: sectorWideByCampaign.get(campaignId),
+      worksiteSectorWide: worksiteSectorWideByCampaign.get(campaignId),
+    }),
   }));
 }
 
@@ -567,7 +604,7 @@ export async function syncCampaignUniverseFromEmployersWorksites(
 
   const { data: campaign, error: campErr } = await supabase
     .from("campaigns")
-    .select("campaign_id, status, is_sms_episode")
+    .select("campaign_id, status, is_sms_episode, sector_wide")
     .eq("campaign_id", campaignId)
     .maybeSingle();
   if (campErr) throw new Error(campErr.message);
@@ -584,13 +621,25 @@ export async function syncCampaignUniverseFromEmployersWorksites(
 
   const { data: worksites, error: wsErr } = await supabase
     .from("campaign_worksites")
-    .select("worksite_id")
-    .eq("campaign_id", campaignId)
-    .not("worksite_id", "is", null);
+    .select("worksite_id, sector_wide")
+    .eq("campaign_id", campaignId);
   if (wsErr) throw new Error(wsErr.message);
+  const worksiteSectorWide = (worksites ?? []).some(
+    (r: { sector_wide?: boolean | null }) => Boolean(r.sector_wide)
+  );
   const worksiteIds = (worksites ?? [])
     .map((r: { worksite_id: number | null }) => r.worksite_id)
     .filter((id: number | null): id is number => id != null);
+  const matchMode = universeMatchModeFromFlags({
+    campaignSectorWide: campaign.sector_wide,
+    worksiteSectorWide,
+  });
+  const universe: CampaignUniverse = {
+    campaignId,
+    employerIds,
+    worksiteIds,
+    matchMode,
+  };
 
   if (employerIds.length === 0 && worksiteIds.length === 0) {
     return { ...EMPTY_CAMPAIGN_SYNC_RESULT };
@@ -625,19 +674,27 @@ export async function syncCampaignUniverseFromEmployersWorksites(
     return { ...EMPTY_CAMPAIGN_SYNC_RESULT };
   }
 
-  const membershipRows = workerIds.map((worker_id) => ({ campaign_id: campaignId, worker_id }));
+  const placements = await loadWorkerPlacements(supabase, workerIds);
+  const matching = placements.filter((w) => workerMatchesCampaignUniverse(w, universe));
+  if (matching.length === 0) {
+    return { ...EMPTY_CAMPAIGN_SYNC_RESULT };
+  }
+
+  const membershipRows = matching.map((w) => ({
+    campaign_id: campaignId,
+    worker_id: w.workerId,
+  }));
   await upsertMembership(supabase, membershipRows);
 
-  const placements = await loadWorkerPlacements(supabase, workerIds);
   const ous = await loadOuTargets(supabase, [campaignId]);
   const ouRows: OuPlacementRow[] = [];
-  for (const worker of placements) {
+  for (const worker of matching) {
     for (const ouId of matchingOusForWorker(worker, ous)) {
       ouRows.push({ campaignId, ouId, workerId: worker.workerId });
     }
   }
   const placementCounts = await assignOuPlacements(supabase, ouRows);
-  return { workersAdded: workerIds.length, ...placementCounts };
+  return { workersAdded: matching.length, ...placementCounts };
 }
 
 /**

@@ -448,6 +448,12 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           if (error) throw error;
         }
 
+        const { error: matchErr } = await supabase
+          .from("campaigns")
+          .update({ sector_wide: worksiteSectorWide || basics.sector_wide })
+          .eq("campaign_id", campaignId);
+        if (matchErr) throw matchErr;
+
         if (worksiteSectorWide) {
           const { error } = await supabase.from("campaign_worksites").insert({
             campaign_id: campaignId,
@@ -945,6 +951,11 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
                   />
                   <span className="text-sm">Sector-wide campaign</span>
                 </label>
+                <p className="text-xs text-muted-foreground">
+                  Sector-wide uses employer <span className="font-medium">or</span> worksite
+                  matching (other employers at listed sites are included). Leave this off
+                  for a single-employer campaign so only that employer’s workers are added.
+                </p>
                 <div className="space-y-2">
                   <Label>Notes</Label>
                   <Textarea
@@ -991,6 +1002,8 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
               setSelectedWorksites={setSelectedWorksites}
               worksiteSectorWide={worksiteSectorWide}
               setWorksiteSectorWide={setWorksiteSectorWide}
+              campaignSectorWide={basics.sector_wide}
+              setCampaignSectorWide={(v) => setBasics({ ...basics, sector_wide: v })}
               isPending={saveScopeMutation.isPending}
               onBack={() => undefined}
               onContinue={() => saveScopeMutation.mutate()}

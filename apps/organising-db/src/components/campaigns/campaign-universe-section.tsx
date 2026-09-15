@@ -39,6 +39,7 @@ import { Building2, MapPin, Plus, Trash2 } from "lucide-react";
 import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
 import { syncCampaignUniverseFromEmployersWorksites } from "@/lib/workers/sync-campaign-universe";
 import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
+import { UniverseMatchModeControl } from "@/components/campaigns/universe-match-mode-control";
 
 const SCOPE_KEYS = {
   employers: (cid: string) => ["campaign-universe-employers", cid] as const,
@@ -77,6 +78,8 @@ export function CampaignUniverseSection({
     queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
     queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
     queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] });
+    queryClient.invalidateQueries({ queryKey: ["campaign-universe-meta", campaignId] });
+    queryClient.invalidateQueries({ queryKey: ["campaign-settings", campaignId] });
   };
 
   const { data: campaignMeta } = useQuery({
@@ -84,7 +87,7 @@ export function CampaignUniverseSection({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaigns")
-        .select("campaign_id, replaced_agreement_id, enterprise_agreement_subtype")
+        .select("campaign_id, replaced_agreement_id, enterprise_agreement_subtype, sector_wide")
         .eq("campaign_id", cid)
         .single();
       if (error) throw error;
@@ -92,6 +95,7 @@ export function CampaignUniverseSection({
         campaign_id: number;
         replaced_agreement_id: number | null;
         enterprise_agreement_subtype: string | null;
+        sector_wide: boolean;
       };
     },
     enabled: !!user && Number.isFinite(cid),
@@ -144,6 +148,7 @@ export function CampaignUniverseSection({
     [campaignWorksites]
   );
   const isSectorWide = !!sectorWideRow;
+  const orMatching = Boolean(campaignMeta?.sector_wide) || isSectorWide;
 
   const siteRows = useMemo(
     () =>
@@ -331,6 +336,21 @@ export function CampaignUniverseSection({
     onError: (e: Error) => window.alert(e.message || "Could not remove worksite"),
   });
 
+  const setMatchModeMutation = useAuthAwareMutation({
+    mutationFn: async (orMatchingNext: boolean) => {
+      const { error } = await supabase
+        .from("campaigns")
+        .update({ sector_wide: orMatchingNext })
+        .eq("campaign_id", cid);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidateScope();
+      queryClient.invalidateQueries({ queryKey: ["campaign-universe-meta", campaignId] });
+    },
+    onError: (e: Error) => window.alert(e.message || "Could not update worker matching"),
+  });
+
   const setSectorWideMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const { error: delErr } = await supabase.from("campaign_worksites").delete().eq("campaign_id", cid);
@@ -341,6 +361,11 @@ export function CampaignUniverseSection({
         sector_wide: true,
       });
       if (insErr) throw insErr;
+      const { error: campErr } = await supabase
+        .from("campaigns")
+        .update({ sector_wide: true })
+        .eq("campaign_id", cid);
+      if (campErr) throw campErr;
     },
     onSuccess: () => {
       invalidateScope();
@@ -379,6 +404,19 @@ export function CampaignUniverseSection({
         Who&apos;s in: the employers and worksites this campaign covers. These rarely change.
         Workers, units and ratings live on the Wall Chart / List and Campaign Units sub-tabs.
       </p>
+
+      {canWrite && (
+        <UniverseMatchModeControl
+          orMatching={orMatching}
+          onOrMatchingChange={(next) => setMatchModeMutation.mutate(next)}
+          disabled={isSectorWide || setMatchModeMutation.isPending}
+          disabledReason={
+            isSectorWide
+              ? "Sector-wide worksites always use employer or worksite matching. Switch back to specific sites to use employer and worksite."
+              : undefined
+          }
+        />
+      )}
 
       {/* Employers */}
       <Card>

@@ -7,20 +7,21 @@ import { structureApi } from "@/lib/campaign/structure-api";
 import type { WorkerDragRef } from "../dnd";
 import type { DeleteUnitWorker } from "../delete-organising-unit-dialog";
 import type { SplitMember } from "../split-unit-dialog";
+import { isCrossDimensionMoveBlocked } from "../ou-move-compatibility";
 import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import type { WallChartShellEnv, WallChartShellState } from "./use-wall-chart-shell-state";
 import type { WallChartStructure } from "./use-wall-chart-structure";
 
 /**
- * WP2.3 block F — the wall chart's writers, moved verbatim out of
+ * WP2.3 block F — the wall chart's writers, moved out of
  * `campaign-wall-chart.tsx` (`WC:1252–1426`). The delete-dialog worker list,
  * the lazy split-members query, drag-and-drop move/copy and bulk
  * remove-from-unit.
  *
- * Behaviour preserved exactly: the cross-`ou_type` move is still blocked
- * silently with no toast, `moveWorkers.mutate` is still called with
- * `(variables, { onSuccess, onError })`, and `toast.error` still fires only
- * from the mutation's `onError`.
+ * Cross-`ou_type` moves are blocked silently unless source and target are
+ * nested (employer container → worksite child, wp2.2.md D4). `moveWorkers.mutate`
+ * is called with `(variables, { onSuccess, onError })`; `toast.error` fires
+ * only from the mutation's `onError`.
  */
 export function useWallChartActions({
   campaignId,
@@ -43,7 +44,7 @@ export function useWallChartActions({
 }) {
   const { supabase, queryClient } = env;
   const { deleteTargetOu, splitTargetOu, setRemoveConfirmOpen } = dialogs;
-  const { workerById, ouTypeById, workersByOu } = index;
+  const { workerById, ouTypeById, parentByOu, workersByOu } = index;
 
   // ── Split: members for the targeted OU ─────────────────────────────────
   // Lazy-loaded only when a split dialog is open; pulls dimension columns +
@@ -149,27 +150,25 @@ export function useWallChartActions({
       if (mode === "move" && allAlreadyThere) return;
 
       // Cross-dimension move guard: units of the same ou_type form a "dimension"
-      // (e.g. all worksite units). Moving a worker between units of different
-      // ou_types is semantically wrong — a worker's worksite can't be changed by
-      // dropping them into an employer column. Block the move; allow copy
-      // (Shift+drag) so a user can still add the worker to another dimension.
-      // "custom" units are unconstrained — they're not part of a structured dimension.
-      if (mode === "move" && targetOuId != null) {
-        const targetType = ouTypeById.get(targetOuId);
-        const nonCustomSourceTypes = payload.refs
-          .map((r) => r.fromOuType)
-          .filter((t): t is string => !!t && t !== "custom");
-        if (
-          targetType &&
-          targetType !== "custom" &&
-          nonCustomSourceTypes.length > 0 &&
-          nonCustomSourceTypes.some((t) => t !== targetType)
-        ) {
-          // Silently block — the drag visual already constrains this via the
-          // wallchart grouping (units are shown in ou_type bands). A toast would
-          // be intrusive for accidental mis-drops.
-          return;
-        }
+      // (e.g. all worksite units). Moving between unrelated dimensions is wrong
+      // — a worker's worksite can't be changed by dropping them into a foreign
+      // employer column. Nested parent→child moves are allowed: after WP2.1 an
+      // employer container's worksite children sit in another group/type, and
+      // that drop is exactly how organisers place workers into sub-units
+      // (structure_placements_move keep_in_parent / D4). Copy (Shift+drag) is
+      // always allowed. "custom" units are unconstrained.
+      if (
+        isCrossDimensionMoveBlocked({
+          mode,
+          targetOuId,
+          refs: payload.refs,
+          ouTypeById,
+          parentByOu,
+        })
+      ) {
+        // Silently block — the drag visual already constrains unrelated
+        // mis-drops via ou_type bands. A toast would be intrusive.
+        return;
       }
 
       moveWorkers.mutate(
@@ -193,7 +192,7 @@ export function useWallChartActions({
         }
       );
     },
-    [canWrite, moveWorkers, ouTypeById, selection]
+    [canWrite, moveWorkers, ouTypeById, parentByOu, selection]
   );
 
   // Removes selected workers from their specific source units (not all units).

@@ -15,7 +15,8 @@ export type WorkerDragRef = {
   /** null when the drag originated from the Unassigned pseudo-unit. */
   fromOuId: number | null;
   /**
-   * The ou_type of the source unit — used to enforce same-dimension-only moves.
+   * The ou_type of the source unit — used to enforce same-dimension moves,
+   * with an exception for nested parent/child units (employer → worksite).
    * null when dragging from Unassigned or when the source type is unknown.
    */
   fromOuType: string | null;

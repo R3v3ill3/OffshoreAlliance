@@ -226,6 +226,38 @@ describe("drag and drop", () => {
     expect(spies.toastWarning).not.toHaveBeenCalled();
   });
 
+  it("moving from an employer container into a nested worksite sub-unit is allowed", async () => {
+    // Production shape after WP2.1: employer containers nest worksite children
+    // across ou_types. Workers sitting only on the employer (not yet in a
+    // sub-unit) must still be droppable onto those children.
+    const fixture = buildWallChartFixture("small");
+    const ous = (
+      fixture.tables.campaign_organising_units as Array<{
+        ou_id: number;
+        parent_ou_id?: number | null;
+        ou_type: string;
+      }>
+    ).map((o) =>
+      o.parent_ou_id != null ? { ...o, ou_type: "worksite" } : { ...o }
+    );
+
+    const { container } = await mount({
+      fixture: {
+        ...fixture,
+        tables: { ...fixture.tables, campaign_organising_units: ous },
+      },
+    });
+
+    await dragAndDrop(tile(container, ADA), unitCard(container, "Acme North"));
+
+    expect(spies.moveWorkers).toHaveBeenCalledTimes(1);
+    expect(spies.moveWorkers.mock.calls[0][0]).toEqual({
+      refs: [{ workerId: ADA, fromOuId: 10, fromOuType: "employer" }],
+      toOuId: 11,
+      mode: "move",
+    });
+  });
+
   it("copying across ou_types is allowed", async () => {
     const { container } = await mount();
 

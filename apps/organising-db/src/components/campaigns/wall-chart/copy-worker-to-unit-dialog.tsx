@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
+import { isAllowedMoveTarget } from "./ou-move-compatibility";
 import { useMoveWorkersMutation } from "./move-worker-mutation";
 import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { toast } from "sonner";
@@ -67,7 +68,8 @@ export function MoveOrCopyWorkersDialog({
 
   // In move mode, restrict targets to the same ou_type dimension as the source
   // units, so users can't accidentally move workers across incompatible dimensions
-  // (e.g. from a worksite unit into an employer unit).
+  // (e.g. from a worksite unit into an unrelated employer unit). Nested children
+  // of a source unit are also offered (employer container → worksite sub-units).
   // "custom" units are unconstrained. Copy mode is always unrestricted.
   const sourceDimensionType = useMemo(() => {
     const nonCustomTypes = refs
@@ -78,6 +80,20 @@ export function MoveOrCopyWorkersDialog({
     return unique.length === 1 ? unique[0] : null; // null = mixed source types
   }, [refs]);
 
+  const sourceOuIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const r of refs) {
+      if (r.fromOuId != null) ids.add(r.fromOuId);
+    }
+    return ids;
+  }, [refs]);
+
+  const parentByOu = useMemo(() => {
+    const m = new Map<number, number | null>();
+    for (const o of ous) m.set(o.ou_id, o.parent_ou_id ?? null);
+    return m;
+  }, [ous]);
+
   const available = useMemo(() => {
     const excl = new Set(excludeOuIds);
     // Never offer group containers as assignment targets — workers must be
@@ -85,16 +101,23 @@ export function MoveOrCopyWorkersDialog({
     const candidates = ous.filter(
       (o) => !excl.has(o.ou_id) && !o.is_group_container
     );
-    // When moving within a structured dimension, only offer same-type targets.
+    // Same-type targets, plus nested descendants of any source unit.
     if (
       mode === "move" &&
       sourceDimensionType !== null &&
       sourceDimensionType !== "custom"
     ) {
-      return candidates.filter((o) => o.ou_type === sourceDimensionType);
+      return candidates.filter((o) =>
+        isAllowedMoveTarget({
+          target: o,
+          sourceDimensionType,
+          sourceOuIds,
+          parentByOu,
+        })
+      );
     }
     return candidates;
-  }, [ous, excludeOuIds, mode, sourceDimensionType]);
+  }, [ous, excludeOuIds, mode, sourceDimensionType, sourceOuIds, parentByOu]);
 
   const moveMutation = useMoveWorkersMutation(campaignId);
   const hasUnassignedTarget = mode === "move";

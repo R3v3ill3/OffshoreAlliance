@@ -1,7 +1,10 @@
 # WP2.4 — Group selector, per-group Unassigned, Not in any group, campaign-wide Colour by and Filter, server-side prefs
 
-Status: **plan, awaiting approval (Revision 1, 2026-09-15). Implementation not started.**
-Written 2026-09-15 against `main` at `bd0c44d0`. Depends on WP2.1 (production 2026-09-14, `wp/wp2.1.md` §15),
+Status: **Revision 2 (2026-09-15) — operator answers recorded in §9.1 (FL-b, SY-c, PR-a, CP-a, HU-a, MN-a, CA-a, RD-a, E2-b);
+SM (cross-campaign mirror) recommended SM-a as a bounded follow-up WP2.4b, awaiting the operator's answer. Implementation not started.**
+Written 2026-09-15 against `main` at `bd0c44d0`; Revision 2 re-cited against `main` at `8ad4c1ad`, which carries two
+parallel "Cursor Agent" commits (`e47b4d10`, `4461c2ee`; `PROGRESS.md:102`): the universe sync now defaults campaign
+membership to employer **and** worksite with a match-mode control (§2.8). No schema, route or board file changed. Depends on WP2.1 (production 2026-09-14, `wp/wp2.1.md` §15),
 WP2.2 (**complete on production 2026-09-15**, 2.2b applied and verified, `wp/wp2.2.md` §9.2 "Production step 8"; also
 on normal dev) and WP2.3 (merged at `4d2ff4b`, `wp/wp2.3.md`). The sub-unit View inheritance fix `67c3e9f8` is on `main`.
 
@@ -17,13 +20,14 @@ placed first, as in `wp/wp2.2.md`, because it states what the package needs from
 | Label | Topic | Section |
 |---|---|---|
 | **FL-a / FL-b / FL-c** | Where the `groups_v2` flag lives and who can flip it | §3.2 |
-| **SY-a / SY-b / SY-c** | The fate of sync-on-open under `groups_v2` | §3.14 |
+| **SY-a / SY-b / SY-c** | The fate of sync-on-open (answered: **SY-c**, kept and announced) | §3.14 |
+| **SM-a / SM-b / SM-c** | Cross-campaign mirror: what the reverse sync does when the worker already holds a unit in the target campaign's group | §3.15 |
 | **PR-a / PR-b** | Shape of the `user_campaign_prefs` document; whether a migration is needed | §3.11 |
 | **CP-a / CP-b** | Copy (Shift-drag, selection-bar Copy, right-click Copy) in the v2 chart | §3.9 |
 | **HU-a / HU-b** | Hidden units and "Show empty units" | §3.12 |
 | **MN-a / MN-b** | Rename / Set estimate on the unit card's ⋯ menu | §3.6 |
-| **CA-a / CA-b** | Disposition of the WP2.2 rows carried to WP2.4 (A3, A4, A5, A8, D72) | §3.16 |
-| **RD-a / RD-b** | Use of the realistic data set for this package | §3.18 |
+| **CA-a / CA-b** | Disposition of the WP2.2 rows carried to WP2.4 (A3, A4, A5, A8, D72) | §3.17 |
+| **RD-a / RD-b** | Use of the realistic data set for this package | §3.19 |
 | **E2-a / E2-b** | How flows two and three are accepted | §4.5 |
 
 ---
@@ -69,12 +73,13 @@ per-unit filter or view override remains".
 ### 1.2 Binding additions from the phase-2 orchestration prompt (`PHASE2_MAIN_ORCHESTRATION_PROMPT.md`)
 
 1. `:46` — `groups_v2` may now be introduced; `campaign_group_membership` may now be consumed (2.2b is on production).
-2. `:47` — sync-on-open is a writer; **WP2.4 decides whether it survives** (§3.14).
+2. `:47` — sync-on-open is a writer; **WP2.4 decides whether it survives** — decided **SY-c** by the operator on
+   2026-09-15: it survives, on both chart paths, and announces what it changed (§3.14).
 3. `:43` — branch off `main`, draft PR into `main`, every push/PR command put to the operator first; never rebase or
    force-push; no worktrees; never commit `supabase/.temp/*`.
 4. `:44` — the promotion gate binds only packages with a migration; §3.11 records that this package has none.
-5. `:59` — if the package wants realistic data, the plan says so and proposes the least invasive use (§3.18).
-6. `:121` — WP2.5, WP2.6 and WP2.7 follow WP2.4 in parallel where files are disjoint; §3.17 draws the boundaries.
+5. `:59` — if the package wants realistic data, the plan says so and proposes the least invasive use (§3.19).
+6. `:121` — WP2.5, WP2.6 and WP2.7 follow WP2.4 in parallel where files are disjoint; §3.18 draws the boundaries.
 7. Inherited rules (`IMPLEMENTATION_ORCHESTRATION_PROMPT.md:34`, `:36`): full mode keeps working; the flag defaults off;
    do not materialise Unassigned as rows; do not keep view state in localStorage; no new campaign-creation path.
 
@@ -116,15 +121,20 @@ per-unit filter or view override remains".
 - `wp/wp2.2.md` §3.11 row 1 (`:496`) — `placements.move` carries `withinGroupId`, "reserved for WP2.4, unused now";
   row 15a (`:511`) — sync-on-open routed through the API, timing unchanged, fate decided here.
 - `wp/wp2.2.md` §8.2 "Stage 7 advisories carried to WP2.4" (`:797`) — A3, A4, A5, A8; D72 (`:925`) membership rewritten
-  before a refused placement save. Disposition in §3.16.
+  before a refused placement save. Disposition in §3.17.
 - `wp/wp2.2.md` D45 (`:881`) and D56 (`:898`) — `ou_group_id` is container membership only; the settings grid shows
   non-container units only. Both are facts about the legacy container model that the v2 chart no longer renders;
   §3.3 says how containers appear under `groups_v2`.
 - `wp/wp2.3.md` §1.4 (`:35–50`) — the four repeated filter → sort → metrics blocks, the per-scope `Map` state, the
   cross-type drop guard and the hard-coded grandchild labels were retained verbatim "for WP2.4". The v2 chart has one
   pipeline and no per-scope state; the legacy files are **not** rewritten (§3.1 principle 2).
-- `PROGRESS.md:106` (incidental finding, sync-on-open) and `:17` (`67c3e9f8`, sub-unit View inheritance, which the
+- `PROGRESS.md:107` (incidental finding, sync-on-open) and `:17` (`67c3e9f8`, sub-unit View inheritance, which the
   v2 chart makes moot by having no per-unit View).
+- `PROGRESS.md:102` — the parallel Cursor commits on `main` (`e47b4d10`, `4461c2ee`): `lib/workers/sync-campaign-universe.ts`
+  (+113 lines), `campaign-settings.tsx`, `campaign-universe-section.tsx`, `campaign-wizard.tsx`,
+  `step-employers-worksites.tsx`, new `universe-match-mode-control.tsx`; sync tests 53/53, guard test green, `tsc`
+  clean on the merged `main`. Every citation into those files below is against `8ad4c1ad`. The ledger asks the operator
+  to say whether that session continues on those files; §3.15 and §8.4 depend on the answer.
 
 ### 1.5 Not in WP2.4 (recorded so it is not folded in silently)
 
@@ -271,23 +281,52 @@ only removes them from this unit" `delete-organising-unit-dialog.tsx:258`.
 participation and selection are React state lost on unmount (switching to List unmounts the chart,
 `workforce-board.tsx:101–105`).
 
-### 2.8 Sync-on-open
+### 2.8 Sync-on-open (re-cited against `8ad4c1ad`)
 
-`workforce-board.tsx:55–79`: `useQuery(["sync-universe-workers", campaignId])` POSTs
-`/api/campaigns/[id]/sync-universe-workers` on every board mount when `canWrite` (`enabled: canWrite`,
-`staleTime` 5 min, `retry: false`), invalidating members and placements when `workersAdded > 0`. The route
-(`app/api/campaigns/[id]/sync-universe-workers/route.ts:30–43`) rejects viewers and calls
-`syncCampaignUniverseFromEmployersWorksites`, which since WP2.2 Stage 6 writes placements only through
-`placements.assign({ source: "universe", onConflict: "skip" })` (`lib/workers/sync-campaign-universe.ts:14–24`) and
-upserts `campaign_worker_membership` directly (not a structure table). The same function also runs on user action:
-settings "Employers and worksites saved" (`campaign-settings.tsx:469`) and the Who's in section's add-employer /
-add-worksite mutations (`campaign-universe-section.tsx:256`, `:313`). The reverse direction (a worker record changing
-→ matching campaigns) runs from nine other call sites (`syncWorkersToMatchingCampaigns`: `move-worker-mutation.ts:145`,
-`worker-detail-sheet.tsx:465`, `campaign-wizard.tsx:1000`, `worker-import/apply/route.ts:629`,
-`campaign-import/apply/route.ts:476`, `workers/batch-update/route.ts:134`, `workers/[workerId]/route.ts:298`,
-`create-worker/route.ts:309`, `add-workers/route.ts:209`) and is not part of this decision. Production evidence:
-one page open enrolled 334 workers and inserted 233 placements on 2026-09-14 (`PROGRESS.md:106`); the e2e
-decomposition spec intercepts the POST so the oracle is stable (`tests/e2e/wall-chart-decomposition.spec.ts:26–35`).
+`workforce-board.tsx:55–79` (unchanged by the Cursor commits): `useQuery(["sync-universe-workers", campaignId])` POSTs
+`/api/campaigns/[id]/sync-universe-workers` on every board mount when `canWrite` (`enabled: canWrite`, `staleTime`
+5 min, `retry: false`, `refetchOnWindowFocus: false`), invalidating members and placements when `workersAdded > 0`
+(`:69–72`); the JSON is otherwise discarded. The route (`app/api/campaigns/[id]/sync-universe-workers/route.ts:30–44`,
+unchanged) rejects viewers and returns `{ success: true, ...result }` of `syncCampaignUniverseFromEmployersWorksites`.
+
+**The library after `4461c2ee`** (`lib/workers/sync-campaign-universe.ts`):
+
+- Match mode: `UniverseMatchMode = "and" | "or"` (`:31`), `CampaignUniverse.matchMode` (`:33–42`),
+  `universeMatchModeFromFlags` (`:117–123`: `"or"` iff `campaigns.sector_wide` or a sector-wide `campaign_worksites` row),
+  `workerMatchesCampaignUniverse` (`:125–143`: **AND by default** — every declared dimension must match; OR is the
+  sector rule). Both entry points derive the mode from existing columns (`loadActiveCampaignUniverses` `:259–262`
+  reads `campaigns.sector_wide`; the forward sync reads `campaigns.sector_wide` and `campaign_worksites.sector_wide`
+  `:606–638`). **No schema change**: the mode is a reading of columns that predate this package.
+- The control: `components/campaigns/universe-match-mode-control.tsx:11–52` ("Include other employers at these
+  sites"), mounted in Who's in (`campaign-universe-section.tsx:409–418`; `orMatching` `:150–151`; the switch writes
+  `campaigns.sector_wide` through `setMatchModeMutation` `:339–343`) and in wizard/settings step 2
+  (`step-employers-worksites.tsx:920–930`, props `:49–53`; wired from `campaign-wizard.tsx:1679–1680` and
+  `campaign-settings.tsx:1005–1006`).
+- Forward sync `syncCampaignUniverseFromEmployersWorksites` (`:597–698`): upserts membership with
+  `ignoreDuplicates` (`upsertMembership` `:384–399`, whose count is the number of rows **sent**, not inserted), then
+  `assignOuPlacements` (`:417–446`: one `placements.assign({ source: "universe", onConflict: "skip" })` per target
+  unit; counts are the RPC's `inserted` / `skipped`, D62 `wp/wp2.2.md:915`). Result `SyncCampaignUniverseResult`
+  (`:583–585`) = `{ workersAdded, ouAssignmentsUpserted, ouAssignmentsSkipped }` where **`workersAdded` is
+  `matching.length` (`:697`) — every matched member, not the newly enrolled ones**. A notice built on it would say
+  "95 workers added" on every open of dev campaign 1; §3.14 adds a real `membersAdded`.
+- Reverse sync `syncWorkersToMatchingCampaigns` (`:500–581`): for the given workers, every live campaign whose
+  universe matches (`:521–524`), filtered to the ones the actor can write to (`planUniverseSyncTargets` `:472–478`,
+  `campaigns_i_can_write` `:480–488`), membership upsert, then `matchingOusForWorker` (`:145–207`, one unit per
+  future group, most specific wins, container parent appended) → `assignOuPlacements` — **add-if-absent only**: a
+  worker who already holds a unit in that group is `skipped` (C-a), never moved. Callers: `move-worker-mutation.ts:145`
+  (after `stampEmployerWorksiteFromOu` `:143` has written the target unit's employer/worksite onto the worker record,
+  `sync-campaign-universe.ts:754`), `worker-detail-sheet.tsx:465`, `campaign-wizard.tsx:1006`,
+  `worker-import/apply/route.ts:629`, `campaign-import/apply/route.ts:476`, `workers/batch-update/route.ts:134`,
+  `workers/[workerId]/route.ts:298`, `create-worker/route.ts:309`, `add-workers/route.ts:209`.
+- User-initiated forward syncs: saving employers and worksites in settings (`campaign-settings.tsx:475`), adding an
+  employer or a worksite in Who's in (`campaign-universe-section.tsx:261`, `:318`).
+
+Production evidence: one page open enrolled 334 workers and inserted 233 placements on 2026-09-14
+(`PROGRESS.md:107`); the decomposition e2e spec intercepts the POST so its oracle is stable
+(`tests/e2e/wall-chart-decomposition.spec.ts:26–35`). Live example behind the SM decision (§3.15): a worker in both
+the Fugro bargaining campaign and the ROV sector campaign is dragged to another worksite unit in the ROV chart; the
+drag stamps the new worksite on the worker (`:143`) and the reverse sync (`:145`) then only *adds* a placement in the
+Fugro campaign's Worksite group — which is refused as `skipped` because the worker already sits in the old unit there.
 
 ### 2.9 Prefs and flag plumbing that exists
 
@@ -334,7 +373,8 @@ turned out wrong in a way that changes the design.
 ### 3.1 Principles
 
 1. **One flag, two shells.** `WorkforceBoard` mounts `CampaignWallChartV2` when `groups_v2` is on and the legacy
-   `CampaignWallChart` otherwise. Nothing else in the product branches on the flag.
+   `CampaignWallChart` otherwise. Nothing else in the product branches on the flag; the sync-on-open notice (§3.14)
+   is flag-independent by the operator's decision.
 2. **Legacy path byte-for-byte.** No legacy composition file (`campaign-wall-chart.tsx`, `wall-chart-header.tsx`,
    `wall-chart-unit-hierarchy.tsx`, `wall-chart-unassigned-card.tsx`, `wall-chart-dialogs.tsx`, the four hooks) is
    edited except where a v2 need is met by an **additive, default-preserving** prop or field named in §7 (each such
@@ -387,7 +427,7 @@ Definition under FL-b:
   computed first and carried through every return (`:78`, `:113`, `:118`, `:135`). Off when there is no profile.
 - `lib/workspace/use-workspace.tsx` — `flags` on the context value; `DEFAULT_VALUE.flags = { groupsV2: false }`.
 - **One reader module:** `src/lib/flags/groups-v2.ts` exporting `useGroupsV2(): boolean` (= `useWorkspace().flags.groupsV2`)
-  and, for pure code, `isGroupsV2(flags)`. Consumers: `workforce/workforce-board.tsx` (shell choice, sync gate) only.
+  and, for pure code, `isGroupsV2(flags)`. Consumers: `workforce/workforce-board.tsx` (shell choice only; the sync-on-open notice is flag-independent, §3.14).
   The grep in §5 proves no other consumer.
 - Admin UI: `app/(dashboard)/administration/page.tsx` Users dialog — one `Checkbox` bound to `flags.groups_v2`,
   included in the outgoing `workspacePrefs` document by `lib/workspace/prefs-payload.ts`. Tests in
@@ -461,7 +501,7 @@ everyone; with "Show empty units" off the empty cards are hidden and the toolbar
 
 1. **Group** — `Select` labelled "Group"; options = groups in display order, then "Not in any group". Always shown.
    Changing it: `trackWallchartGroupSelected({ control: "group_selector", … })` (union extended), URL + prefs write,
-   selection cleared. First-use hint `wall_chart_group_selector` anchored here (§3.15).
+   selection cleared. First-use hint `wall_chart_group_selector` anchored here (§3.16).
 2. **Show empty units** — switch, default off; hides units of the selected group with zero visible workers after
    filtering; shows "N empty hidden" text when any are hidden. Persisted.
 3. **Colour by** — the existing `AssessmentSelector` with its trigger label "Colour by"; value = the campaign-wide
@@ -642,30 +682,107 @@ user without the flag.
   (`unitsOfGroup`) via the existing `ous` prop, so no edit is needed; the sentence `:258` reads "Unassigned only
   removes them from this Unit" (terminology only, legacy-safe).
 
-### 3.14 Sync-on-open — decision
+### 3.14 Sync-on-open — decided: SY-c, kept and announced (operator, 2026-09-15)
 
-The mount-time POST (§2.8) is the one writer that runs without a user action. Options:
+The options as put to the operator: **SY-a** keep silent; **SY-b** not issued on the v2 board (the planner's
+recommendation); **SY-c** keep but announce. **The operator rejected SY-b** ("on balance auto sync") and asked for a
+visible notice of what the sync changed whenever a user opens a wall chart. SY-c is therefore the decision, designed as
+follows. It applies to **both** chart paths and to the List layout, because the query lives in the board they share;
+this is a deliberate, operator-approved visible change in full mode (§3.1 principle 1 note).
 
-- **SY-a** Keep as is under both paths. Nothing to build; production keeps drifting on page open; the WP2.3 load
-  ceiling keeps paying for the request; plan `:324` ("never again silently") is left to WP3.1 to honour by removing it
-  then.
-- **SY-b (recommended)** Under `groups_v2` the board does **not** issue the mount sync (`enabled: canWrite && !groupsV2`
-  on `workforce-board.tsx:55–79`); the legacy path is unchanged; WP2.8 deletes the query with the flag. The explicit
-  syncs remain: saving employers and worksites in Setup (`campaign-settings.tsx:469`) and adding an employer or
-  worksite in Who's in (`campaign-universe-section.tsx:256`, `:313`); the reverse direction (nine call sites, §2.8)
-  keeps new and edited workers flowing into matching campaigns; WP3.1 adds the visible create-time sync. What is
-  lost: silent catch-up for workers whose employer/worksite changed through a path that does not call
-  `syncWorkersToMatchingCampaigns` (none found in `src/`) and historical drift such as the 334-worker catch-up of
-  2026-09-14, which was a one-off consequence of the WP2.2 container targets. Evidence for the operator: before/after
-  totals stop moving on page open, so hazard evidence no longer has to exclude row totals.
-- **SY-c** Keep the mount sync under v2 but make it visible: a toast "N people added from Who's in" when
-  `workersAdded > 0`, at most once per campaign per session. Least behavioural risk, but it keeps a silent writer on
-  every open and adds a toast the plan does not ask for.
+**Counts.** The route already returns D62's counts; one field is added so the notice is truthful:
 
-If the operator chooses SY-a or SY-c, the v2 e2e specs intercept the route as the decomposition spec does; under
-SY-b they assert the request is **not** made (§4.5).
+- `lib/workers/sync-campaign-universe.ts`: `SyncCampaignUniverseResult` gains **`membersAdded: number`** — computed
+  by reading the campaign's existing `campaign_worker_membership.worker_id` set (one paged select through
+  `fetchAllRows`, the file's own idiom `:641–660`) before `upsertMembership` and counting matched workers not in it.
+  `workersAdded` is kept with its current meaning (matched members) so no caller changes; the route spreads the new
+  field automatically (`{ success: true, ...result }`). Additive: ~15 lines and one test. (This is the only WP2.4 edit
+  to the file the Cursor session touched; §8.4 item 11 covers a collision.)
+- The notice reads `membersAdded`, `ouAssignmentsUpserted` (placed in units) and `ouAssignmentsSkipped` (already
+  placed in a unit of that group, or already on the unit). When WP2.4b lands (§3.15) it also reads the optional
+  `placementsMoved` and `manualPlacementsKept`, absent today.
 
-### 3.15 Telemetry and the first-use hint
+**Component.** `components/campaigns/workforce/sync-on-open-notice.tsx` — a dismissible inline notice
+(`role="status"`, `aria-live="polite"`, Card-styled, Dismiss ×) rendered by `WorkforceBoard` between the view toggle
+row and the layout (`workforce-board.tsx:82–105`), above either the chart or the list. Inline rather than a toast so
+it stays until read, and rather than a modal so it never blocks the chart; if the operator prefers a modal the same
+message goes into an `AlertDialog` (`components/ui/alert-dialog.tsx`), one-line swap. Shown **only when something
+changed**; dismissed state is React state for the mounted board (a fresh open re-runs the query after `staleTime`
+and may show a new notice; nothing is persisted).
+
+**Message** (pure, `lib/workers/sync-notice-message.ts`, `syncNoticeMessage(result): string | null`):
+"Sync on open: 12 workers added to this campaign, 9 placed in units, 3 already placed." — each clause only when its
+count is > 0, singular/plural handled, `null` when every count is 0 (then nothing renders). With WP2.4b: ", 2 moved to
+match their current site, 1 kept where an organiser placed them".
+
+**Board changes** (`workforce-board.tsx`): the query's `queryFn` keeps its shape; `onSuccess`-equivalent logic moves
+into the render (`data` from `useQuery`): invalidate members/placements when `membersAdded > 0 || ouAssignmentsUpserted > 0`
+(today: `workersAdded > 0`, `:69–72`, which is almost always true and refetches on every open); render
+`<SyncOnOpenNotice result={data} />`. `enabled: canWrite`, `staleTime` and `retry` unchanged. The v2 shell choice is
+the only other change in this file.
+
+**Tests.** `lib/workers/__tests__/sync-notice-message.test.ts` (every clause combination, plural forms, null on
+zero, ignores unknown keys); `sync-campaign-universe.test.ts` + 1 case (`membersAdded` counts only new members; the
+existing 53 cases unchanged); `workforce/__tests__/workforce-board.test.tsx` (mounts the board with a scripted route
+answer: notice text present when counts > 0, absent when all zero, Dismiss removes it, the two invalidations fire
+only when something changed; with the flag on, the v2 shell mounts and the notice still renders). The e2e checklist
+(§4.5 step 5) intercepts the POST with a scripted non-zero result and looks for the sentence.
+
+### 3.15 SM — cross-campaign mirror (operator requirement, 2026-09-15; recommendation SM-a as WP2.4b)
+
+**The requirement.** "If a worker is a member of multiple campaigns (live example: Fugro bargaining and ROV sector
+campaigns) and a Fugro worker is updated to a different unit in the ROV campaign, that should be reflected in any
+compatible units in the Fugro campaign." Today (§2.8) the drag stamps the worker's new worksite/employer and the
+reverse sync adds with `skip`, so the Fugro campaign keeps the stale unit.
+
+**Options.**
+
+- **SM-a (recommended)** Mirror as a **move**, only over placements the sync itself owns: in every matching, writable
+  campaign, for every group in which the worker has a compatible unit U (`matchingOusForWorker`), if the worker's
+  existing placement P in that group is `assignment_source = 'universe'` and `P.ou_id ≠ U`, move it
+  (`placements.move({ campaignId, workerIds: [w], fromOuId: P.ou_id, toOuId: U })`, one call per (campaign, source
+  unit); the RPC re-points the row so its `universe` provenance travels with it — `structure_placements_move`
+  `20260914090000:2858–2859`); if P is `manual` or `rule`, leave it and count it (`manualPlacementsKept`); if there is
+  no P, assign as today. Organisers' deliberate placements are never overridden by a drag in another campaign; the
+  sync only corrects what the sync created.
+- **SM-b** Add-if-absent only (today). Does not meet the requirement.
+- **SM-c** Always move, whatever the source. Meets the requirement literally but lets a drag in a sector campaign
+  silently undo a hand placement in a bargaining campaign, and fights Recompute's `rule` rows.
+
+**Rule under SM-a, stated once (pure, `lib/workers/reconcile-placements.ts`):**
+`planReconcile({ desiredByGroup, existingByGroup }) → { assign: [...], move: [...], keep: [...], skip: [...] }` per
+(campaign, worker): `desired` from `matchingOusForWorker`; `existing` from one paged read of `campaign_worker_ou`
+`select("ou_id, worker_id, group_id, assignment_source")` for the worker ids and the target campaigns' units
+(`group_id` is on the row since WP2.1, `20260912035329:513`). Applied by both entry points: the reverse sync
+(`syncWorkersToMatchingCampaigns`, the drag/edit/import path — the operator's case) and the forward sync
+(`syncCampaignUniverseFromEmployersWorksites`, page open), so a stale universe placement is corrected the next time
+either runs. Every write stays inside the structure API (`placements.assign`, `placements.move`); no RPC or migration.
+
+**Notice wording.** Page open (§3.14): ", 2 moved to match their current site, 1 kept where an organiser placed
+them". After a drag in the source campaign: a `sonner` toast from `move-worker-mutation.ts` using the same helper on
+the reverse sync's result — "Also updated in 1 other campaign: 1 moved, 1 kept where an organiser placed them." —
+only when `campaignsTouched > 0` and something moved or was kept.
+
+**Tests.** `reconcile-placements.test.ts` (assign / move / keep / skip per source; two groups; a worker whose desired
+unit is the one they are on; a target campaign the actor cannot write to is untouched); `sync-campaign-universe.test.ts`
+cases pinning one `structure_placements_move` per (campaign, source unit) with `p_from_ou_id` and `p_to_ou_id`, and
+that a `manual` row produces no RPC; a contract case on dev (`structure-api.contract.test.ts`) that a moved
+`universe` row keeps its source (already implied by the RPC's re-point; pin it); the e2e checklist gains a two-campaign
+step only if dev has a worker in two campaigns with worksite units in both (otherwise a unit-test-only acceptance,
+stated as such).
+
+**Scope decision: WP2.4b, a bounded follow-up.** Not inside WP2.4 because (1) it changes a writer's behaviour for
+every campaign regardless of `groups_v2` — it is a data rule, not a chart feature — and deserves its own reviewer
+pass and its own PR that the operator can hold or revert independently of the chart; (2) `sync-campaign-universe.ts`
+is the file a parallel Cursor session edited today (`PROGRESS.md:102`) and the ledger has asked the operator whether
+that continues — WP2.4 keeps its own edit there to the 15-line `membersAdded`; (3) WP2.4's four stages already carry
+the jsdom, e2e and review surface of a new chart. WP2.4b: branch `feat/oux-wp2.4b-cross-campaign-mirror` off `main`
+after WP2.4 merges (or in parallel, since it touches only `lib/workers/*`, `move-worker-mutation.ts:136–146` for the
+toast, and the notice helper), high-risk implementer, Fable review, no migration, contract case on dev, acceptance
+by the operator on the branch preview with the Fugro/ROV pair recreated on dev if the operator supplies the ids.
+WP2.4 prepares for it by making the notice helper accept the two optional counts.
+
+### 3.16 Telemetry and the first-use hint
 
 - `GroupSelectionControl` gains `"group_selector"`; `FilterScope` gains `"campaign"`. Event names unchanged so the
   phase-0 baseline series continues (`WallChartAssessmentCharts.tsx:103–107`).
@@ -674,7 +791,7 @@ SY-b they assert the request is **not** made (§4.5).
   row. The e2e global setup already seeds only `wall_chart_rating`; the v2 spec seeds this id too before it runs
   (`hint-dismissals.ts:42–51` pattern) so the popover never coexists with a drag.
 
-### 3.16 WP2.2 rows carried to WP2.4 — disposition (CA-a, recommended)
+### 3.17 WP2.2 rows carried to WP2.4 — disposition (CA-a, approved 2026-09-15)
 
 | Row | Disposition |
 |---|---|
@@ -684,9 +801,9 @@ SY-b they assert the request is **not** made (§4.5).
 | **A4** — settings units-save toast for a delete-context `23505` | **Re-carried to WP2.7**, which replaces the settings units section. |
 | **D72** — membership rewritten before a refused placement save | **Re-carried to WP2.7**: the wizard step 6 / settings allocation save is the editor's, and the fix (one membership-aware transaction) is a design choice for that package. |
 
-CA-b (do A3/A4/D72 here) would touch three files WP2.7 owns and is not recommended.
+CA-b (do A3/A4/D72 here) would touch three files WP2.7 owns; the operator approved CA-a on 2026-09-15.
 
-### 3.17 File boundaries with WP2.5, WP2.6, WP2.7 and WP2.8 (so they can run in parallel)
+### 3.18 File boundaries with WP2.5, WP2.6, WP2.7, WP2.8 and WP2.4b (so they can run in parallel)
 
 | Package | Owns (may edit) | Consumes from WP2.4 (must not edit) |
 |---|---|---|
@@ -694,19 +811,22 @@ CA-b (do A3/A4/D72 here) would touch three files WP2.7 owns and is not recommend
 | **WP2.5** Compare | `wall-chart/compare/**`, the toolbar's `compareSlot`, prefs key `compare`, the band's "matrix" mode | selector, prefs hook, `deriveGroupView`; must not edit `wall-chart/v2/wall-chart-toolbar.tsx` beyond filling the slot |
 | **WP2.6** List | `workforce/workforce-list-view.tsx`, `workforce-bulk-toolbar.tsx`, `lib/campaign/workforce-view.ts`, the `ViewToggle` in `workforce-board.tsx`, prefs key `layout` | `useUserCampaignPrefs`, `resolveGroupSelection`, `deriveGroupView`, `notInAnyGroup`, the serialised filter — all from `lib/`, never from `components/campaigns/wall-chart` |
 | **WP2.7** Editor | `campaign-units-section.tsx`, `campaign-wizard.tsx`, `campaign-settings.tsx`, `step-campaign-units.tsx`, `create-organising-unit-dialog.tsx`, `lib/campaign/structure-save.ts`, new `setup/**` | `unitsOfGroup`; the ⋯ menu's Rename/Set estimate dialog may be replaced by the editor's; A3/A4/D72 |
+| **WP2.4b** Cross-campaign mirror (§3.15) | `lib/workers/sync-campaign-universe.ts`, new `lib/workers/reconcile-placements.ts`, `move-worker-mutation.ts:136–146` (toast), their tests, one contract case | `lib/workers/sync-notice-message.ts` (optional counts already accepted) |
 | **WP2.8** | deletes the legacy shell, header, hierarchy, Unassigned card, dialogs, hooks, `wall-chart-model.ts` scope helpers, the four localStorage keys, the flag and R10; makes charts group-aware | everything above |
 
 Shared files WP2.4 edits additively and the others must merge around: `workforce-board.tsx` (WP2.6), `filters.ts`
-(read by WP2.6, not edited), `events.ts` (additive unions), `types.ts` (`group_id`). WP2.4 lands first; WP2.5/2.6/2.7
-branch from `main` after its merge.
+(read by WP2.6, not edited), `events.ts` (additive unions), `types.ts` (`group_id`),
+`lib/workers/sync-campaign-universe.ts` (`membersAdded` only; WP2.4b and, possibly, the Cursor session). WP2.4 lands
+first; WP2.5/2.6/2.7 branch from `main` after its merge; WP2.4b may run in parallel with them.
 
-### 3.18 Performance and realistic data
+### 3.19 Performance and realistic data
 
 - Render budget: the v2 chart renders one group's units, never every unit of every type, so the 161-unit campaign
   renders at most the largest group's units plus Unassigned. The synthetic render-cost test (§4.4) runs the `large`
   fixture in two shapes: as generated, and with all 305 members Unassigned (decision 4). Queries: the same eleven
-  keys as today plus `["campaign-groups"]` and `["user-campaign-prefs"]`; the sync POST goes under SY-b, so the
-  route-load request count does not rise (it falls by one).
+  keys as today plus `["campaign-groups"]` and `["user-campaign-prefs"]`; the sync POST stays (SY-c), so the
+  route-load request count rises by two reads and the WP2.3 ceiling (`MAX_LOAD_REQUESTS = 96`,
+  `wall-chart-decomposition.spec.ts:81`) is unaffected because that spec runs with the flag off.
 - **RD-a (recommended):** the realistic data set is **not** needed for this package: drag rules are proven by unit and
   contract tests plus dev campaign 1; render cost by the fixture; WP2.5 is the first package whose acceptance names
   the 161-unit campaign. **RD-b:** the phase-2 exit metric ("share of memberships in at least one unit and the median
@@ -738,6 +858,7 @@ branch from `main` after its merge.
 - `move-worker-mutation` — `withinGroupId` is forwarded on the unassign call and absent otherwise (fake client
   records `rpc` args).
 - `lib/flags/__tests__/groups-v2.test.ts` — the hook reads the context; default false.
+- `lib/workers/__tests__/sync-notice-message.test.ts` and the `membersAdded` case in `sync-campaign-universe.test.ts` (§3.14).
 
 Test count must be ≥ the count on `main` at `bd0c44d0` (recorded in Stage 1); no test skipped, quarantined or deleted.
 
@@ -772,9 +893,9 @@ variant) and `user_campaign_prefs` (empty by default; a seeded-prefs variant); t
   unit…`; per unit card ≤ 2 (+1 with the build list open). This is the appendix A §3 re-count.
 - `wall-chart-v2.characterization.test.tsx` — skeleton snapshots for the v2 states (default, read-only, no groups,
   all Unassigned, hidden unit, Not in any group).
-- Flag off: the existing `wall-chart.characterization.test.tsx` and every legacy suite run **unchanged**; one new
-  case in `workforce-board` tests (or the census file) mounts the board with the flag off and asserts the legacy
-  shell and the sync query; with the flag on, the v2 shell and (SY-b) no sync query.
+- Flag off: the existing `wall-chart.characterization.test.tsx` and every legacy suite run **unchanged**;
+  `workforce/__tests__/workforce-board.test.tsx` mounts the board with the flag off and asserts the legacy shell and
+  the sync query; with the flag on, the v2 shell and the same sync query; the SY-c notice cases of §3.14.
 
 ### 4.4 Render cost
 
@@ -790,13 +911,15 @@ helper is edited). Preconditions the spec owns: `withUserPrefs({ mode: "full", f
 new helper in `tests/e2e/user-prefs.ts` built on the `workspace-mode.ts` pattern (record the whole document, pin,
 restore what was recorded, one record/restore per suite so the two pins cannot leave each other's state behind);
 seeds the `wall_chart_group_selector` dismissal; uses `restClientFor` (refuses production) for the oracle.
+Under SY-c the spec intercepts `POST …/sync-universe-workers` (the `wall-chart-decomposition.spec.ts:26–35` pattern)
+and fulfils it with a scripted `{ success: true, workersAdded: 3, membersAdded: 1, ouAssignmentsUpserted: 2,
+ouAssignmentsSkipped: 1 }`, so the oracle is stable and the notice can be asserted.
 
 Fixture on dev campaign 1 (95 members / 4 units; groups discovered at run time from `campaign_groups`): the spec
 picks a group G1 with ≥ 1 unit A and a second group G2 with ≥ 1 unit C; if campaign 1 has fewer than two groups it
 creates two `custom` units through the structure API as `structure-api.spec.ts` does (`createUnits`/cleanup pattern)
 and lets the WP2.1 trigger derive the group; it picks a member W, records W's placements, and restores them in
-`afterAll` (`placeOnlyOn` pattern). Under SY-b the spec asserts no `POST …/sync-universe-workers` is issued; under
-SY-a/SY-c it intercepts the route as `wall-chart-decomposition.spec.ts:26–35` does.
+`afterAll` (`placeOnlyOn` pattern).
 
 1. **Flow two — "switch the group selector and see a worker move between a unit and Unassigned".** Place W only on
    A. Open `/campaigns/1?tab=workforce&sub=wall-chart&group=<G1>`: W's tile is inside card A. Choose G2 in the
@@ -811,15 +934,20 @@ SY-a/SY-c it intercepts the route as `wall-chart-decomposition.spec.ts:26–35` 
    (prefs); search W → A un-hidden, highlighted, sheet open.
 4. **Control inventory.** On a unit card there is no View / Badges / Sort / Filter control and no Copy in the
    selection bar (locator assertions; the jsdom census is the count).
+5. **Sync-on-open notice (SY-c).** With the scripted route answer, the board shows "Sync on open: 1 worker added to
+   this campaign, 2 placed in units, 1 already placed." and Dismiss removes it; with an all-zero answer nothing is
+   shown. By hand (E2-b) the operator opens a campaign whose Who's in has changed since the last open, or accepts the
+   jsdom board test as the evidence for this step and records that.
 
-Acceptance:
+Acceptance — **E2-b decided by the operator on 2026-09-15**:
 
-- **E2-a** The spec runs green against the branch preview from an environment with the `E2E_*` variables (the
-  operator's shell, or the `e2e-preview.yml` workflow if secrets are ever added — declined for WP2.2, `wp/wp2.2.md` §9.1).
-- **E2-b (the fallback the operator used for WP2.2)** The operator performs steps 1–4 by hand on the branch preview
-  from a checklist the orchestrator supplies (the same four items, with the REST oracle replaced by what the Units
-  tab of the sheet shows), and reports; the orchestrator records the result in §9.2. The spec is still written and
-  type-checked (`tsc` covers `tests/e2e`).
+- **E2-b (chosen)** The operator performs steps 1–5 by hand on the branch preview from a checklist the orchestrator
+  supplies (the same items, with the REST oracle replaced by what the sheet's Units tab shows: after step 1, W's
+  Units tab lists "<G1> › A" and "<G2> › C"; after step 2, only "<G1> › A", then nothing), and reports; the
+  orchestrator records the result in §9.2 as the acceptance evidence for flows two and three. The spec is still
+  written and type-checked (`tsc` covers `tests/e2e`) so it can run from the `e2e-preview.yml` workflow whenever
+  secrets exist.
+- **E2-a (not chosen)** would have been the same spec run from a credentialled shell.
 
 Existing specs (`wall-chart.spec.ts`, `wall-chart-decomposition.spec.ts`, `structure-api.spec.ts`, `roles/*`,
 `organiser-campaign.spec.ts`) must stay green on the same preview with the flag off for the e2e account, which is
@@ -872,10 +1000,11 @@ Never `pnpm dev` / `pnpm start`; never a `supabase` command (none is needed); ne
 | Stage | Content | Needs DB? |
 |---|---|---|
 | 0 | This plan approved; ledger row "planning → implementing"; branch cut (git commands put to the operator). | No |
-| 1 | Pure library: `lib/campaign/groups/*` (derive, resolve, prefs schema, plan-drop), `filters.ts` additive dimension, `types.ts` `group_id`, `move-worker-mutation.ts` `withinGroupId`, `events.ts` unions; the flag (prefs schema, R10, context, `lib/flags/groups-v2.ts`, admin checkbox); `useUserCampaignPrefs`; all §4.1 tests; the read-only metrics SQL. | No |
-| 2 | v2 chart: shell, groups hook, group-view hook, toolbar, selector, chips, band, Unassigned card, Not in any group view, card menu + edit-unit dialog, move-to-unit dialog, dialogs wiring; `WorkforceBoard` switch and the SY decision; A8; sheet group prefix; copy-dialog group awareness; hint; harness additions and the §4.3 interaction + census + characterisation tests; §4.4 render cost. | No |
-| 3 | e2e spec + `user-prefs.ts` helper; run on the branch preview (E2-a) or operator checklist (E2-b); legacy specs re-run; metrics SQL run on dev (read-only) and numbers pasted. | Preview (dev) |
+| 1 | Pure library: `lib/campaign/groups/*` (derive, resolve, prefs schema, plan-drop), `filters.ts` additive dimension, `types.ts` `group_id`, `move-worker-mutation.ts` `withinGroupId`, `events.ts` unions; the flag (prefs schema, R10, context, `lib/flags/groups-v2.ts`, admin checkbox); `useUserCampaignPrefs`; **SY-c library half**: `membersAdded` in `sync-campaign-universe.ts` and `lib/workers/sync-notice-message.ts` (accepting the optional WP2.4b counts); all §4.1 tests; the read-only metrics SQL. | No |
+| 2 | v2 chart: shell, groups hook, group-view hook, toolbar, selector, chips, band, Unassigned card, Not in any group view, card menu + edit-unit dialog, move-to-unit dialog, dialogs wiring; `WorkforceBoard` switch and the **SY-c notice** (`sync-on-open-notice.tsx`, board test); A8; sheet group prefix; copy-dialog group awareness; hint; harness additions and the §4.3 interaction + census + characterisation tests; §4.4 render cost. | No |
+| 3 | e2e spec + `user-prefs.ts` helper written and type-checked; **operator checklist (E2-b) steps 1–5 on the branch preview**, recorded by the orchestrator; legacy specs unaffected (flag off for the e2e account; a credential-less `pnpm e2e` still skips cleanly); metrics SQL run on dev (read-only) and numbers pasted. | Preview (dev) |
 | 4 | Verifier output pasted (§9.2); fresh reviewer (Fable: the package writes placements and reads worker data; max two fix rounds, §9.3); `PROGRESS.md` row and phase-2 exit evidence; PR marked ready. | — |
+| **2.4b** (separate branch and PR, §3.15) | SM-a: `reconcile-placements.ts` + tests; both sync entry points apply it; drag toast; one contract case on dev; operator acceptance on the preview (Fugro/ROV pair recreated on dev if ids are supplied). Starts after the operator answers SM; may run in parallel with WP2.5–2.7. | Preview (dev); contract on dev |
 
 ### 6.2 Commits
 
@@ -887,7 +1016,8 @@ operator first. `supabase/.temp/*` is never staged (it shows as modified on ever
 
 Draft PR `feat/oux-wp2.4-group-selector → main`, title `feat(oux-wp2.4): group selector, per-group Unassigned,
 campaign-wide Colour by and Filter, server-side prefs (behind groups_v2)`. Body: §3 summary, the §2.3 control table
-with the census numbers, the evidence matrix, the SY/FL/CP decisions as approved, "no migration" stated once. Marked
+with the census numbers, the evidence matrix, the FL/SY/CP/HU/MN/CA decisions as approved, the SM deferral to
+WP2.4b, "no migration" stated once. Marked
 ready only after Stage 4.
 
 ### 6.4 Promotion gate
@@ -910,11 +1040,14 @@ New:
   `wall-chart-prefs.ts`, `plan-drop.ts`, `__tests__/*`
 - `apps/organising-db/src/lib/hooks/useUserCampaignPrefs.ts` (+ test)
 - `apps/organising-db/src/lib/flags/groups-v2.ts` (+ test)
+- `apps/organising-db/src/components/campaigns/workforce/sync-on-open-notice.tsx`, `workforce/__tests__/workforce-board.test.tsx`
+- `apps/organising-db/src/lib/workers/sync-notice-message.ts` (+ test)
 - `apps/organising-db/tests/e2e/groups-v2/groups-v2.spec.ts`, `tests/e2e/groups-v2/helpers.ts`, `tests/e2e/user-prefs.ts`
 - `scripts/data-hygiene/oux-wp2.4/00_phase2_metrics.sql` (read-only) and a three-line `README.md`
 
 Modified (additive, default-preserving):
-- `components/campaigns/workforce/workforce-board.tsx` — shell choice; sync gate (SY-b).
+- `components/campaigns/workforce/workforce-board.tsx` — shell choice; the SY-c notice and the tightened invalidation condition.
+- `lib/workers/sync-campaign-universe.ts` — `membersAdded` on `SyncCampaignUniverseResult` (additive; `workersAdded` unchanged); `__tests__/sync-campaign-universe.test.ts` + 1 case.
 - `components/campaigns/wall-chart/filters.ts` — `otherGroupUnitIds`, `participation` (defaults keep legacy behaviour).
 - `components/campaigns/wall-chart/types.ts` — `group_id?` on `WallChartOU`.
 - `components/campaigns/wall-chart/move-worker-mutation.ts` — optional `withinGroupId` on `MoveWorkerVars`.
@@ -931,8 +1064,10 @@ Modified (additive, default-preserving):
 
 Not modified: every legacy composition file named in §3.1 principle 2; `WallChartAssessmentCharts.tsx`;
 `useAssessmentDistributions.ts`; `workforce-list-view.tsx`; `workforce-bulk-toolbar.tsx`; `campaign-units-section.tsx`;
-`campaign-wizard.tsx`; `campaign-settings.tsx`; `create-organising-unit-dialog.tsx`; `structure-api.ts`; any file under
-`supabase/`; `packages/db-types/generated.ts`; any existing e2e spec or helper.
+`campaign-wizard.tsx`; `campaign-settings.tsx`; `campaign-universe-section.tsx`; `step-employers-worksites.tsx`;
+`universe-match-mode-control.tsx`; `create-organising-unit-dialog.tsx`; `structure-api.ts`; the sync route; any file
+under `supabase/`; `packages/db-types/generated.ts`; any existing e2e spec or helper. (WP2.4b, not WP2.4, edits
+`sync-campaign-universe.ts` beyond `membersAdded` and `move-worker-mutation.ts:136–146`.)
 
 ---
 
@@ -946,12 +1081,13 @@ Not modified: every legacy composition file named in §3.1 principle 2; `WallCha
 | Per-unit View, Badges, Sort, Filter overrides removed | census assertions (zero such controls); `rg` in §5 finds no override helper in `v2/` |
 | Drag rules per plan 5.6 | `plan-drop` unit tests; interaction tests recording `structure_placements_move` / `_unassign` args; e2e flow three |
 | State in `user_campaign_prefs` and `?group=` | prefs schema tests; interaction tests on the recorded upsert and URL; e2e step 1 reload; `rg localStorage` in `v2/` = none |
-| e2e flow two | `groups-v2.spec.ts` test 1 green on the branch preview (E2-a) or the operator's step-1 report (E2-b) |
-| e2e flow three | test 2 (E2-a) or the operator's step-2 report (E2-b) |
+| e2e flow two | the operator's step-1 report on the branch preview (E2-b), recorded in §9.2; `groups-v2.spec.ts` test 1 written and type-checked |
+| e2e flow three | the operator's step-2 report (E2-b), recorded in §9.2; test 2 written and type-checked |
 | Appendix A §3 control inventory re-counted and reported | census console table pasted in §9.2 and in the PR; target "no per-unit filter or view override" asserted |
 | Worker search and the Units manager work with hidden units (appx A 2.3) | interaction tests; e2e step 3 |
 | `campaign_group_membership` consumed correctly | §4.1 equivalence test; e2e oracle reads the view |
-| Sync-on-open decided | §9.1 SY answer; board test asserts the query state per the answer; e2e asserts the request per the answer |
+| Sync-on-open decided (SY-c) | §9.1; board test: query issued on both paths, notice shown only when counts > 0, dismissible; `membersAdded` unit test; checklist step 5 |
+| Cross-campaign mirror (SM) | §9.1 answer recorded; design in §3.15; delivered by WP2.4b (its own ledger row and evidence) |
 | No migration; no RPC change; guard test green | `git diff --stat main -- supabase/ packages/db-types/` empty; guard test in `pnpm test` |
 | Full mode keeps working | every legacy vitest suite unchanged and green; legacy e2e specs green on the same preview |
 | Phase-2 exit metric available | `00_phase2_metrics.sql` output from dev pasted; production run is the operator's at phase exit |
@@ -970,10 +1106,14 @@ Not modified: every legacy composition file named in §3.1 principle 2; `WallCha
 | Hundreds of tiles in one Unassigned card (decision 4) | render-cost test with 305 all-Unassigned; no virtualisation in this package; if the budget fails, stop (§8.4) |
 | `WallChartTile` reuse depends on empty override maps resolving to the campaign default | pinned by `wall-chart-model.test.ts` today (`effectiveAssessmentForScope` with an empty map) and by the v2 interaction test on Colour by |
 | Dev campaign 1 may have a single group | the spec creates two custom units through the structure API and cleans them up, as `structure-api.spec.ts` does |
-| Under SY-b, organisers lose silent catch-up on page open | explicit syncs in Setup remain; the reverse sync covers worker edits; WP3.1 adds the visible sync; the operator can choose SY-a/SY-c |
+| SY-c: the notice shows on almost every open if counts are wrong | `membersAdded` replaces `workersAdded` (= all matched members) as the "added" figure; `ouAssignmentsSkipped` is reported as "already placed", never as a change; the message is null when all counts are zero (pure test) |
+| SY-c: notice fatigue on campaigns whose universe churns | dismissible; one per board mount; no persistence — if the operator later wants "don't show again" it is one more `wallChart` prefs key |
+| SY-c keeps a silent writer's side effects on page open (totals drift; the 334-worker case) | accepted by the operator; evidence rules stay "hazard counts, not row totals" (`PROGRESS.md` standing notes); the notice makes the drift visible to the person who caused it |
+| `sync-campaign-universe.ts` edited by a parallel Cursor session while WP2.4 adds `membersAdded` | the edit is 15 additive lines; the implementer merges `main` into the branch before Stage 1's commit and re-runs the 53 sync tests; stop condition 11 if the file has moved again under a still-active session |
+| SM deferred: until WP2.4b lands, a drag in one campaign still leaves a stale universe placement in another | the operator's requirement is met by WP2.4b, scheduled here with a bounded scope; the §3.14 notice already accepts its counts so no second UI change is needed |
 | The pre-existing render-cost timing failure in sandboxed runners | v2 and legacy numbers reported from the same run; "not worse" is the standard (§4.4) |
 | Lint creep from the new tree | touched lines clean; total ≤ 294 |
-| WP2.5/2.6/2.7 collide on `workforce-board.tsx`, `filters.ts`, `events.ts` | §3.17 boundaries; WP2.4 merges first; the later packages branch from the merged `main` |
+| WP2.5/2.6/2.7 collide on `workforce-board.tsx`, `filters.ts`, `events.ts` | §3.18 boundaries; WP2.4 merges first; the later packages branch from the merged `main` |
 
 ### 8.3 Deviations from plan (implementer keeps; numbering starts at D1)
 
@@ -993,6 +1133,8 @@ Not modified: every legacy composition file named in §3.1 principle 2; `WallCha
 8. Lint total would exceed 294 or `tsc` fails in an untouched file.
 9. Anything would touch `gteygwfgjvczanmrwgbr`, or an e2e run would target it (`restClientFor` refuses; the run stops there).
 10. A third fix round would be needed.
+11. `lib/workers/sync-campaign-universe.ts` or `workforce-board.tsx` has changed on `main` again since `8ad4c1ad` when
+    Stage 1 starts, and the operator has not said the parallel session has finished with those files.
 
 ---
 
@@ -1000,30 +1142,35 @@ Not modified: every legacy composition file named in §3.1 principle 2; `WallCha
 
 ### 9.1 Operator decisions and approvals
 
-| # | Question | Recommendation |
-|---|---|---|
-| **FL** | Where `groups_v2` lives: **FL-a** Preview env var; **FL-b** per-user `workspace_prefs.flags.groups_v2` through the existing admin API and a Users-dialog checkbox, default off; **FL-c** org-wide `app_settings` key (migration) | **FL-b** |
-| **SY** | Sync-on-open under `groups_v2`: **SY-a** keep; **SY-b** not issued on the v2 board (explicit syncs remain; WP2.8 deletes it with the flag); **SY-c** keep but announce with a toast | **SY-b** |
-| **PR** | Prefs: **PR-a** one `wallChart` document in `user_campaign_prefs.prefs`, no migration; **PR-b** typed columns / campaign default (migration + gate) | **PR-a** — **no migration** |
-| **CP** | Copy in v2: **CP-a** none (Shift-drag, selection-bar Copy and right-click Copy removed; cross-group placement in the sheet or by switching group); **CP-b** keep, cross-group only | **CP-a** |
-| **HU** | Hidden units: **HU-a** per-user server-side hidden set in the Units manager plus the Show empty units toggle; **HU-b** Show empty units only | **HU-a** |
-| **MN** | Card ⋯ menu: **MN-a** Rename and Set estimate via a small edit dialog on `units.update`, plus Assign people, Split, Merge, Delete; **MN-b** the four items only, Rename/estimate deferred to WP2.7 | **MN-a** |
-| **CA** | WP2.2 rows: **CA-a** A8 done and A5 decided here; A3, A4, D72 re-carried to WP2.7; **CA-b** all five here | **CA-a** |
-| **RD** | Realistic data set: **RD-a** not used by WP2.4; **RD-b** additionally run the read-only metrics SQL on it for a realistic preview of the phase-2 number | **RD-a** (RD-b is harmless if wanted) |
-| **E2** | Flows two and three: **E2-a** the Playwright spec run from a credentialled shell against the branch preview; **E2-b** operator by hand from the checklist, recorded by the orchestrator (the WP2.2 fallback) | write the spec; **E2-a if the operator can run it, else E2-b** |
+| # | Question | Recommendation | **Operator answer (2026-09-15)** |
+|---|---|---|---|
+| **FL** | Where `groups_v2` lives: **FL-a** Preview env var; **FL-b** per-user `workspace_prefs.flags.groups_v2` through the existing admin API and a Users-dialog checkbox, default off; **FL-c** org-wide `app_settings` key (migration) | FL-b | **FL-b approved** |
+| **SY** | Sync-on-open: **SY-a** keep silent; **SY-b** not issued on the v2 board; **SY-c** keep and announce | SY-b (Revision 1) | **SY-b rejected; SY-c adopted** — "on balance auto sync", plus a visible notice of what the sync changed on opening a wall chart (§3.14) |
+| **SM** | Cross-campaign mirror (§3.15): **SM-a** move only `universe`-sourced placements to the compatible unit, keep and report `manual`/`rule`; **SM-b** add-if-absent (today); **SM-c** always move | **SM-a, delivered as WP2.4b** | **pending** (raised by the operator as a requirement on 2026-09-15; the recommendation and the WP2.4b scoping await the operator's answer) |
+| **PR** | Prefs: **PR-a** one `wallChart` document in `user_campaign_prefs.prefs`, no migration; **PR-b** typed columns / campaign default (migration + gate) | PR-a — **no migration** | **PR-a approved** |
+| **CP** | Copy in v2: **CP-a** none; **CP-b** keep, cross-group only | CP-a | **CP-a approved** ("no need to copy if each group has a default Unassigned") |
+| **HU** | Hidden units: **HU-a** per-user server-side hidden set plus Show empty units; **HU-b** Show empty units only | HU-a | **HU-a approved** |
+| **MN** | Card ⋯ menu: **MN-a** Rename and Set estimate via a small edit dialog on `units.update`, plus Assign people, Split, Merge, Delete; **MN-b** the four items only | MN-a | **MN-a approved** |
+| **CA** | WP2.2 rows: **CA-a** A8 done and A5 decided here; A3, A4, D72 re-carried to WP2.7; **CA-b** all five here | CA-a | **CA-a approved** |
+| **RD** | Realistic data set: **RD-a** not used by WP2.4; **RD-b** additionally run the read-only metrics SQL on it | RD-a | **RD-a** |
+| **E2** | Flows two and three: **E2-a** the Playwright spec run from a credentialled shell; **E2-b** operator by hand from the checklist, recorded by the orchestrator | write the spec; E2-a if possible, else E2-b | **E2-b** — the operator tests by hand from the checklist (§4.5 steps 1–5); the orchestrator records |
 
-Approvals required, in order:
+Approvals still required, in order:
 
-1. Approve this plan with FL, SY, PR, CP, HU, MN, CA, RD and E2 answered (silence on a row = the recommendation).
-2. Approve `git checkout -b feat/oux-wp2.4-group-selector main`, the Stage-0 commit of this plan and the ledger row,
+1. The **SM** answer (SM-a recommended) and confirmation that WP2.4b is the vehicle (§3.15); if the operator wants SM
+   inside WP2.4 instead, it becomes Stage 2b between Stages 2 and 3 with the same content and the Stage 4 review
+   covers it — the planner advises against it for the three reasons in §3.15.
+2. Whether the parallel Cursor session continues on `sync-campaign-universe.ts` and the settings/universe files
+   (`PROGRESS.md:102`); WP2.4 Stage 1 touches that file for `membersAdded` only.
+3. Approve `git checkout -b feat/oux-wp2.4-group-selector main`, the Stage-0 commit of this plan and the ledger row,
    `git push -u origin feat/oux-wp2.4-group-selector`, and opening the draft PR.
-3. Approve each stage commit and push individually.
-4. For E2-a: run the §5 e2e command from a shell holding the `E2E_*` variables (never printed), or authorise a
-   credentialled child session to do so; for E2-b: perform the four-step checklist on the branch preview and report.
-5. Confirm the read-only `00_phase2_metrics.sql` may be run on normal dev by the agent (read is free under the
+4. Approve each stage commit and push individually.
+5. E2-b: perform the five-step checklist on the branch preview when Stage 3 is ready and report; the orchestrator
+   records the result in §9.2.
+6. Confirm the read-only `00_phase2_metrics.sql` may be run on normal dev by the agent (read is free under the
    standing notes; confirmation requested because the file is new).
 
-**Orchestrator approval:** _pending._
+**Orchestrator approval:** _pending (Revision 2 awaiting the SM answer; every other decision is answered)._
 
 ### 9.2 Verification output (verifier pastes raw output)
 
@@ -1037,6 +1184,17 @@ _pending._
 
 ## 10. Revision history
 
+- **Revision 2** (2026-09-15): operator answers recorded (FL-b, PR-a, CP-a, HU-a, MN-a, CA-a, RD-a approved; **SY-b
+  rejected, SY-c adopted**; **E2-b** chosen). §3.14 redesigned as SY-c: the mount sync stays on both chart paths and
+  a dismissible inline notice on `WorkforceBoard` reports `membersAdded` (new, truthful count), placements made and
+  placements skipped, with a pure message helper and tests; the board's invalidation condition tightened. New §3.15
+  **SM** (cross-campaign mirror) with options SM-a/b/c, the SM-a rule (move only `universe`-sourced placements to the
+  compatible unit; keep and report `manual`/`rule`), its RPC calls, notice/toast wording and tests, scoped as the
+  bounded follow-up **WP2.4b**. §2.8 re-cited against `main` at `8ad4c1ad` (Cursor commits `e47b4d10`, `4461c2ee`:
+  employer-AND-worksite default match mode, `universe-match-mode-control.tsx`, new line numbers in
+  `sync-campaign-universe.ts`, `campaign-settings.tsx`, `campaign-universe-section.tsx`, `campaign-wizard.tsx`,
+  `step-employers-worksites.tsx`). Stages, files, evidence, risks and stop conditions updated (stop condition 11:
+  the parallel session). Later §3 sections renumbered (3.16–3.19).
 - **Revision 1** (2026-09-15): initial plan against `main` at `bd0c44d0`. Recommends FL-b, SY-b, PR-a (no migration),
   CP-a, HU-a, MN-a, CA-a, RD-a, E2-a with E2-b fallback. Two shells behind one per-user flag; one filter pipeline;
   derived Unassigned per group and Not in any group as pure functions equivalent to `campaign_group_membership`;

@@ -1305,6 +1305,10 @@ any later group-model consumer exists.
 - **Shipment waiver** (2026-09-13): operator directs shipment from production-shaped clone evidence,
   explicitly waives normal-dev schema/e2e for this release, and directs pending type generation from the
   clone. This records a verification gap and does not authorise production application.
+- **Production application** (2026-09-13/14): the operator applied the migration to production on
+  2026-09-13 before the cleanup; `04` stopped at the F1 gate with 134 residual partitions; the cleanup
+  sequence (`02a` → 13 mappings → `02b` → `03a` → `03b` block 1 → one placement override → full `03b`)
+  was run on 2026-09-14 and `04` then passed. Evidence in §15. Package complete on production.
 
 ---
 
@@ -1677,3 +1681,129 @@ This evidence is not final package approval.
 
 Final reviewer verdict: **APPROVE FOR PR/MAIN WITH PRODUCTION DB GATE**. WP2.1 is ready for the evidence
 commit and PR/main path. No commit, PR or merge is claimed.
+
+---
+
+## 15. Production application evidence (2026-09-13 and 2026-09-14)
+
+Operator-run in the Supabase SQL Editor against production `gteygwfgjvczanmrwgbr`, `postgres` role, RLS
+bypassed, one file per submission. The agent prepared each file (guard line inserted after the first
+`BEGIN;`; read-only verification appended after `COMMIT;`) and never executed anything against production.
+
+### 15.1 What happened, in order
+
+1. **2026-09-13, between 23:46 UTC (12th) and 01:51 UTC (13th):** the operator applied
+   `20260912035329_wp2_1_campaign_groups.sql` to production **without first running the cleanup**
+   (run-sheet steps 1–12 skipped). Detected the next day from `main`'s automatic types regeneration
+   (`9138424f`, generated from production, kept every WP2.1 symbol that `5fe7c93` had stripped) and
+   confirmed by a read-only catalog query: ledger row `20260912035329` present; `campaign_groups`,
+   `campaign_organising_units.group_id` and `campaign_worker_ou.group_id` present; **20 groups**.
+2. **2026-09-13:** exact `04_postflight_hazards.sql` **STOPPED** with
+   `P0001 Postflight STOP: 134 live campaign-universe future-group/worker partitions still have multiple
+   equal-maximum-specificity enabled F1 targets after C1`. Every check before the gate passed (ou_type →
+   group-key mapping complete, all ten dependent views present, dependant-reference checksums computed).
+   Root cause: C1 had not been applied — `auto_match=false` on 0 of 239 units; no `03a` rows in
+   `_oux_hygiene_log`; neither mapping table existed.
+3. **2026-09-14 (UTC):** cleanup run in the original order, after the migration. Safe because `03a`
+   updates only `unit_basis` (not in either WP2.1 trigger's `UPDATE OF` list) and the README records
+   `03b`/its rollback as valid while WP2.1 is installed without the unique index.
+
+| Step | File / action | Result |
+|---|---|---|
+| 1 | exact `00_preflight_hazards.sql` (read-only) | `h10_enabled_duplicate_basis_sets` 13; `f1_pre_specificity_multi_target_partitions` 338 / excess 772; `f1_fallback_targets_suppressed` 564; `f1_max_specificity_multi_target_partitions` **134** / excess 208; units 239, memberships 2,990, placements 1,652, rules 2 |
+| 2 | `02a_h10_canonical_basis_mapping.sql` (+ guard) | table created, 0 rows |
+| 3 | 13 `INSERT`s into `_oux_wp21_canonical_basis` (+ guard) | 13 rows; all sets in campaign 57 / `kind:worksite`; winners chosen by most placements, ties (3) by lower `display_order` — see §15.2 |
+| 4 | `02b_placement_mapping.sql` (+ guard) | table created, 0 rows |
+| 5 | `03a_canonicalise_duplicate_bases.sql` (+ guard) | committed; **16** units flagged `auto_match=false` of 239 (29 in sets − 13 canonical; same count as the clone) |
+| 6 | `03b` Block 1 only (+ guard) | 100 partitions: 99 `planned`, **1 `unresolved`** (campaign 57 / `kind:worksite` / worker 3014: rule rows on 556 and 505, neither primary, neither a dimension match — the same partition the clone needed) |
+| 7 | 1 `INSERT` into `_oux_wp21_placement_mapping` (+ guard) | `(57, 'kind:worksite', 3014, keep_ou_id 556)` |
+| 8 | full `03b_resolve_future_group_conflicts.sql`, both blocks in one submission (+ guard after each `BEGIN;`) | committed; post-checks passed; `partitions_applied` 100, `partitions_unresolved` 0, `placements_deleted` (03b delete audit rows) **177**, placements after 1,708 |
+| 9 | read-only: placements by `created_at` hour (3 days) | one bucket: 2026-09-14 03:00 UTC, campaign 57, `rule`, 95 rows — see §15.3 |
+| 10 | exact `04_postflight_hazards.sql` (read-only) | **PASSED** — reached its final evidence statement; see §15.4 |
+
+### 15.2 Canonical mappings recorded on production (campaign 57, `kind:worksite`)
+
+| employer_id | worksite_id | units in set (placements at choice time) | canonical_ou_id | note |
+|---|---|---|---|---|
+| 28 | 194 | 556 (6), 505 (2) | 556 | most placements |
+| 37 | null | 555 (2), 482 (10) | 482 | most placements |
+| 37 | 221 | 550 (2), 506 (6) | 506 | most placements |
+| 38 | 3 | 529 (1), 475 (1) | 529 | tie; lower display order |
+| 39 | null | 466 (1), 509 (3), 511 (1) | 509 | most placements |
+| 43 | null | 589 (1), 595 (1), 492 (21) | 492 | most placements |
+| 43 | 204 | 494 (1), 496 (8) | 496 | most placements |
+| 43 | 209 | 584 (1), 499 (1) | 584 | tie; lower display order |
+| 48 | null | 579 (1), 487 (2) | 487 | most placements |
+| 48 | 413 | 576 (1), 578 (2) | 578 | most placements |
+| 705 | null | 472 (1), 519 (1), 521 (3) | 521 | most placements |
+| 705 | 236 | 513 (1), 522 (1) | 513 | tie; lower display order |
+| 797 | null | 600 (4), 604 (1) | 600 | most placements |
+
+No unit had a live rule (`rule_count` 0 everywhere), so the rule-first criterion never applied.
+
+### 15.3 Placement and membership drift during the run (recorded, not a defect of the cleanup)
+
+Preflight counted 2,990 memberships / 1,652 placements; the passing postflight counted 3,324 / 1,708.
+Between them the operator opened campaign 57's wall chart once, with no interaction. The campaign page
+mounts `WorkforceBoard`, whose `useQuery(["sync-universe-workers", campaignId])` POSTs
+`/api/campaigns/[id]/sync-universe-workers` on mount for any user with write access (5-minute
+`staleTime`), and that route runs `syncCampaignUniverseFromEmployersWorksites`. That sync enrolled 334
+workers and inserted 233 `rule` placements (1,652 + 233 − 177 = 1,708); the cleanup's Block 1 re-planned
+after them, deleted the 138 that landed in losing units, and left 95 in winning units. `03b`'s own
+post-checks (membership count unchanged within its transaction; placements = baseline − logged deletions;
+H9 = 0) passed with those rows present. Consequence for future evidence: production membership and
+placement counts move whenever a writer opens a campaign; compare hazard counts, not row totals.
+
+### 15.4 Passing postflight evidence (2026-09-14)
+
+| evidence_label | row_count | checksum |
+|---|---|---|
+| application:campaign_organising_units | 239 | 8adec341ff176305497e637a83919adf |
+| application:campaign_unit_rules | 2 | 5019cdf74e1f62903c4f75b5c0625db1 |
+| application:campaign_worker_membership | 3324 | 7205aedeb27761c04110934a9dfe26e2 |
+| application:campaign_worker_ou | 1708 | 9ed3f7c1dd986c1f7a03549d5dd370ff |
+| hazard:f1_fallback_targets_suppressed | 226 | aaf76cce31b279f8f859fb1f6c3d05f2 |
+| hazard:f1_max_specificity_excess_targets | 0 | d41d8cd98f00b204e9800998ecf8427e |
+| hazard:f1_max_specificity_multi_target_partitions | 0 | d41d8cd98f00b204e9800998ecf8427e |
+| hazard:f1_pre_specificity_excess_targets | 226 | aaf76cce31b279f8f859fb1f6c3d05f2 |
+| hazard:f1_pre_specificity_multi_target_partitions | 226 | 7749bb7dd5428772aa5114b315421771 |
+| hazard:h10_enabled_duplicate_basis_sets | 0 | d41d8cd98f00b204e9800998ecf8427e |
+| metadata:campaign_organising_units_updated_at | 239 | 0c530d3a903d8714fa274c280bcc5af3 |
+| ou_dependant:_oux_wp21_canonical_basis:…:canonical_ou_id | 13 | beef3d5ab9b873c384c64bd048c56478 |
+| ou_dependant:_oux_wp21_placement_mapping:…:keep_ou_id | 1 | 43e675097b995a779b2980a175959385 |
+| ou_dependant:campaign_groups:…:source_ou_id | 2 | c5e740c1c3fa70e526887fac88234e58 |
+| ou_dependant:campaign_organising_units:…:ou_group_id | 150 | 5bcd99bffc86cd945c2a5cae925ffb89 |
+| ou_dependant:campaign_organising_units:…:parent_ou_id | 150 | 5bcd99bffc86cd945c2a5cae925ffb89 |
+| ou_dependant:campaign_unit_rules:…:ou_id | 2 | 3da9274526f44479b4b49b26fa8be822 |
+| ou_dependant:campaign_worker_list_items:…:source_ou_id | 878 | 9e3c700214c253b2cd1fe7536f8ac8df |
+| ou_dependant (candidates, coverage, workplan tasks, wocs, section-plan overrides, structure tests, woc scope units) | 0 each | d41d8cd98f00b204e9800998ecf8427e |
+| view:* (all ten) | 1 each | identical to the 2026-09-13 preflight checksums |
+
+The F1 shape (226 pre-specificity partitions / 226 suppressed / 0 residual) is exactly the clone's
+read-only simulation (§14.5). Every `ou_dependant` checksum is unchanged from the preflight, so C1 and
+03b touched nothing outside `campaign_organising_units.unit_basis` and `campaign_worker_ou`.
+
+### 15.5 Deviations from the run sheet, recorded
+
+- Migration applied before cleanup (steps 13 before 1–12). The clean `04` afterwards is the evidence that
+  order did not matter for this data; it is not a licence to repeat it.
+- The clone re-rehearsal of the recovered cleanup bytes (`03b_rollback → 03a_rollback → 03a → 03b → 04`)
+  required by §14.9 did **not** happen before production. The recovered `03a`/`03b` bytes ran on
+  production directly and passed their own pre/post-checks. The rollback scripts have therefore never run
+  on the recovered bytes anywhere; if a rollback is ever needed, rehearse `03b_rollback` and
+  `03a_rollback` on a fresh clone first.
+- `95_role_probes.sql` was not run on production (clone-only by design). `90` was not needed.
+- The CLI was not used; all steps went through the SQL Editor, so `supabase/.temp/` was not touched.
+
+### 15.6 State after this section
+
+- Production: WP2.1 schema present; 20 groups; C1 applied (16 flagged units, 13 mappings); H9 = 0 at
+  the time of the postflight; helper tables `_oux_hygiene_log`, `_oux_wp21_canonical_basis`,
+  `_oux_wp21_placement_mapping`, `_oux_wp21_conflicts` retained on purpose (needed by the rollbacks and by
+  WP2.2's `03b` re-run before enforcement).
+- `main`'s `generated.ts` now regenerates **with** the WP2.1 symbols; the develop/main divergence
+  recorded in `PROGRESS.md` is closed.
+- Normal dev `dpnnmkhabysfdogllsyh` **does** have the migration (verified read-only 2026-09-14 via the Supabase connector: ledger row `20260912035329 wp2_1_campaign_groups` (and `20260913000000 an_survey_reports`) present; `campaign_groups` and `user_campaign_prefs` tables, both `group_id` columns, 4 groups, 8 units all grouped, 111 placements / 111 memberships, 0 flagged units, no membership view, no unique index). It was not
+  applied in this session and who pushed it is not recorded; it sits in dev's ledger together with
+  `20260913000000_an_survey_reports`, so it most likely arrived with that package's `db push`. Dev's F1/H10
+  residuals were already 0 (§14.12), so no cleanup is needed there. `wp/wp2.2.md` §0 step 2 is done.

@@ -1,4 +1,5 @@
-import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { structureApi } from "@/lib/campaign/structure-api";
+import { fetchAllRows, POSTGREST_PAGE_SIZE } from "@/lib/supabase/fetch-all-rows";
 
 /**
  * Keep campaign membership and employer/worksite organising units in step
@@ -9,6 +10,16 @@ import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
  * worker is placed at an employer or worksite, they should appear in every
  * active/planning (non-SMS-episode) campaign whose universe includes that
  * employer or worksite — and in any matching employer/worksite units.
+ *
+ * WP2.2 Stage 6 (wp2.2.md §3.11 row 15, §3.7, §3.8 R1, §3.10): every
+ * placement this module writes goes through `structureApi(client)
+ * .placements.assign({ source: "universe", onConflict: "skip" })`, one call
+ * per target unit, so a worker already placed in the target's group is
+ * skipped rather than duplicated (C-a) and Recompute no longer withdraws
+ * these rows (R1). A matched worksite child's Employer container (a container
+ * with a group) is also a target, so members get their Employer placement at
+ * sync time (§3.7). `loadOuTargets` is paged (§3.10). Membership rows are not
+ * one of the two structure tables and are still upserted directly.
  */
 
 export type WorkerPlacement = {
@@ -31,6 +42,12 @@ export type OuPlacementTarget = {
   autoMatch: boolean;
   employerId: number | null;
   worksiteId: number | null;
+  /**
+   * `ou_group_id` — the group container this unit is a member of, when any
+   * (§3.7: a matched member's container is a target too). Optional so the
+   * pure matcher keeps accepting the pre-Stage-6 shape.
+   */
+  ouGroupId?: number | null;
 };
 
 export type LegacyOuGroupIdentity = {
@@ -56,6 +73,14 @@ const GROUP_KIND_BY_OU_TYPE: Readonly<Record<string, string>> = {
 
 const MEMBERSHIP_CHUNK = 200;
 const OU_CHUNK = 200;
+
+/**
+ * Page size of the `loadOuTargets` read (wp2.2.md §3.10): PostgREST's
+ * max-rows setting silently truncates an unranged select, so the units are
+ * read in `.order("ou_id").range(from, from + PAGE_SIZE - 1)` pages until a
+ * short page. Exported for the paging test.
+ */
+export const PAGE_SIZE: number = POSTGREST_PAGE_SIZE;
 
 /**
  * Mirrors WP2.1's FGK-EXPRESSION using only columns that predate the migration,
@@ -123,12 +148,40 @@ export function matchingOusForWorker(
     );
   }
 
-  return candidates
-    .filter(
-      (candidate) =>
-        candidate.specificity === maximumSpecificity.get(candidate.partitionKey)
-    )
-    .map((candidate) => candidate.ouId);
+  // One unit per group (Stage 6 fix round 1, A1): of the equally specific
+  // candidates in a partition (campaign + future group) only the first in
+  // input order is kept — the "keep one" the RPC would apply anyway with
+  // `p_on_conflict: "skip"` (C-a), decided here so the choice is per worker
+  // and deterministic, and so the container appended below always belongs
+  // to the child the worker actually lands on.
+  const seenPartition = new Set<string>();
+  const matched: number[] = [];
+  for (const candidate of candidates) {
+    if (candidate.specificity !== maximumSpecificity.get(candidate.partitionKey)) continue;
+    if (seenPartition.has(candidate.partitionKey)) continue;
+    seenPartition.add(candidate.partitionKey);
+    matched.push(candidate.ouId);
+  }
+
+  // §3.7 (Stage 6, D13 follow-up): the group container a matched member
+  // belongs to is a target for the same worker, so a worksite member gets
+  // the Employer placement `structure_materialise_employer_placements`
+  // would give it. Only a container with a group is a legal target (C-e);
+  // for the legacy columns this module reads, "has a group" is exactly
+  // `futureGroupKey != null` (a custom-kind container's key is null). The
+  // container's own basis / auto_match is not consulted — as in M2, the
+  // child's match is what places the worker. Appended after the matched
+  // units, once each; `p_on_conflict: "skip"` makes the extra row idempotent.
+  const byId = new Map(ous.map((ou) => [ou.ouId, ou]));
+  const out = [...matched];
+  for (const ouId of matched) {
+    const parentId = byId.get(ouId)?.ouGroupId;
+    if (parentId == null || out.includes(parentId)) continue;
+    const parent = byId.get(parentId);
+    if (!parent || !parent.isGroupContainer || parent.futureGroupKey == null) continue;
+    out.push(parentId);
+  }
+  return out;
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -227,32 +280,44 @@ async function loadActiveCampaignUniverses(supabase: Supa): Promise<CampaignUniv
   }));
 }
 
-async function loadOuTargets(
+type OuTargetRow = {
+  ou_id: number;
+  campaign_id: number;
+  ou_type: string;
+  ou_group_id: number | null;
+  is_group_container: boolean;
+  unit_basis: unknown;
+};
+
+/**
+ * The campaign's units as placement targets. Paged per campaign batch
+ * (wp2.2.md §3.10): `.order("ou_id", { ascending: true }).range(from, from +
+ * PAGE_SIZE - 1)` until a short page, so a campaign batch with more units
+ * than PostgREST's max-rows setting is read completely. Exported for the
+ * paging test.
+ */
+export async function loadOuTargets(
   supabase: Supa,
   campaignIds: number[]
 ): Promise<OuPlacementTarget[]> {
   const out: OuPlacementTarget[] = [];
   for (const batch of chunk(campaignIds, 200)) {
-    const { data, error } = await supabase
-      .from("campaign_organising_units")
-      .select(
-        "ou_id, campaign_id, ou_type, ou_group_id, is_group_container, unit_basis"
-      )
-      .in("campaign_id", batch);
-    if (error) throw new Error(error.message);
+    const data = await fetchAllRows<OuTargetRow>(
+      (from, to) =>
+        supabase
+          .from("campaign_organising_units")
+          .select(
+            "ou_id, campaign_id, ou_type, ou_group_id, is_group_container, unit_basis"
+          )
+          .in("campaign_id", batch)
+          .order("ou_id", { ascending: true })
+          .range(from, to),
+      PAGE_SIZE
+    );
 
     const rows: Array<
       LegacyOuGroupIdentity & { campaignId: number; unitBasis: unknown }
-    > = (
-      (data ?? []) as Array<{
-        ou_id: number;
-        campaign_id: number;
-        ou_type: string;
-        ou_group_id: number | null;
-        is_group_container: boolean;
-        unit_basis: unknown;
-      }>
-    ).map((row) => ({
+    > = data.map((row) => ({
         ouId: row.ou_id,
         campaignId: row.campaign_id,
         ouType: row.ou_type,
@@ -272,6 +337,7 @@ async function loadOuTargets(
         autoMatch: parseUnitBasisAutoMatch(row.unitBasis),
         employerId: parseUnitBasisId(row.unitBasis, "employer_id"),
         worksiteId: parseUnitBasisId(row.unitBasis, "worksite_id"),
+        ouGroupId: row.ouGroupId,
       });
     }
   }
@@ -295,26 +361,55 @@ async function upsertMembership(
   return count;
 }
 
-async function upsertOuAssignments(
+type OuPlacementRow = { campaignId: number; ouId: number; workerId: number };
+
+export type OuPlacementCounts = {
+  /** Rows the RPC inserted (`inserted`). */
+  ouAssignmentsUpserted: number;
+  /** Rows the RPC left out: already on the unit, or already in a unit of that group (`skipped`). */
+  ouAssignmentsSkipped: number;
+};
+
+/**
+ * One `structure_placements_assign` per target unit (wp2.2.md §3.11 row 15):
+ * `p_source: "universe"` (R1), `p_on_conflict: "skip"`, worker ids batched
+ * per unit in `OU_CHUNK`s as the legacy upsert batched its rows. Units are
+ * visited in first-seen order. Counts come from the RPC's result, not from
+ * the number of rows sent (the legacy count included ignored duplicates).
+ */
+async function assignOuPlacements(
   supabase: Supa,
-  rows: { ou_id: number; worker_id: number; assignment_source: string }[]
-): Promise<number> {
-  if (rows.length === 0) return 0;
-  let count = 0;
-  for (const batch of chunk(rows, OU_CHUNK)) {
-    const { error } = await supabase.from("campaign_worker_ou").upsert(batch, {
-      onConflict: "ou_id,worker_id",
-      ignoreDuplicates: true,
-    });
-    if (error) throw new Error(error.message);
-    count += batch.length;
+  rows: OuPlacementRow[]
+): Promise<OuPlacementCounts> {
+  const counts: OuPlacementCounts = { ouAssignmentsUpserted: 0, ouAssignmentsSkipped: 0 };
+  if (rows.length === 0) return counts;
+  const byUnit = new Map<string, { campaignId: number; ouId: number; workerIds: number[] }>();
+  for (const row of rows) {
+    const key = `${row.campaignId}:${row.ouId}`;
+    const unit = byUnit.get(key) ?? { campaignId: row.campaignId, ouId: row.ouId, workerIds: [] };
+    if (!unit.workerIds.includes(row.workerId)) unit.workerIds.push(row.workerId);
+    byUnit.set(key, unit);
   }
-  return count;
+  const api = structureApi(supabase);
+  for (const unit of byUnit.values()) {
+    for (const batch of chunk(unit.workerIds, OU_CHUNK)) {
+      const res = await api.placements.assign({
+        campaignId: unit.campaignId,
+        ouId: unit.ouId,
+        workerIds: batch,
+        source: "universe",
+        isPrimary: false,
+        onConflict: "skip",
+      });
+      counts.ouAssignmentsUpserted += res.inserted;
+      counts.ouAssignmentsSkipped += res.skipped;
+    }
+  }
+  return counts;
 }
 
-export type SyncWorkersResult = {
+export type SyncWorkersResult = OuPlacementCounts & {
   membershipsUpserted: number;
-  ouAssignmentsUpserted: number;
   campaignsTouched: number;
   /**
    * Matching campaigns the actor cannot write to (WP1.6). Their enrolment is
@@ -327,6 +422,7 @@ export type SyncWorkersResult = {
 const EMPTY_SYNC_RESULT: SyncWorkersResult = {
   membershipsUpserted: 0,
   ouAssignmentsUpserted: 0,
+  ouAssignmentsSkipped: 0,
   campaignsTouched: 0,
   campaignsSkippedNoAccess: 0,
 };
@@ -426,30 +522,35 @@ export async function syncWorkersToMatchingCampaigns(
     ousByCampaign.set(ou.campaignId, list);
   }
 
-  const ouRows: { ou_id: number; worker_id: number; assignment_source: string }[] = [];
+  const ouRows: OuPlacementRow[] = [];
   for (const campaign of matchingCampaigns) {
     const campaignOus = ousByCampaign.get(campaign.campaignId) ?? [];
     for (const worker of workers) {
       if (!workerMatchesCampaignUniverse(worker, campaign)) continue;
       for (const ouId of matchingOusForWorker(worker, campaignOus)) {
-        ouRows.push({ ou_id: ouId, worker_id: worker.workerId, assignment_source: "rule" });
+        ouRows.push({ campaignId: campaign.campaignId, ouId, workerId: worker.workerId });
       }
     }
   }
 
   const membershipsUpserted = await upsertMembership(supabase, membershipRows);
-  const ouAssignmentsUpserted = await upsertOuAssignments(supabase, ouRows);
+  const placementCounts = await assignOuPlacements(supabase, ouRows);
   return {
     membershipsUpserted,
-    ouAssignmentsUpserted,
+    ...placementCounts,
     campaignsTouched: matchingCampaigns.length,
     campaignsSkippedNoAccess: skippedNoAccess,
   };
 }
 
-export type SyncCampaignUniverseResult = {
+export type SyncCampaignUniverseResult = OuPlacementCounts & {
   workersAdded: number;
-  ouAssignmentsUpserted: number;
+};
+
+const EMPTY_CAMPAIGN_SYNC_RESULT: SyncCampaignUniverseResult = {
+  workersAdded: 0,
+  ouAssignmentsUpserted: 0,
+  ouAssignmentsSkipped: 0,
 };
 
 /**
@@ -461,7 +562,7 @@ export async function syncCampaignUniverseFromEmployersWorksites(
   campaignId: number
 ): Promise<SyncCampaignUniverseResult> {
   if (!Number.isFinite(campaignId)) {
-    return { workersAdded: 0, ouAssignmentsUpserted: 0 };
+    return { ...EMPTY_CAMPAIGN_SYNC_RESULT };
   }
 
   const { data: campaign, error: campErr } = await supabase
@@ -471,7 +572,7 @@ export async function syncCampaignUniverseFromEmployersWorksites(
     .maybeSingle();
   if (campErr) throw new Error(campErr.message);
   if (!campaign || campaign.is_sms_episode) {
-    return { workersAdded: 0, ouAssignmentsUpserted: 0 };
+    return { ...EMPTY_CAMPAIGN_SYNC_RESULT };
   }
 
   const { data: employers, error: empErr } = await supabase
@@ -492,7 +593,7 @@ export async function syncCampaignUniverseFromEmployersWorksites(
     .filter((id: number | null): id is number => id != null);
 
   if (employerIds.length === 0 && worksiteIds.length === 0) {
-    return { workersAdded: 0, ouAssignmentsUpserted: 0 };
+    return { ...EMPTY_CAMPAIGN_SYNC_RESULT };
   }
 
   const matchedIds = new Set<number>();
@@ -521,7 +622,7 @@ export async function syncCampaignUniverseFromEmployersWorksites(
 
   const workerIds = [...matchedIds];
   if (workerIds.length === 0) {
-    return { workersAdded: 0, ouAssignmentsUpserted: 0 };
+    return { ...EMPTY_CAMPAIGN_SYNC_RESULT };
   }
 
   const membershipRows = workerIds.map((worker_id) => ({ campaign_id: campaignId, worker_id }));
@@ -529,14 +630,14 @@ export async function syncCampaignUniverseFromEmployersWorksites(
 
   const placements = await loadWorkerPlacements(supabase, workerIds);
   const ous = await loadOuTargets(supabase, [campaignId]);
-  const ouRows: { ou_id: number; worker_id: number; assignment_source: string }[] = [];
+  const ouRows: OuPlacementRow[] = [];
   for (const worker of placements) {
     for (const ouId of matchingOusForWorker(worker, ous)) {
-      ouRows.push({ ou_id: ouId, worker_id: worker.workerId, assignment_source: "rule" });
+      ouRows.push({ campaignId, ouId, workerId: worker.workerId });
     }
   }
-  const ouAssignmentsUpserted = await upsertOuAssignments(supabase, ouRows);
-  return { workersAdded: workerIds.length, ouAssignmentsUpserted };
+  const placementCounts = await assignOuPlacements(supabase, ouRows);
+  return { workersAdded: workerIds.length, ...placementCounts };
 }
 
 /**

@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:contract": "vitest run -c vitest.contract.config.ts",
     "e2e": "playwright test"
   },
   "dependencies": {

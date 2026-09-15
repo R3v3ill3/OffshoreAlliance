@@ -8,7 +8,7 @@ import { LANDING_PARAM } from "@/lib/workspace/landing";
 import { resolveWorkspace, type WorkspaceMode } from "@/lib/workspace/resolve";
 import type { UserRole, WorkRole } from "@/types/organising-row-types";
 
-import { ADMIN_STORAGE_STATE, E2E_BASE_URL, STORAGE_STATE } from "../../playwright.config";
+import { ADMIN_STORAGE_STATE, E2E_BASE_URL, E2E_IGNORE_HTTPS_ERRORS, STORAGE_STATE } from "../../playwright.config";
 import {
   E2E_USER_EMAIL,
   E2E_USER_PASSWORD,
@@ -100,6 +100,7 @@ async function expectedLandingFor(
   const admin = await browser.newContext({
     baseURL: E2E_BASE_URL,
     storageState: resolve(__dirname, "../..", ADMIN_STORAGE_STATE),
+    ignoreHTTPSErrors: E2E_IGNORE_HTTPS_ERRORS,
   });
   try {
     const list = await admin.request.get("/api/admin/users");

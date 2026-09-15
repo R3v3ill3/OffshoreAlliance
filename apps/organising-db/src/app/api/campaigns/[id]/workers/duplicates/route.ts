@@ -3,6 +3,8 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { errorResponse } from "@/lib/api/error-response";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { isStructureApiError, structureApi } from "@/lib/campaign/structure-api";
+import { structureErrorMessage, structureErrorStatus } from "@/lib/campaign/structure-error-message";
 import {
   findDuplicateClusters,
   type DuplicateCandidate,
@@ -120,19 +122,11 @@ async function removeFromCampaign(
   campaignId: number,
   workerId: number
 ) {
-  const { data: ouRows } = await supabase
-    .from("campaign_organising_units")
-    .select("ou_id")
-    .eq("campaign_id", campaignId);
-  const ouIds = (ouRows ?? []).map((r: { ou_id: number }) => r.ou_id);
-  if (ouIds.length > 0) {
-    const { error: ouErr } = await supabase
-      .from("campaign_worker_ou")
-      .delete()
-      .eq("worker_id", workerId)
-      .in("ou_id", ouIds);
-    if (ouErr) throw ouErr;
-  }
+  // WP2.2 Stage 6 (wp2.2.md §3.11 row 19): the legacy delete was scoped to
+  // this campaign's units (it read their ids first), so one
+  // `structure_placements_unassign` with no `p_ou_id` — every placement of
+  // the worker in this campaign — before the membership row goes.
+  await structureApi(supabase).placements.unassign({ campaignId, workerIds: [workerId] });
   const { error: memErr } = await supabase
     .from("campaign_worker_membership")
     .delete()
@@ -226,6 +220,13 @@ export async function POST(
     return NextResponse.json({ ok: true, removed, merged });
   } catch (error) {
     console.error("POST worker duplicates resolve error:", error);
+    if (isStructureApiError(error)) {
+      return errorResponse(
+        structureErrorMessage(error, "Failed to resolve duplicates"),
+        { code: error.code, details: error.details ?? null, hint: error.hint ?? null },
+        structureErrorStatus(error)
+      );
+    }
     return errorResponse("Failed to resolve duplicates", error);
   }
 }

@@ -3,6 +3,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { assertRowsAffected } from '@/lib/supabase/assert-rows-affected'
+import { structureApi } from '@/lib/campaign/structure-api'
+import { structureErrorMessage } from '@/lib/campaign/structure-error-message'
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import { toast } from 'sonner'
 
@@ -68,25 +70,18 @@ export function useRemoveWorkerFromCampaign({
         .eq('worker_id', workerId)
         .maybeSingle()
 
-      // 2. Remove all OU assignments for this worker in this campaign.
-      const { data: ouRows } = await supabase
-        .from('campaign_organising_units')
-        .select('ou_id')
-        .eq('campaign_id', cidNum)
-      const ouIds = (ouRows ?? []).map((r) => r.ou_id)
-      //    A worker may legitimately be in no unit, so expected is 0 here (the
-      //    helper only rethrows a transport error); the membership delete
-      //    below is the loud check.
-      let unitRowsRemoved = 0
-      if (ouIds.length > 0) {
-        const ouRes = await supabase
-          .from('campaign_worker_ou')
-          .delete({ count: 'exact' })
-          .eq('worker_id', workerId)
-          .in('ou_id', ouIds)
-        assertRowsAffected(ouRes, 0, 'Removing the worker from its units')
-        unitRowsRemoved = ouRes.count ?? 0
-      }
+      // 2. Remove all OU assignments for this worker in this campaign —
+      //    WP2.2 §3.11 row 12: one `structure_placements_unassign` with no
+      //    unit and no group, i.e. every placement of the worker on the
+      //    campaign's units (the RPC scopes the delete to the campaign; the
+      //    legacy ou_id read is no longer needed). A worker may legitimately
+      //    be in no unit, so `removed: 0` is fine; a refusal (42501) throws
+      //    instead of an RLS-silent zero. The membership delete below stays
+      //    the loud check for the row that must exist.
+      const { removed: unitRowsRemoved } = await structureApi(supabase).placements.unassign({
+        campaignId: cidNum,
+        workerIds: [workerId],
+      })
 
       // 3. Remove campaign membership. The row exists for every member, so
       //    zero rows normally means RLS filtered the delete (WP1.6) — fail
@@ -158,9 +153,9 @@ export function useRemoveWorkerFromCampaign({
       }
     },
     // Invalidate on settle, not only on success: the steps above are several
-    // deletes without a transaction, so a NoRowsAffectedError part-way (unit
-    // rows gone, membership refused) must refetch to show the real state
-    // rather than keep the pre-removal picture.
+    // writes without one transaction (the unassign is its own), so a
+    // NoRowsAffectedError part-way (unit rows gone, membership refused) must
+    // refetch to show the real state rather than keep the pre-removal picture.
     onSettled: () => {
       const cidStr = String(campaignId)
       const cidNum = Number(campaignId)
@@ -182,7 +177,9 @@ export function useRemoveWorkerFromCampaign({
       onRemoved?.()
     },
     onError: (err: Error) => {
-      toast.error(err.message || 'Failed to remove worker from campaign')
+      // A StructureApiError kind becomes its organiser sentence (D28/D40); a
+      // plain Error keeps its own message exactly as before.
+      toast.error(structureErrorMessage(err, 'Failed to remove worker from campaign'))
     },
   })
 }

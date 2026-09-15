@@ -2,7 +2,7 @@ import { request as playwrightRequest } from "@playwright/test";
 
 import type { HintId } from "@/lib/hints/registry";
 
-import { STORAGE_STATE } from "../../playwright.config";
+import { E2E_IGNORE_HTTPS_ERRORS, STORAGE_STATE } from "../../playwright.config";
 import { restClientFor, sessionFromStorageState, type RestClient } from "./roles/campaign-cleanup";
 
 /**
@@ -61,7 +61,7 @@ export async function insertHintDismissal(
  * order-dependent failures the seed exists to prevent.
  */
 export async function seedHintDismissal(hintId: HintId): Promise<void> {
-  const api = await playwrightRequest.newContext();
+  const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: E2E_IGNORE_HTTPS_ERRORS });
   try {
     const client = restClientFor(api, sessionFromStorageState(STORAGE_STATE));
     if (!client) return;

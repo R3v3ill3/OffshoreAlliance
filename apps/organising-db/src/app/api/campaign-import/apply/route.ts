@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { toE164 } from "@/lib/phone/normalise-phone";
 import { syncWorkersToMatchingCampaigns } from "@/lib/workers/sync-campaign-universe";
+import { isStructureApiError, structureApi, type UnitCreateElement } from "@/lib/campaign/structure-api";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import type {
   CampaignImportApplyRequest,
   CampaignImportApplyResponse,
@@ -485,9 +487,17 @@ export async function POST(req: NextRequest) {
   // the same shared worksite), preserving the employer → worksite grouping.
   const unitOuIdByUnitKey = new Map<string, number>();
   const workerOuId = new Map<number, number>(); // worker_id -> their unit ou_id (for list source_ou_id)
+  // WP2.2 Stage 6 (wp2.2.md §3.11 row 16): the containers and their member
+  // units are ONE `structure_units_create` call — a new container is named
+  // by its `client_ref` and its members reference it by that ref; a member
+  // of an existing container references the container's id — and the
+  // placements are one `structure_placements_assign` per unit (`manual`,
+  // primary, `p_on_conflict: "skip"` as the legacy `ignoreDuplicates`).
   if (body.buildOus && assigned.length > 0) {
+    const api = structureApi(supabase);
     // Containers: reuse existing employer group containers, create the rest.
     const containerIdByEmployerKey = new Map<string, number>();
+    const containerRefByEmployerKey = new Map<string, string>();
     const employerKeys = [...new Set(assigned.map((a) => a.employerKey))];
     const { data: existingContainers } = await supabase
       .from("campaign_organising_units")
@@ -497,19 +507,23 @@ export async function POST(req: NextRequest) {
       .eq("is_group_container", true);
     const containerByName = new Map<string, number>();
     for (const c of existingContainers ?? []) containerByName.set(String(c.name).toLowerCase(), c.ou_id);
-    const containersToCreate: { employerKey: string; name: string; row: Record<string, unknown> }[] = [];
+    const containersToCreate: { employerKey: string; element: UnitCreateElement }[] = [];
     for (const ek of employerKeys) {
-      const name = empBySurvivorKey.get(ek)?.canonicalName ?? ek;
+      // A blank canonical name (a cleared wizard field) falls back to the key;
+      // the RPC refuses a blank or > 200-character name (22023) and, since the
+      // whole structure is one call, would refuse every unit with it.
+      const name = ((empBySurvivorKey.get(ek)?.canonicalName ?? ek).trim() || ek).slice(0, 200);
       const existing = containerByName.get(name.toLowerCase());
       if (existing) {
         containerIdByEmployerKey.set(ek, existing);
       } else {
         const employerId = employerIdForKey(ek);
+        const clientRef = `container:${ek}`;
+        containerRefByEmployerKey.set(ek, clientRef);
         containersToCreate.push({
           employerKey: ek,
-          name,
-          row: {
-            campaign_id: campaignId,
+          element: {
+            client_ref: clientRef,
             ou_type: "employer",
             name,
             is_group_container: true,
@@ -519,28 +533,14 @@ export async function POST(req: NextRequest) {
         });
       }
     }
-    for (let start = 0; start < containersToCreate.length; start += CHUNK) {
-      const slice = containersToCreate.slice(start, start + CHUNK);
-      const { data, error } = await supabase
-        .from("campaign_organising_units")
-        .insert(slice.map((s) => s.row))
-        .select("ou_id");
-      if (!error && data && data.length === slice.length) {
-        data.forEach((d: { ou_id: number }, i: number) => {
-          containerIdByEmployerKey.set(slice[i].employerKey, d.ou_id);
-          stats.groupsCreated++;
-        });
-      } else {
-        errors.push(`OU groups: ${error?.message ?? "batch insert failed"}`);
-      }
-    }
 
     // Units: one per (employer, CANONICAL worksite_id when available, else raw vessel string).
     // This deduplicates vessels that appear under different raw strings but resolve to the
     // same worksite (e.g. "Valaris DPS-1" and "DPS-1" → worksite_id=194).
     // "Unspecified" vessels are collapsed to a single per-group unit regardless of their
     // raw name variant ("Unspecified vessel", "Unspecified", "Unspecified - Offshore", etc.).
-    const unitDefs: { unitKey: string; row: Record<string, unknown> }[] = [];
+    // `container` is the existing container's id or the new container's client_ref.
+    const unitDefs: { unitKey: string; container: number | string; name: string; unitBasis: Record<string, unknown> }[] = [];
     const unitKeySeen = new Set<string>();
     for (const a of assigned) {
       const rootKey = resolveVesselKey(a.vesselKey);
@@ -566,36 +566,35 @@ export async function POST(req: NextRequest) {
         }
         continue;
       }
-      const containerId = containerIdByEmployerKey.get(a.employerKey);
-      if (!containerId) continue;
+      const container =
+        containerIdByEmployerKey.get(a.employerKey) ?? containerRefByEmployerKey.get(a.employerKey);
+      if (!container) continue;
       unitKeySeen.add(dedupeKey);
 
-      const name = isUnspecified
-        ? "Unspecified vessel"
-        : vesselByKey.get(a.vesselKey)?.canonicalName ?? rootKey.split("||").pop() ?? "Unit";
+      const name = (
+        isUnspecified
+          ? "Unspecified vessel"
+          : (vesselByKey.get(a.vesselKey)?.canonicalName ?? rootKey.split("||").pop() ?? "Unit").trim() || "Unit"
+      ).slice(0, 200);
 
       unitDefs.push({
         unitKey: dedupeKey,
-        row: {
-          campaign_id: campaignId,
-          ou_type: "worksite",
-          name,
-          parent_ou_id: containerId,
-          ou_group_id: containerId,
-          is_group_container: false,
-          source: "manual",
-          unit_basis: {
-            ...(worksiteId ? { worksite_id: worksiteId } : {}),
-            ...(employerId ? { employer_id: employerId } : {}),
-          },
+        container,
+        name,
+        unitBasis: {
+          ...(worksiteId ? { worksite_id: worksiteId } : {}),
+          ...(employerId ? { employer_id: employerId } : {}),
         },
       });
       // Also map the original raw vessel key so assignment lookup works.
       // (Will be set again once the ou_id is known below.)
     }
     // Reuse existing sub-units by container + worksite_id (preferred) or name.
-    // This handles re-imports without creating duplicate units.
-    const containerIds = [...new Set(unitDefs.map((u) => u.row.parent_ou_id as number))];
+    // This handles re-imports without creating duplicate units. Only an
+    // existing container (a numeric id) can have existing sub-units.
+    const containerIds = [
+      ...new Set(unitDefs.map((u) => u.container).filter((c): c is number => typeof c === "number")),
+    ];
     const existingUnitByWorksiteKey = new Map<string, number>(); // `${containerId}::ws:${worksiteId}`
     const existingUnitByName = new Map<string, number>();        // `${containerId}::${name lower}`
     if (containerIds.length > 0) {
@@ -613,8 +612,8 @@ export async function POST(req: NextRequest) {
       }
     }
     const unitsToInsert = unitDefs.filter((u) => {
-      const cid = u.row.parent_ou_id as number;
-      const wsId = (u.row.unit_basis as Record<string, unknown> | null)?.worksite_id;
+      const cid = u.container;
+      const wsId = u.unitBasis.worksite_id;
       // Try worksite_id match first (most reliable dedup).
       if (wsId != null) {
         const existing = existingUnitByWorksiteKey.get(`${cid}::ws:${wsId}`);
@@ -624,31 +623,61 @@ export async function POST(req: NextRequest) {
         }
       }
       // Fall back to name match.
-      const existing = existingUnitByName.get(`${cid}::${String(u.row.name).toLowerCase()}`);
+      const existing = existingUnitByName.get(`${cid}::${u.name.toLowerCase()}`);
       if (existing != null) {
         unitOuIdByUnitKey.set(u.unitKey, existing);
         return false;
       }
       return true;
     });
-    for (let start = 0; start < unitsToInsert.length; start += CHUNK) {
-      const slice = unitsToInsert.slice(start, start + CHUNK);
-      const { data, error } = await supabase
-        .from("campaign_organising_units")
-        .insert(slice.map((s) => s.row))
-        .select("ou_id");
-      if (!error && data && data.length === slice.length) {
-        data.forEach((d: { ou_id: number }, i: number) => {
-          unitOuIdByUnitKey.set(slice[i].unitKey, d.ou_id);
-          stats.unitsCreated++;
+    const unitElements = unitsToInsert.map((u, i) => ({
+      unitKey: u.unitKey,
+      element: {
+        client_ref: `unit:${i}`,
+        ou_type: "worksite",
+        name: u.name,
+        parent_ou_id: u.container,
+        ou_group_id: u.container,
+        is_group_container: false,
+        source: "manual",
+        unit_basis: u.unitBasis,
+      } satisfies UnitCreateElement,
+    }));
+    const structureElements = [...containersToCreate.map((c) => c.element), ...unitElements.map((u) => u.element)];
+    if (structureElements.length > 0) {
+      try {
+        const created = await api.units.create({
+          campaignId: campaignId as number,
+          units: structureElements,
         });
-      } else {
-        errors.push(`OU units: ${error?.message ?? "batch insert failed"}`);
+        const idByRef = new Map<string, number>();
+        for (const u of created.units) if (u.client_ref != null) idByRef.set(u.client_ref, u.ou_id);
+        for (const c of containersToCreate) {
+          const id = idByRef.get(c.element.client_ref as string);
+          if (id == null) continue;
+          containerIdByEmployerKey.set(c.employerKey, id);
+          stats.groupsCreated++;
+        }
+        for (const u of unitElements) {
+          const id = idByRef.get(u.element.client_ref as string);
+          if (id == null) continue;
+          unitOuIdByUnitKey.set(u.unitKey, id);
+          stats.unitsCreated++;
+        }
+      } catch (error) {
+        // A 22023 names the element as `p_units[n]`; say which unit that is.
+        const index = isStructureApiError(error) && error.kind === "invalid_argument"
+          ? /p_units\[(\d+)\]/.exec(error.message)?.[1]
+          : undefined;
+        const named = index != null ? structureElements[Number(index)]?.name : undefined;
+        errors.push(
+          `OU structure${named ? ` ("${named}")` : ""}: ${structureErrorMessage(error, "unit create failed")}`
+        );
       }
     }
 
     // Assignments: one worksite unit per worker.
-    const assignRows: Record<string, unknown>[] = [];
+    const workerIdsByOu = new Map<number, number[]>();
     for (const a of assigned) {
       if (workerOuId.has(a.workerId)) continue;
       const rootKey = resolveVesselKey(a.vesselKey);
@@ -662,21 +691,36 @@ export async function POST(req: NextRequest) {
       const ouId = unitOuIdByUnitKey.get(dedupeKey) ?? unitOuIdByUnitKey.get(`${a.employerKey}::${rootKey}`);
       if (!ouId) continue;
       workerOuId.set(a.workerId, ouId);
-      assignRows.push({ ou_id: ouId, worker_id: a.workerId, is_primary: true, assignment_source: "manual" });
+      const list = workerIdsByOu.get(ouId) ?? [];
+      list.push(a.workerId);
+      workerIdsByOu.set(ouId, list);
     }
-    for (const batch of chunk(assignRows, CHUNK)) {
-      const { error } = await supabase
-        .from("campaign_worker_ou")
-        .upsert(batch, { onConflict: "ou_id,worker_id", ignoreDuplicates: true });
-      if (!error) {
-        stats.assignmentsCreated += batch.length;
-      } else {
-        for (const r of batch) {
-          const { error: e } = await supabase
-            .from("campaign_worker_ou")
-            .upsert(r, { onConflict: "ou_id,worker_id", ignoreDuplicates: true });
-          if (e) errors.push(`OU assignment (worker ${r.worker_id as number}): ${e.message}`);
-          else stats.assignmentsCreated++;
+    // One assign per unit, batched as before; on a refused batch, retry the
+    // workers one by one so a single bad row can't sink the unit (the legacy
+    // row-by-row fallback). `assignmentsCreated` counts the RPC's `inserted`.
+    const assignBatch = (ouId: number, workerIds: number[]) =>
+      api.placements.assign({
+        campaignId: campaignId as number,
+        ouId,
+        workerIds,
+        source: "manual",
+        isPrimary: true,
+        onConflict: "skip",
+      });
+    for (const [ouId, workerIds] of workerIdsByOu) {
+      for (const batch of chunk(workerIds, CHUNK)) {
+        try {
+          const res = await assignBatch(ouId, batch);
+          stats.assignmentsCreated += res.inserted;
+        } catch {
+          for (const workerId of batch) {
+            try {
+              const res = await assignBatch(ouId, [workerId]);
+              stats.assignmentsCreated += res.inserted;
+            } catch (e) {
+              errors.push(`OU assignment (worker ${workerId}): ${structureErrorMessage(e, "refused")}`);
+            }
+          }
         }
       }
     }

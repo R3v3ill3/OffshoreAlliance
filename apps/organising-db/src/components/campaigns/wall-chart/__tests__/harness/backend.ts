@@ -21,8 +21,53 @@ import type { WallChartFixture } from "./fixture";
 
 export type FakePostgrestResult = { data: unknown[] | null; error: { message: string } | null };
 
+/** The shape `PostgrestError` has on the wire, as `structure-api.ts` reads it. */
+export type FakeRpcError = {
+  message: string;
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+export type FakeRpcResult = { data: unknown; error: FakeRpcError | null };
+
+/** One recorded `client.rpc(name, args)` call, in issue order. */
+export type RpcInvocation = { name: string; args: Record<string, unknown> };
+
+/**
+ * One recorded write chain on a NON-structure table (WP2.2 Stage 5): the
+ * units section updates `campaign_ou_candidates` after the structure RPC
+ * that accepts a candidate, and the test pins that the row update still
+ * follows the RPC. Structure-table writes never appear here — the guard
+ * test and the RPC log are the evidence for those.
+ */
+export type WriteInvocation = { table: string; op: "insert" | "update" | "upsert" | "delete"; payload: unknown };
+
+/** One recorded `from(table)` chain (every builder method in call order), read or write (Stage 5 review). */
+export type QueryInvocation = { table: string; ops: Array<{ method: string; args: unknown[] }> };
+
+/** The two tables no component may write directly (wp2.2.md §3.9). */
+const STRUCTURE_TABLES = new Set(["campaign_organising_units", "campaign_worker_ou"]);
+
+/**
+ * Thrown by a direct `insert/update/upsert/delete` on a structure table under
+ * the harness unless the test opted in with `allowDirectStructureWrites()`:
+ * a regressed writer must fail its test, not be answered with success.
+ */
+export class DirectStructureWriteError extends Error {
+  constructor(table: string, op: string) {
+    super(`Direct ${op} on ${table} under the harness: structure writes go through structureApi (wp2.2.md §3.9)`);
+    this.name = "DirectStructureWriteError";
+  }
+}
+
 let backend: WallChartFixture | null = null;
 let searchParams = new URLSearchParams();
+let rpcLog: RpcInvocation[] = [];
+let rpcAnswers = new Map<string, FakeRpcResult[]>();
+let writeLog: WriteInvocation[] = [];
+let queryLog: QueryInvocation[] = [];
+let directStructureWritesAllowed = false;
 
 export class UnseededBackendError extends Error {}
 
@@ -33,6 +78,16 @@ export function installBackend(fixture: WallChartFixture): void {
 export function resetBackend(): void {
   backend = null;
   searchParams = new URLSearchParams();
+  rpcLog = [];
+  rpcAnswers = new Map();
+  writeLog = [];
+  queryLog = [];
+  directStructureWritesAllowed = false;
+}
+
+/** Opt one test in to recorded (not refused) direct writes on the structure tables. */
+export function allowDirectStructureWrites(): void {
+  directStructureWritesAllowed = true;
 }
 
 export function setSearchParams(search: string): void {
@@ -61,54 +116,91 @@ function requireBackend(): WallChartFixture {
 
 class FakePostgrestQuery implements PromiseLike<FakePostgrestResult> {
   private rows: readonly unknown[];
+  private readonly table: string;
+  private readonly record: QueryInvocation;
 
-  constructor(rows: readonly unknown[]) {
+  constructor(table: string, rows: readonly unknown[]) {
+    this.table = table;
     this.rows = rows;
+    this.record = { table, ops: [] };
+    queryLog.push(this.record);
   }
 
-  select(): this {
+  private note(method: string, args: unknown[]): this {
+    this.record.ops.push({ method, args: JSON.parse(JSON.stringify(args)) as unknown[] });
     return this;
   }
-  eq(): this {
+
+  private write(op: WriteInvocation["op"], payload: unknown): this {
+    if (STRUCTURE_TABLES.has(this.table) && !directStructureWritesAllowed) {
+      throw new DirectStructureWriteError(this.table, op);
+    }
+    this.note(op, payload === null ? [] : [payload]);
+    writeLog.push({ table: this.table, op, payload: JSON.parse(JSON.stringify(payload ?? null)) as unknown });
+    this.rows = [];
     return this;
   }
-  neq(): this {
-    return this;
+  /** Stage 5: recorded, answered with no rows; the fixture tables are never changed. */
+  insert(payload: unknown): this {
+    return this.write("insert", payload);
   }
-  in(): this {
-    return this;
+  update(payload: unknown): this {
+    return this.write("update", payload);
   }
-  is(): this {
-    return this;
+  upsert(payload: unknown): this {
+    return this.write("upsert", payload);
   }
-  not(): this {
-    return this;
+  delete(): this {
+    return this.write("delete", null);
   }
-  gt(): this {
-    return this;
+
+  select(...args: unknown[]): this {
+    return this.note("select", args);
   }
-  gte(): this {
-    return this;
+  eq(...args: unknown[]): this {
+    return this.note("eq", args);
   }
-  lt(): this {
-    return this;
+  neq(...args: unknown[]): this {
+    return this.note("neq", args);
   }
-  lte(): this {
-    return this;
+  in(...args: unknown[]): this {
+    return this.note("in", args);
   }
-  or(): this {
-    return this;
+  is(...args: unknown[]): this {
+    return this.note("is", args);
   }
-  filter(): this {
-    return this;
+  not(...args: unknown[]): this {
+    return this.note("not", args);
   }
-  order(): this {
-    return this;
+  gt(...args: unknown[]): this {
+    return this.note("gt", args);
   }
-  range(): this {
+  gte(...args: unknown[]): this {
+    return this.note("gte", args);
+  }
+  lt(...args: unknown[]): this {
+    return this.note("lt", args);
+  }
+  lte(...args: unknown[]): this {
+    return this.note("lte", args);
+  }
+  or(...args: unknown[]): this {
+    return this.note("or", args);
+  }
+  filter(...args: unknown[]): this {
+    return this.note("filter", args);
+  }
+  order(...args: unknown[]): this {
+    return this.note("order", args);
+  }
+  /** Stage 7 (D77): slices like PostgREST (`from`..`to` inclusive) so a paged read over a large fixture terminates. */
+  range(from: number, to: number): this {
+    this.note("range", [from, to]);
+    this.rows = this.rows.slice(from, to + 1);
     return this;
   }
   limit(count: number): this {
+    this.note("limit", [count]);
     this.rows = this.rows.slice(0, count);
     return this;
   }
@@ -124,9 +216,11 @@ class FakePostgrestQuery implements PromiseLike<FakePostgrestResult> {
     );
   }
   single(): Promise<{ data: unknown; error: { message: string } | null }> {
+    this.note("single", []);
     return Promise.resolve({ data: this.rows[0] ?? null, error: null });
   }
   maybeSingle(): Promise<{ data: unknown; error: { message: string } | null }> {
+    this.note("maybeSingle", []);
     return Promise.resolve({ data: this.rows[0] ?? null, error: null });
   }
 }
@@ -138,7 +232,83 @@ export function fakeFrom(table: string): FakePostgrestQuery {
   if (!rows) {
     throw new UnseededBackendError(`Unseeded table: ${table}`);
   }
-  return new FakePostgrestQuery(rows);
+  return new FakePostgrestQuery(table, rows);
+}
+
+/** Every non-structure write chain issued since the backend was installed, in order (Stage 5). */
+export function writeInvocations(): WriteInvocation[] {
+  return writeLog.map((w) => ({ ...w }));
+}
+
+/** Every `from(table)` chain issued since the backend was installed, in order, with its builder calls. */
+export function queryInvocations(): QueryInvocation[] {
+  return queryLog.map((q) => ({ table: q.table, ops: q.ops.map((o) => ({ method: o.method, args: [...o.args] })) }));
+}
+
+/**
+ * WP2.2 Stage 4 — the `rpc` edge. Every structure write now leaves the wall
+ * chart as `client.rpc("structure_*", { p_… })` (wp2.2.md §3.9), so the fake
+ * client records each call and answers it with the RPC's own result shape,
+ * which the wrapper's zod schema then accepts. A test asserts on the exact
+ * `p_*` payload through `rpcInvocations()`; nothing here is a spy, so the
+ * calls are plain data the same way the fixture tables are.
+ *
+ * Deliberately minimal (wp2.2.md §4.1): the answers are static and the fake
+ * applies nothing to the fixture tables — the observable outcomes the tests
+ * pin are the call, the invalidations, the toasts and the dialog state, not a
+ * simulated database.
+ */
+const DEFAULT_RPC_RESULTS: Readonly<Record<string, unknown>> = {
+  structure_units_create: { units: [], inserted: 0, moved: 0, skipped: 0, displaced: 0 },
+  structure_units_bulk_save: { deleted_ou_ids: [], updated_ou_ids: [], created: [], placements_removed: 0 },
+  structure_unit_update: { ou_id: 0, updated_keys: [] },
+  structure_unit_reorder: { updated: 0 },
+  structure_unit_delete: {
+    deleted_ou_ids: [],
+    placements_moved: 0,
+    placements_removed: 0,
+    placements_displaced: 0,
+  },
+  structure_unit_merge: { moved: 0, collapsed: 0, deleted_ou_ids: [], repointed: {} },
+  structure_unit_split: { children: [], moved: 0, copied: 0, kept: 0, displaced: 0 },
+  structure_placements_move: {
+    moved: 0,
+    inserted: 0,
+    displaced: 0,
+    removed: 0,
+    skipped: 0,
+    parent_inserted: 0,
+  },
+  structure_placements_unassign: { removed: 0 },
+  structure_placements_set_primary: { placement_id: 0, cleared: 0 },
+};
+
+/**
+ * Queue the next answer for one RPC name (each call consumes one; the static
+ * default answers once the queue is empty). Pass `{ error }` to make the
+ * wrapper throw the mapped `StructureApiError`.
+ */
+export function answerRpc(name: string, result: FakeRpcResult): void {
+  const queue = rpcAnswers.get(name) ?? [];
+  queue.push(result);
+  rpcAnswers.set(name, queue);
+}
+
+/** Every `rpc` call made since the backend was installed, in order. */
+export function rpcInvocations(): RpcInvocation[] {
+  return rpcLog.map((call) => ({ name: call.name, args: { ...call.args } }));
+}
+
+/** `createClient().rpc` stand-in. Throws for an RPC the harness does not describe. */
+export function fakeRpc(name: string, args: Record<string, unknown> = {}): Promise<FakeRpcResult> {
+  requireBackend();
+  rpcLog.push({ name, args: JSON.parse(JSON.stringify(args)) as Record<string, unknown> });
+  const queued = rpcAnswers.get(name)?.shift();
+  if (queued) return Promise.resolve(queued);
+  if (!(name in DEFAULT_RPC_RESULTS)) {
+    throw new UnseededBackendError(`Unseeded rpc: ${name}`);
+  }
+  return Promise.resolve({ data: DEFAULT_RPC_RESULTS[name], error: null });
 }
 
 /** `fetchApi` stand-in. Throws for a route the fixture does not describe. */

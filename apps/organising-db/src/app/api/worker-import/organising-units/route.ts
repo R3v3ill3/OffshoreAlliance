@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { structureApi } from "@/lib/campaign/structure-api";
+import { structureErrorMessage, structureErrorStatus } from "@/lib/campaign/structure-error-message";
 import type { CampaignOuType } from "@/types/database";
 
 interface CreateImportOuRequest {
@@ -34,21 +36,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { data: inserted, error } = await supabase
-    .from("campaign_organising_units")
-    .insert({
-      campaign_id: body.campaignId,
-      name,
-      ou_type: body.ouType,
-      is_group_container: false,
-      source: "manual",
-    })
-    .select("ou_id, name, ou_type")
-    .single();
-
-  if (error) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  // WP2.2 Stage 6 (wp2.2.md §3.11 row 20): one `structure_units_create` with
+  // the legacy insert's columns; the RPC's own write-permission check answers
+  // 403 where the legacy insert relied on RLS.
+  try {
+    const created = await structureApi(supabase).units.create({
+      campaignId: body.campaignId,
+      units: [{ name, ou_type: body.ouType, is_group_container: false, source: "manual" }],
+    });
+    const ou = created.units[0];
+    if (!ou) {
+      return NextResponse.json({ success: false, error: "Unit create returned no row" }, { status: 500 });
+    }
+    return NextResponse.json({ success: true, ou: { ou_id: ou.ou_id, name, ou_type: body.ouType } });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: structureErrorMessage(error, "Unit create failed") },
+      { status: structureErrorStatus(error) }
+    );
   }
-
-  return NextResponse.json({ success: true, ou: inserted });
 }

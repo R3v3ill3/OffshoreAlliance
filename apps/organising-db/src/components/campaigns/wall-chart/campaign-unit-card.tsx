@@ -150,6 +150,14 @@ export function CampaignUnitCard({
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     if (!dropEnabled || !onWorkerDrop) return;
+    // A nested sub-unit card that already consumed this drop (its handler
+    // below called preventDefault) must not have the parent card move the
+    // worker a second time: the event bubbles, but only one card acts on it
+    // (WP2.2 §8.3 D32). The parent still clears its own drag highlight.
+    if (e.nativeEvent.defaultPrevented) {
+      setIsDragOver(false);
+      return;
+    }
     const raw = e.dataTransfer.getData(DND_MIME_TYPE);
     if (!raw) return;
     const payload = parseDragPayload(raw);

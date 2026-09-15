@@ -27,15 +27,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import {
+  isStructureApiError,
+  structureApi,
+  type SplitAssignment,
+  type SplitChildElement,
+  type UnitSplitResult,
+} from "@/lib/campaign/structure-api";
 import type {
   CampaignOuSplitDimension,
   CampaignOuType,
   CampaignOuUnitBasis,
-  SplitOuRpcResultRow,
   WorkerRosterPanelOption,
   WorkerShiftOption,
   WorkerWorkAreaOption,
 } from "@/types/database";
+import { splitDuplicateInGroupMessage, structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -46,6 +53,11 @@ export type SplitUnitDialogProps = {
   campaignId: string | number;
   /** The parent unit being split. */
   parent: WallChartOU;
+  /**
+   * The container `parent.ou_group_id` points at, when the caller has it
+   * (D39). `undefined` = not looked up; `null` = looked up, not found.
+   */
+  sourceContainer?: WallChartOU | null;
   /** Workers currently assigned to the parent unit. Used to seed sub-unit suggestions. */
   members: SplitMember[];
   onSplit?: (result: { createdOuIds: number[]; assignedWorkers: number }) => void;
@@ -93,6 +105,59 @@ const DIMENSION_TO_OU_TYPE: Record<CampaignOuSplitDimension, CampaignOuType> = {
   custom: "custom",
 };
 
+/**
+ * The group kind each ou_type derives (WP2.1 `campaign_group_kind_for_ou_type`;
+ * wp2.2.md §3.4 C-g). Fixed kinds map by name; every other type is the
+ * "custom" kind, where WP2.1's `campaign_group_target_for_unit` gives one
+ * group PER TYPE LABEL (Custom, Network, Department, Ethnic community,
+ * Accommodation are five groups) and a member of a custom-kind container sits
+ * in that container's group instead.
+ */
+const GROUP_KIND_BY_OU_TYPE: Readonly<Record<string, string>> = {
+  worksite: "worksite",
+  employer: "employer",
+  shift: "shift",
+  crew_rotation: "crew",
+  job_type: "occupation",
+  work_area: "work_area",
+};
+
+function groupKindForOuType(ouType: string | null | undefined): string {
+  return (ouType && GROUP_KIND_BY_OU_TYPE[ouType]) || "custom";
+}
+
+/**
+ * Whether a child of `childType` created by the split (never pinned to a
+ * group; `ou_group_id` unset) derives to the same group as the source
+ * (wp2.2.md §8.3 D33/D39, mirroring WP2.1's `campaign_group_target_for_unit`).
+ * Fixed kinds: equal kind. Custom bucket: the same ou_type label, unless the
+ * source is a member of a custom-kind container (then it sits in that
+ * container's group, which no new child can join). A source under a
+ * fixed-kind container derives as if top-level. When the source has an
+ * `ou_group_id` but the container row is genuinely unavailable
+ * (`sourceContainer === undefined`), the answer is the conservative "not the
+ * same group", so the switch is offered (inert at worst).
+ */
+export function childSharesSourceGroup(
+  childType: string,
+  source: WallChartOU,
+  sourceContainer?: WallChartOU | null
+): boolean {
+  const childKind = groupKindForOuType(childType);
+  const sourceKind = groupKindForOuType(source.ou_type);
+  if (childKind !== "custom" || sourceKind !== "custom") return childKind === sourceKind;
+  if ((source.ou_group_id ?? null) == null) return childType === source.ou_type;
+  if (sourceContainer === undefined) return false;
+  if (
+    sourceContainer &&
+    sourceContainer.is_group_container &&
+    groupKindForOuType(sourceContainer.ou_type) === "custom"
+  ) {
+    return false;
+  }
+  return childType === source.ou_type;
+}
+
 function newDraftId(): string {
   return `sub_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -108,6 +173,7 @@ export function SplitUnitDialog({
   onOpenChange,
   campaignId,
   parent,
+  sourceContainer,
   members,
   onSplit,
 }: SplitUnitDialogProps) {
@@ -416,43 +482,58 @@ export function SplitUnitDialog({
 
   // ── Mutation: split RPC ───────────────────────────────────────────────
   const splitMutation = useAuthAwareMutation({
-    mutationFn: async (): Promise<SplitOuRpcResultRow[]> => {
+    mutationFn: async (): Promise<UnitSplitResult> => {
       const validDrafts = drafts.filter((d) => d.name.trim().length > 0);
       if (validDrafts.length === 0) {
         throw new Error("At least one sub-unit needs a name.");
       }
-      const subUnitsPayload = validDrafts.map((d) => ({
+      // WP2.2 §3.11 (split row): `structure_unit_split` replaces the legacy
+      // split RPC (left in place, uncalled). The children keep today's nested
+      // shape (the RPC defaults parent_ou_id to the source and display_order to
+      // the next free slot). A child in the source's own group takes the
+      // worker OUT of the source (rule C-k, approved); "keep in parent" applies
+      // only to children in another group.
+      const children: SplitChildElement[] = validDrafts.map((d) => ({
+        client_ref: d.draft_id,
         name: d.name.trim(),
         ou_type: d.ou_type,
-        unit_basis: d.unit_basis,
+        unit_basis: { ...d.unit_basis },
         total_workers_estimated: null,
       }));
-      const assignmentsPayload: { sub_index: number; worker_id: number }[] = [];
-      validDrafts.forEach((d, idx) => {
+      const assignments: SplitAssignment[] = [];
+      for (const d of validDrafts) {
         for (const wid of d.member_ids) {
-          assignmentsPayload.push({ sub_index: idx, worker_id: wid });
+          assignments.push({ child_ref: d.draft_id, worker_id: wid });
         }
+      }
+      return structureApi(supabase).units.split({
+        campaignId: Number(campaignId),
+        sourceOuId: parent.ou_id,
+        children,
+        assignments,
+        // The switch is offered only when a child lands in another group
+        // (D33); with every child in the source's own group the flag has no
+        // effect (C-k), so nothing is claimed.
+        keepInSource: hasCrossGroupChild ? keepInParent : false,
       });
-      const { data, error } = await supabase.rpc("split_campaign_organising_unit", {
-        p_parent_ou_id: parent.ou_id,
-        p_sub_units: subUnitsPayload,
-        p_assignments: assignmentsPayload,
-        p_keep_in_parent: keepInParent,
-      });
-      if (error) throw error;
-      return (data ?? []) as SplitOuRpcResultRow[];
     },
-    onSuccess: (created) => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["campaign-ous", String(campaignId)] });
       qc.invalidateQueries({ queryKey: ["campaign-worker-ou", String(campaignId)] });
       qc.invalidateQueries({ queryKey: ["campaign-units", String(campaignId)] });
       qc.invalidateQueries({ queryKey: ["campaign-unit-hierarchy-summary", String(campaignId)] });
       const totalAssigned = drafts.reduce((sum, d) => sum + d.member_ids.size, 0);
-      onSplit?.({ createdOuIds: created.map((r) => r.ou_id), assignedWorkers: totalAssigned });
+      onSplit?.({ createdOuIds: result.children.map((c) => c.ou_id), assignedWorkers: totalAssigned });
       onOpenChange(false);
     },
     onError: (err: unknown) => {
-      setErrorMessage(err instanceof Error ? err.message : "Could not split unit.");
+      // A duplicate here is a cross-group child whose group already holds the
+      // worker in another unit; "use Move" is not the remedy (D33).
+      setErrorMessage(
+        isStructureApiError(err) && err.kind === "duplicate_in_group"
+          ? splitDuplicateInGroupMessage(err)
+          : structureErrorMessage(err, "Could not split unit.")
+      );
     },
   });
 
@@ -552,6 +633,18 @@ export function SplitUnitDialog({
 
   const validDraftCount = drafts.filter((d) => d.name.trim().length > 0).length;
 
+  // D33: "keep in parent" only means something for a child in a group other
+  // than the source's (rule C-k moves the worker out of the source for a
+  // same-group child regardless), so the switch is shown only then.
+  const namedDrafts = drafts.filter((d) => d.name.trim().length > 0);
+  const hasCrossGroupChild = namedDrafts.some(
+    (d) => !childSharesSourceGroup(d.ou_type, parent, sourceContainer)
+  );
+  // Mixed shapes: the switch applies to the cross-group children only.
+  const hasSameGroupChild = namedDrafts.some((d) =>
+    childSharesSourceGroup(d.ou_type, parent, sourceContainer)
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0">
@@ -561,8 +654,10 @@ export function SplitUnitDialog({
             Split &ldquo;{ouDisplayName(parent)}&rdquo; into sub-units
           </DialogTitle>
           <DialogDescription>
-            Create smaller component units under this organising unit. Workers in a sub-unit can
-            stay in the parent for roll-up reporting (default), or move into the sub-unit only.
+            Create smaller component units under this organising unit.{" "}
+            {hasCrossGroupChild
+              ? "Workers in a sub-unit can stay in the parent for roll-up reporting (default), or move into the sub-unit only."
+              : "Workers assigned to a sub-unit move into it: a worker is in one unit of a group at a time."}
           </DialogDescription>
         </DialogHeader>
 
@@ -614,6 +709,8 @@ export function SplitUnitDialog({
               parent={parent}
               keepInParent={keepInParent}
               onKeepInParentChange={setKeepInParent}
+              showKeepInParent={hasCrossGroupChild}
+              keepInParentIsPartial={hasCrossGroupChild && hasSameGroupChild}
               totalAssigned={totalAssigned}
               membersTotal={members.length}
             />
@@ -1059,6 +1156,8 @@ function ReviewStep({
   parent,
   keepInParent,
   onKeepInParentChange,
+  showKeepInParent,
+  keepInParentIsPartial,
   totalAssigned,
   membersTotal,
 }: {
@@ -1066,25 +1165,39 @@ function ReviewStep({
   parent: WallChartOU;
   keepInParent: boolean;
   onKeepInParentChange: (b: boolean) => void;
+  /** Hidden when every child derives to the source's own group (D33). */
+  showKeepInParent: boolean;
+  /** Some children are in the source's group and some are not (D39). */
+  keepInParentIsPartial: boolean;
   totalAssigned: number;
   membersTotal: number;
 }) {
   const unassigned = membersTotal - totalAssigned;
   return (
     <div className="space-y-4">
-      <div className="rounded border p-3 space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium">Keep workers in &ldquo;{ouDisplayName(parent)}&rdquo; too</div>
-            <p className="text-xs text-muted-foreground">
-              When on (recommended), workers added to a sub-unit stay assigned to the parent so
-              parent-level counts and roll-ups continue to include them. Turn off if the parent
-              should dissolve into its sub-units.
-            </p>
+      {showKeepInParent && (
+        <div className="rounded border p-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium">Keep workers in &ldquo;{ouDisplayName(parent)}&rdquo; too</div>
+              <p className="text-xs text-muted-foreground">
+                When on (recommended), workers added to a sub-unit stay assigned to the parent so
+                parent-level counts and roll-ups continue to include them. Turn off if the parent
+                should dissolve into its sub-units.
+                {keepInParentIsPartial && (
+                  <>
+                    {" "}
+                    Applies only to the sub-units in a different group from &ldquo;
+                    {ouDisplayName(parent)}&rdquo;; workers assigned to a sub-unit in the same group
+                    move into it.
+                  </>
+                )}
+              </p>
+            </div>
+            <Switch checked={keepInParent} onCheckedChange={onKeepInParentChange} />
           </div>
-          <Switch checked={keepInParent} onCheckedChange={onKeepInParentChange} />
         </div>
-      </div>
+      )}
 
       <div className="rounded border">
         <div className="px-3 py-2 border-b text-xs uppercase tracking-wide text-muted-foreground">

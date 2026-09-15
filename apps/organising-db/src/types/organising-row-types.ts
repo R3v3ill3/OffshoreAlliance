@@ -656,32 +656,6 @@ export interface CampaignUnitHierarchySummaryRow {
   aggregate_assigned_workers: number;
 }
 
-/** Argument shape for the split_campaign_organising_unit RPC. */
-export interface SplitOuSubUnitInput {
-  name: string;
-  ou_type: CampaignOuType;
-  unit_basis?: CampaignOuUnitBasis | null;
-  total_workers_estimated?: number | null;
-}
-
-export interface SplitOuAssignmentInput {
-  /** Index into the parallel SplitOuSubUnitInput[] array passed alongside. */
-  sub_index: number;
-  worker_id: number;
-}
-
-export interface SplitOuRpcArgs {
-  p_parent_ou_id: number;
-  p_sub_units: SplitOuSubUnitInput[];
-  p_assignments: SplitOuAssignmentInput[];
-  p_keep_in_parent?: boolean;
-}
-
-export interface SplitOuRpcResultRow {
-  sub_index: number;
-  ou_id: number;
-}
-
 export interface CampaignWorkerOu {
   id: number;
   ou_id: number;

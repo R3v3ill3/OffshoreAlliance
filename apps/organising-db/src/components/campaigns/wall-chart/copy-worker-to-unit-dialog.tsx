@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
 import { useMoveWorkersMutation } from "./move-worker-mutation";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { toast } from "sonner";
 
 export type MoveMode = "move" | "copy";
@@ -110,12 +111,16 @@ export function MoveOrCopyWorkersDialog({
           onCompleted?.(result);
           onOpenChange(false);
         },
-        // Announce a failed move/copy (e.g. NoRowsAffectedError when the
-        // source delete is filtered by RLS) and keep the dialog open so the
-        // user can retry or cancel; nothing else reads moveMutation.error.
+        // Announce a failed move/copy and keep the dialog open so the user can
+        // retry or cancel; nothing else reads moveMutation.error. A same-group
+        // copy is refused by the structure API (wp2.2.md §3.4 C-c, K1) and a
+        // legacy exclusivity rule (D17) is surfaced readably, not as SQL.
         onError: (err) => {
           toast.error(
-            err instanceof Error ? err.message : `${mode === "move" ? "Moving" : "Copying"} the workers failed.`
+            structureErrorMessage(
+              err,
+              `${mode === "move" ? "Moving" : "Copying"} the workers failed.`
+            )
           );
         },
       }

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { lookupNonOaUnionOptionId } from "@/lib/workers/other-union-display";
 import { toE164 } from "@/lib/phone/normalise-phone";
+import { structureApi } from "@/lib/campaign/structure-api";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import {
   ensureCampaignUniverseJunctions,
   stampEmployerWorksiteFromOu,
@@ -257,13 +259,18 @@ async function maybeAssignWorkerToOu(
   ouId: number | null | undefined
 ): Promise<void> {
   if (!campaignId || !ouId) return;
-  const { error } = await supabase
-    .from("campaign_worker_ou")
-    .upsert(
-      { ou_id: ouId, worker_id: workerId, assignment_source: "manual" },
-      { onConflict: "ou_id,worker_id", ignoreDuplicates: true }
-    );
-  if (error) throw error;
+  // WP2.2 Stage 6 (wp2.2.md §3.11 row 21): the legacy upsert ignored a
+  // duplicate `(ou_id, worker_id)`, so `p_on_conflict: "skip"`; a worker
+  // already in a unit of the target's group is skipped too (C-a), where the
+  // legacy row would have been a same-group duplicate.
+  await structureApi(supabase).placements.assign({
+    campaignId,
+    ouId,
+    workerIds: [workerId],
+    source: "manual",
+    isPrimary: false,
+    onConflict: "skip",
+  });
 }
 
 async function recordAssessmentEvents(
@@ -585,7 +592,7 @@ export async function POST(request: NextRequest) {
         if (row.employerId) importedEmployerIds.push(row.employerId);
         if (row.worksiteId) importedWorksiteIds.push(row.worksiteId);
       } catch (error) {
-        rowErrors.push(error instanceof Error ? error.message : String(error));
+        rowErrors.push(structureErrorMessage(error, String(error)));
       }
     }
 

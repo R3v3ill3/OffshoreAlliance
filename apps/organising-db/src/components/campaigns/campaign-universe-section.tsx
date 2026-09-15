@@ -38,6 +38,7 @@ import {
 import { Building2, MapPin, Plus, Trash2 } from "lucide-react";
 import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
 import { syncCampaignUniverseFromEmployersWorksites } from "@/lib/workers/sync-campaign-universe";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 
 const SCOPE_KEYS = {
   employers: (cid: string) => ["campaign-universe-employers", cid] as const,
@@ -278,7 +279,7 @@ export function CampaignUniverseSection({
       setEmployerSearch("");
     },
     onError: (e: Error) => {
-      window.alert(e.message || "Could not add employer");
+      window.alert(structureErrorMessage(e, "Could not add employer"));
     },
   });
 
@@ -318,7 +319,7 @@ export function CampaignUniverseSection({
       setWorksiteSearch("");
       setShowAllWorksites(false);
     },
-    onError: (e: Error) => window.alert(e.message || "Could not add worksite"),
+    onError: (e: Error) => window.alert(structureErrorMessage(e, "Could not add worksite")),
   });
 
   const removeWorksiteMutation = useAuthAwareMutation({

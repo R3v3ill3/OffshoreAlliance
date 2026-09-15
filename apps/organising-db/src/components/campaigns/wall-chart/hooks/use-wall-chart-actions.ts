@@ -2,9 +2,12 @@ import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { structureApi } from "@/lib/campaign/structure-api";
+
 import type { WorkerDragRef } from "../dnd";
 import type { DeleteUnitWorker } from "../delete-organising-unit-dialog";
 import type { SplitMember } from "../split-unit-dialog";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import type { WallChartShellEnv, WallChartShellState } from "./use-wall-chart-shell-state";
 import type { WallChartStructure } from "./use-wall-chart-structure";
 
@@ -181,10 +184,11 @@ export function useWallChartActions({
             if (selection.size > 0) selection.clear();
           },
           // The mutation has no onError of its own and nothing reads .error, so
-          // a NoRowsAffectedError on the source delete (WP1.6) would otherwise
-          // be silent while the board refetches into the partial state.
+          // a refused move would otherwise be silent while the board refetches.
+          // A plain Error keeps its own message; a StructureApiError gets the
+          // organiser-facing sentence (K1 same-group copy, D17 rule).
           onError: (err) => {
-            toast.error(err instanceof Error ? err.message : "Moving the worker failed.");
+            toast.error(structureErrorMessage(err, "Moving the worker failed."));
           },
         }
       );
@@ -206,17 +210,23 @@ export function useWallChartActions({
       byOu.get(ouId)!.push(ref.workerId);
     }
 
-    for (const [ouId, workerIds] of byOu.entries()) {
-      const { error } = await supabase
-        .from("campaign_worker_ou" as never)
-        .delete()
-        .eq("ou_id", ouId)
-        .in("worker_id", workerIds);
-      if (error) throw error;
+    // WP2.2 §3.11 row 8: one `structure_placements_unassign` per unit. A
+    // refusal (e.g. `forbidden`) is announced rather than left as an
+    // unhandled rejection (wp2.2.md D36); the board refetches either way.
+    const api = structureApi(supabase);
+    let failed = false;
+    try {
+      for (const [ouId, workerIds] of byOu.entries()) {
+        await api.placements.unassign({ campaignId: Number(campaignId), workerIds, ouId });
+      }
+    } catch (err) {
+      failed = true;
+      toast.error(structureErrorMessage(err, "Removing the workers from their units failed."));
     }
 
     queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
     queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+    if (failed) return;
     selection.clear();
     setRemoveConfirmOpen(false);
     // setRemoveConfirmOpen is a stable block-A useState setter.

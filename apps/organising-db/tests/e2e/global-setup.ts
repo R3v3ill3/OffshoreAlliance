@@ -3,7 +3,13 @@ import { dirname, resolve } from "node:path";
 
 import { chromium } from "@playwright/test";
 
-import { ADMIN_STORAGE_STATE, E2E_BASE_URL, REST_CONFIG_PATH, STORAGE_STATE } from "../../playwright.config";
+import {
+  ADMIN_STORAGE_STATE,
+  E2E_BASE_URL,
+  E2E_IGNORE_HTTPS_ERRORS,
+  REST_CONFIG_PATH,
+  STORAGE_STATE,
+} from "../../playwright.config";
 import {
   E2E_ADMIN_EMAIL,
   E2E_ADMIN_PASSWORD,
@@ -44,7 +50,8 @@ let capturedRestConfig: { supabaseUrl: string; anonKey: string } | null = null;
 async function signIn(email: string, password: string, storagePath: string): Promise<void> {
   const browser = await chromium.launch();
   try {
-    const context = await browser.newContext();
+    // Global setup runs outside the config's `use`, so the option is passed by hand (D80).
+    const context = await browser.newContext({ ignoreHTTPSErrors: E2E_IGNORE_HTTPS_ERRORS });
     const page = await context.newPage();
     page.on("request", (req) => {
       if (capturedRestConfig) return;

@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import path from "node:path";
 
 /**
@@ -18,6 +18,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/__tests__/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
+    // WP2.2: the database-backed contract suite has its own config
+    // (vitest.contract.config.ts, `pnpm test:contract`); keep `pnpm test` hermetic.
+    exclude: [...configDefaults.exclude, "src/**/__contract__/**"],
     globals: false,
     passWithNoTests: false,
   },

@@ -6,6 +6,7 @@ import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { useRemoveWorkerFromCampaign } from "@/lib/hooks/useRemoveWorkerFromCampaign";
 import { useSaveActivityRating } from "@/lib/hooks/useSaveActivityRating";
 import { createClient } from "@/lib/supabase/client";
+import { structureApi } from "@/lib/campaign/structure-api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -1584,35 +1585,28 @@ export function UnitsTab({
     qc.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
   };
 
+  // WP2.2 §3.11 row 5: `structure_placements_set_primary` clears the worker's
+  // other primary rows and sets this one in one transaction.
   const setPrimary = useAuthAwareMutation({
     mutationFn: async (ouId: number) => {
-      // Clear any existing primary for this worker in this campaign, then set new.
-      const campaignOuIds = ous.map((o) => o.ou_id);
-      if (campaignOuIds.length === 0) return;
-      const { error: clearErr } = await supabase
-        .from("campaign_worker_ou")
-        .update({ is_primary: false })
-        .eq("worker_id", workerId)
-        .in("ou_id", campaignOuIds);
-      if (clearErr) throw clearErr;
-      const { error } = await supabase
-        .from("campaign_worker_ou")
-        .update({ is_primary: true })
-        .eq("worker_id", workerId)
-        .eq("ou_id", ouId);
-      if (error) throw error;
+      if (ous.length === 0) return;
+      await structureApi(supabase).placements.setPrimary({
+        campaignId: Number(campaignId),
+        workerId,
+        ouId,
+      });
     },
     onSuccess: invalidate,
   });
 
+  // WP2.2 §3.11 row 5: `structure_placements_unassign` for this one placement.
   const removeFromUnit = useAuthAwareMutation({
     mutationFn: async (ouId: number) => {
-      const { error } = await supabase
-        .from("campaign_worker_ou")
-        .delete()
-        .eq("worker_id", workerId)
-        .eq("ou_id", ouId);
-      if (error) throw error;
+      await structureApi(supabase).placements.unassign({
+        campaignId: Number(campaignId),
+        workerIds: [workerId],
+        ouId,
+      });
     },
     onSuccess: invalidate,
   });

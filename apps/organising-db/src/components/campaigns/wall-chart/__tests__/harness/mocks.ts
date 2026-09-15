@@ -15,7 +15,7 @@
 
 import { vi } from "vitest";
 
-import { currentSearchParams, fakeFetchApi, fakeFrom } from "./backend";
+import { currentSearchParams, fakeFetchApi, fakeFrom, fakeRpc } from "./backend";
 import type { MoveWorkerVars } from "../../move-worker-mutation";
 
 export type MoveWorkerResultLike = { inserted: number; deleted: number; skipped: number };
@@ -77,9 +77,18 @@ export function navigationMock() {
   };
 }
 
+/**
+ * The Supabase client edge: reads through `from` (WP2.3), structure writes
+ * through `rpc` (WP2.2 Stage 4). `useAuthAwareMutation` reads the known token
+ * expiry from this module before every mutation; a far-future expiry keeps
+ * the pre-mutation guard off the network, and the server refresh is never
+ * reached (it answers "ok" if it is).
+ */
 export function supabaseClientMock() {
   return {
-    createClient: () => ({ from: fakeFrom }),
+    createClient: () => ({ from: fakeFrom, rpc: fakeRpc }),
+    getKnownExpiryMs: () => Date.now() + 60 * 60 * 1000,
+    refreshSessionViaServer: async () => ({ ok: true, expiresAt: null, reason: "ok" as const }),
   };
 }
 

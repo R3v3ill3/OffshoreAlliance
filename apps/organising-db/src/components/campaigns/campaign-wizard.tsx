@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { savePlacements, saveUnitDrafts } from "@/lib/campaign/structure-save";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useAuthAwareMutation, withSessionGuard } from "@/lib/hooks/useAuthAwareMutation";
 import { Button } from "@/components/ui/button";
@@ -260,7 +263,16 @@ export function CampaignWizard() {
       const [ce, cw, cw2, ca, cou, cwo, cam, csa] = await Promise.all([
         supabase.from("campaign_employers").select("employer_id").eq("campaign_id", cid),
         supabase.from("campaign_worksites").select("worksite_id, sector_wide").eq("campaign_id", cid),
-        supabase.from("campaign_worker_membership").select("worker_id").eq("campaign_id", cid),
+        // Paged (WP2.2 Stage 7, D77): step 6's `desired` set is built from
+        // these reads; a truncated read would make the save unassign the rest.
+        fetchAllRows<{ worker_id: number }>((from, to) =>
+          supabase
+            .from("campaign_worker_membership")
+            .select("worker_id")
+            .eq("campaign_id", cid)
+            .order("worker_id", { ascending: true })
+            .range(from, to)
+        ),
         supabase
           .from("campaign_agreements")
           .select("agreement_id, relationship_type, is_primary, sort_order")
@@ -273,10 +285,15 @@ export function CampaignWizard() {
           )
           .eq("campaign_id", cid)
           .order("display_order", { ascending: true }),
-        supabase
-          .from("campaign_worker_ou")
-          .select("ou_id, worker_id, campaign_organising_units!inner(campaign_id)")
-          .eq("campaign_organising_units.campaign_id", cid),
+        fetchAllRows<{ ou_id: number; worker_id: number }>((from, to) =>
+          supabase
+            .from("campaign_worker_ou")
+            .select("ou_id, worker_id, campaign_organising_units!inner(campaign_id)")
+            .eq("campaign_organising_units.campaign_id", cid)
+            .order("ou_id", { ascending: true })
+            .order("worker_id", { ascending: true })
+            .range(from, to)
+        ),
         supabase
           .from("campaign_ambitions")
           .select(
@@ -298,12 +315,11 @@ export function CampaignWizard() {
       ]);
       if (ce.error) throw ce.error;
       if (cw.error) throw cw.error;
-      if (cw2.error) throw cw2.error;
       // The Phase 1–3 tables may not exist on environments where the migrations
       // haven't been applied yet — degrade gracefully rather than failing.
       const agreementRows = ca.error ? [] : (ca.data ?? []);
       const ouRows = cou.error ? [] : (cou.data ?? []);
-      const cwoRows = cwo.error ? [] : (cwo.data ?? []);
+      const cwoRows = cwo;
       const camRows = cam.error ? [] : (cam.data ?? []);
       // Returns null when the campaign has no situation analysis yet, or
       // when the table is missing on older environments.
@@ -317,7 +333,7 @@ export function CampaignWizard() {
         employers: (ce.data ?? []).map((r) => r.employer_id),
         sectorWide,
         worksites: worksiteRows.filter((w) => w.worksite_id != null).map((w) => w.worksite_id!),
-        workers: (cw2.data ?? []).map((r) => r.worker_id),
+        workers: cw2.map((r) => r.worker_id),
         agreements: (agreementRows as Array<{
           agreement_id: number;
           relationship_type: string;
@@ -779,157 +795,17 @@ export function CampaignWizard() {
       let updatedUnits: CampaignUnitDraft[] = units;
 
       await withSessionGuard("saveUnitsMutation", async () => {
-        // Existing rows currently in DB.
-        const { data: existing } = await supabase
-          .from("campaign_organising_units")
-          .select("ou_id")
-          .eq("campaign_id", campaignId);
-        const existingIds = new Set((existing ?? []).map((r) => r.ou_id as number));
-        const keepIds = new Set(
-          units.filter((u) => u.ou_id != null).map((u) => u.ou_id as number)
-        );
-        const toDelete = Array.from(existingIds).filter((id) => !keepIds.has(id));
-
-        if (toDelete.length > 0) {
-          const { error } = await supabase
-            .from("campaign_organising_units")
-            .delete()
-            .in("ou_id", toDelete);
-          if (error) throw error;
-        }
-
-        // Update existing units that are still present. Resolve parent_ou_id
-        // and ou_group_id through the local draft graph when a sub-unit's
-        // parent was created in this same wizard session.
-        const draftIdToOuId = new Map<string, number>();
-        for (const u of units) {
-          if (u.ou_id != null) draftIdToOuId.set(u.draft_id, u.ou_id);
-        }
-        for (const u of units) {
-          if (u.ou_id == null) continue;
-          const resolvedParent =
-            u.parent_ou_id ??
-            (u.parent_draft_id ? (draftIdToOuId.get(u.parent_draft_id) ?? null) : null);
-          const resolvedGroupId =
-            u.ou_group_id ?? (resolvedParent != null && u.is_group_container !== true ? resolvedParent : null);
-          const { error } = await supabase
-            .from("campaign_organising_units")
-            .update({
-              ou_type: u.ou_type,
-              name: u.name,
-              total_workers_estimated: u.total_workers_estimated,
-              unit_basis: u.unit_basis,
-              parent_ou_id: resolvedParent,
-              is_group_container: u.is_group_container ?? false,
-              ou_group_id: resolvedGroupId,
-            })
-            .eq("ou_id", u.ou_id);
-          if (error) throw error;
-        }
-
-        // Insert brand-new units in two passes so group containers (and other
-        // top-level parents) exist before child/member rows reference them.
-        // Pass 1 = top-level drafts (no parent_draft_id).
-        // Pass 2 = child drafts (have parent_draft_id), resolved from the map.
-        const allDrafts = units.filter((u) => u.ou_id == null);
-        const parentDrafts = allDrafts.filter((u) => !u.parent_draft_id);
-        const childDrafts = allDrafts.filter((u) => !!u.parent_draft_id);
-
-        if (parentDrafts.length > 0) {
-          const { data: inserted, error } = await supabase
-            .from("campaign_organising_units")
-            .insert(
-              parentDrafts.map((u, i) => ({
-                campaign_id: campaignId,
-                ou_type: u.ou_type,
-                name: u.name,
-                total_workers_estimated: u.total_workers_estimated,
-                unit_basis: u.unit_basis,
-                display_order: (existingIds.size + i) as number,
-                parent_ou_id: null,
-                is_group_container: u.is_group_container ?? false,
-                ou_group_id: null,
-              }))
-            )
-            .select("ou_id");
-          if (error) throw error;
-          const insertedIds = (inserted ?? []).map((r) => r.ou_id as number);
-          parentDrafts.forEach((d, i) => {
-            const id = insertedIds[i];
-            if (id != null) draftIdToOuId.set(d.draft_id, id);
-          });
-        }
-
-        if (childDrafts.length > 0) {
-          // Resolve each child's parent_ou_id from the map (or its existing
-          // parent_ou_id if the parent was already saved previously).
-          // For group members, ou_group_id = resolvedParent.
-          const childRows = childDrafts.map((u, i) => {
-            const resolvedParent =
-              (u.parent_draft_id && draftIdToOuId.get(u.parent_draft_id)) ??
-              u.parent_ou_id ??
-              null;
-            // ou_group_id: set for group members (non-container children)
-            const resolvedGroupId =
-              u.is_group_container !== true && resolvedParent != null
-                ? resolvedParent
-                : null;
-            return {
-              campaign_id: campaignId,
-              ou_type: u.ou_type,
-              name: u.name,
-              total_workers_estimated: u.total_workers_estimated,
-              unit_basis: u.unit_basis,
-              display_order: (existingIds.size + parentDrafts.length + i) as number,
-              parent_ou_id: resolvedParent,
-              is_group_container: u.is_group_container ?? false,
-              ou_group_id: resolvedGroupId,
-            };
-          });
-          // Drop any child whose parent could not be resolved (shouldn't
-          // happen in practice — guards against a corrupted draft graph).
-          const safeChildRows = childRows.filter((r) => r.parent_ou_id != null);
-          if (safeChildRows.length > 0) {
-            const { data: insertedChildren, error } = await supabase
-              .from("campaign_organising_units")
-              .insert(safeChildRows)
-              .select("ou_id");
-            if (error) throw error;
-            const insertedChildIds = (insertedChildren ?? []).map(
-              (r) => r.ou_id as number
-            );
-            // Map back only the children we actually inserted, in order.
-            let cursor = 0;
-            childDrafts.forEach((d) => {
-              const resolvedParent =
-                (d.parent_draft_id && draftIdToOuId.get(d.parent_draft_id)) ??
-                d.parent_ou_id ??
-                null;
-              if (resolvedParent == null) return;
-              const id = insertedChildIds[cursor++];
-              if (id != null) draftIdToOuId.set(d.draft_id, id);
-            });
-          }
-        }
-
-        // Build the updated array (resolving ou_id, parent_ou_id, and
-        // ou_group_id for every draft). Defer setUnits to onSuccess so it's
-        // batched with setStep(6).
-        updatedUnits = units.map((u) => {
-          const next = { ...u };
-          if (next.ou_id == null && draftIdToOuId.has(next.draft_id)) {
-            next.ou_id = draftIdToOuId.get(next.draft_id)!;
-          }
-          if (next.parent_draft_id && next.parent_ou_id == null) {
-            next.parent_ou_id = draftIdToOuId.get(next.parent_draft_id) ?? null;
-          }
-          // Resolve ou_group_id for group members (mirrors parent_ou_id when
-          // the parent is a group container).
-          if (next.is_group_container !== true && next.parent_ou_id != null && next.ou_group_id == null) {
-            next.ou_group_id = next.parent_ou_id;
-          }
-          return next;
-        });
+        // WP2.2 §3.11 row 10: the delete / update / insert sequence is ONE
+        // `structure_units_bulk_save` (lib/campaign/structure-save.ts): units
+        // not in the draft list are deleted, existing ones updated (name,
+        // estimate, basis), new ones created parents-first with their
+        // client_ref links — and a scope unit toggled off and on again is
+        // updated in place rather than deleted and re-created, so its
+        // placements survive (D42). The returned drafts carry the server ids
+        // (deferred to onSuccess so they land in the same React batch as
+        // setStep(6)).
+        const saved = await saveUnitDrafts(supabase, campaignId, units);
+        updatedUnits = saved.drafts;
       });
 
       // Auto-allocate workers to units that were created from the campaign
@@ -1093,18 +969,14 @@ export function CampaignWizard() {
           if (error) throw error;
         }
 
-        // Wipe campaign_worker_ou for this campaign and re-insert from state.
-        // Cleanest path with FK ON DELETE CASCADE is to query existing ou_ids
-        // for this campaign and delete by them.
+        // WP2.2 §3.11 row 10: the grid is saved as the difference between the
+        // placements on this campaign's units and the rows the grid wants —
+        // `structure_placements_unassign` per unit for the extra rows, then
+        // `structure_placements_assign` (manual, skip on a same-group
+        // conflict) per unit for the missing ones (lib/campaign/structure-save.ts,
+        // D43). Rows the grid keeps are not touched, so they keep their
+        // primary flag and provenance instead of being wiped and re-inserted.
         const ouIds = units.map((u) => u.ou_id).filter((x): x is number => x != null);
-        if (ouIds.length > 0) {
-          const { error: delErr } = await supabase
-            .from("campaign_worker_ou")
-            .delete()
-            .in("ou_id", ouIds);
-          if (delErr) throw delErr;
-        }
-
         const allocationRows: { ou_id: number; worker_id: number }[] = [];
         for (const wid of selectedWorkers) {
           const set = workerUnitAllocations[wid];
@@ -1113,12 +985,7 @@ export function CampaignWizard() {
             allocationRows.push({ ou_id: ouId, worker_id: wid });
           }
         }
-        if (allocationRows.length > 0) {
-          const { error } = await supabase
-            .from("campaign_worker_ou")
-            .insert(allocationRows);
-          if (error) throw error;
-        }
+        await savePlacements(supabase, campaignId, ouIds, allocationRows);
 
         for (const u of units) {
           if (u.ou_id == null || !u.unit_basis) continue;
@@ -1858,9 +1725,19 @@ export function CampaignWizard() {
           pendingGroupAllocations={pendingGroupAllocations}
           setPendingGroupAllocations={setPendingGroupAllocations}
           isPending={saveUnitsMutation.isPending}
-          onBack={() => setStep(4)}
+          onBack={() => {
+            // D59: a refusal said under this step must not greet a return to it.
+            saveUnitsMutation.reset();
+            setStep(4);
+          }}
           onContinue={() => saveUnitsMutation.mutate()}
         />
+      )}
+      {step === 5 && saveUnitsMutation.error && (
+        // D53: a refused or invalid "save units" is said here (the step had no error surface).
+        <p role="alert" className="text-xs text-destructive">
+          {structureErrorMessage(saveUnitsMutation.error, "Could not save campaign units.")}
+        </p>
       )}
 
       {/* ── Step 6: Allocate workers ────────────────────────────────────── */}
@@ -1885,9 +1762,18 @@ export function CampaignWizard() {
               ou_group_id: u.ou_group_id ?? null,
             }))}
           isPending={saveWorkersMutation.isPending}
-          onBack={() => setStep(5)}
+          onBack={() => {
+            saveWorkersMutation.reset();
+            setStep(5);
+          }}
           onContinue={() => saveWorkersMutation.mutate()}
         />
+      )}
+      {step === 6 && saveWorkersMutation.error && (
+        // D53: a refused "save worker allocation" is said here (the step had no error surface).
+        <p role="alert" className="text-xs text-destructive">
+          {structureErrorMessage(saveWorkersMutation.error, "Could not save worker allocation.")}
+        </p>
       )}
 
       {/* ── Step 7: Situation analysis ───────────────────────────────────── */}

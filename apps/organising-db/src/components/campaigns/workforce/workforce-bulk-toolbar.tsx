@@ -28,6 +28,7 @@ import {
   type WallChartOU,
 } from "../wall-chart/types";
 import { useWallChartAssessmentOptions } from "../wall-chart/assessment-selector";
+import { allocateToastMessage } from "./allocate-toast-message";
 
 export type WorkforceBulkToolbarProps = {
   campaignId: string;
@@ -260,7 +261,7 @@ function AssignToUnitAction({
       {
         onSuccess: (res) => {
           toast.success(
-            `Allocated ${res?.inserted ?? selectedWorkerIds.length} worker${(res?.inserted ?? selectedWorkerIds.length) === 1 ? "" : "s"} to ${target ? ouDisplayName(target) : "unit"}.`
+            allocateToastMessage(res, selectedWorkerIds.length, target ? ouDisplayName(target) : "unit")
           );
           setOpen(false);
           setOuId(null);

@@ -1002,6 +1002,12 @@ any existing e2e spec.
 | **D20** | The Stage-2 nesting suite asserts that Split… opens the unchanged dialog on a root and is absent on a nested card; it does not drive the split wizard to its Review step | §4.3 asks for "the switch on and the payload carries `p_keep_in_source: true`", which is `split-unit-dialog.tsx`'s own behaviour on a different-kind child — unchanged by this package and already pinned by its own suite (wp2.2.md D33/D39), and reached in the product by the operator's checklist step 1 (HT-a). The chart's part — that the item exists on a root and not on a child — is what this package decides | §4.3, §8.1 B4 |
 | **D21** | The Units manager's reorder sends **only the selected Group's own units** (the manager's list is filtered before `units.reorder`); a nested child keeps its own `display_order` | Review A-6, fix round 1. `structure_unit_reorder` sets `display_order` from the array position, and the projected tree's ids include each root's nested children — units of ANOTHER group — so passing them renumbered that group behind the organiser's back and §3.9's "other groups untouched, `wp/wp2.4.md` §3.12" was no longer true. Children keep their own order, which is what decides the order of the nested cards inside a root, so the manager's "children follow their parent" behaviour is unaffected on screen | §3.9, `wp/wp2.4.md` §3.12 |
 | **D22** | `campaign-unit-card.tsx` gains a third additive prop, `title?`, and the count button's accessible name on a root with children reads "Select all in \<Root\>**'s own area** (\<n\> in unit · \<m\> not yet in a sub-unit)" | Review A-2 and A-5, fix round 1. §3.6/§3.13 title a flat foreign-nested card "\<Parent\> › \<Unit\>", which the card computes from `ou` alone, and a pseudo-unit's `fallbackTitle` cannot be used without losing `ou`'s drop target, type chip and estimate. A-5: the button selects the card's OWN visible tiles while D15's numbers are the unfiltered roll-up, so the name says which it acts on before it carries §3.12's two numbers. Both default-preserving: absent → `ouDisplayName(ou)` and "Select all in \<Unit\>" | §3.6, §3.12, §3.13, D15, D16 |
+| **D23** | Stage 3: the e2e fixture picks a root the **depth trigger** allows a sub-unit under — top-level, or a child of a group container (`cou_enforce_hierarchy_invariants`, `baseline_schema.sql`) — preferring an `ou_type: "worksite"` unit, and creates one under `NESTED_PREFIX` only when the campaign has none | §4.5 says "pick a worksite root A (create one through `createUnits` if the campaign has none)" without saying which units can hold a sub-unit. Campaign 1's worksites sit under an Employer **container**, which the trigger permits (container → unit → sub-unit); a worksite under a plain unit would be refused by the database, and a container itself carries no group. The rule is the trigger's, restated | §4.5 |
+| **D24** | Stage 3 adds **eleven** helper functions to `tests/e2e/groups-v2/helpers.ts` (plus three types and one name prefix), not the two §4.5 names: `createNestedUnits` and `removeUnit` as planned, plus `unitTreeOf`, `nestsUnder`, `isSubUnitOnlyGroup`, `findOrCreateNestedFixture`, `tileOn` / `expectTileOn`, `cardHeading`, `recordPlacementMoves` and `expectSheetUnits` | A nested card's DOM sits **inside** its root's card, so WP2.4's `tileIn` / `cardById` (which scope by the card element) cannot tell "in A's own area" from "in Day inside A" — the distinction every §3.7 row turns on. `tileOn` uses the tile's own `data-worker-id` + `data-ou-id` pair (`worker-tile.tsx:338–340`), `cardHeading` gives the root's own area an unambiguous drop point above the nested cards (D32's "one card acts on the drop"), `recordPlacementMoves` is what lets the spec assert the **ordered** payloads NX-a specifies rather than one response at a time, and `expectSheetUnits` is the second oracle §4.5 asks for. The WP2.4 spec and its helpers are otherwise untouched | §4.5 |
+| **D25** | The drag chain of §4.5 has one extra drop: after "Night → A's own area" the spec drags the worker **back into Day** before the drop on "Unassigned in \<Group\>" (asserting the same single step as the first drag) | §4.5 lists the four drops as one chain, but row 4 leaves the worker in the root's own area — with no child row left, the last drop would exercise the one-step flat case, not the D1 case ("unassign within G, then within the child group held") the step exists to prove | §4.5 |
+| **D26** | The nesting fixture is named `NESTED_PREFIX = "WP2.4 e2e nested "` — inside WP2.4's `UNIT_PREFIX` — and its sub-units are removed in `afterAll` through `structure_unit_delete` (`removeUnit`), with the prefix sweep kept as the backstop; the root is deleted only when the spec created it | The prefix nests inside WP2.4's so **either** suite's `deleteUnitsByNamePrefix(UNIT_PREFIX)` sweep clears a leftover of the other, whichever runs next. The product RPC is used for the sub-units because it is the call the card's Delete… makes and it removes their placements with them; the campaign's own worksite is never deleted | §4.5 |
+| **D27** | The SG-a assertion in spec 1 is **conditional**: it runs when no other unit of the derived sub-unit group is a root on campaign 1 (`isSubUnitOnlyGroup`), and otherwise records a test annotation saying why it was not asserted | SG-a is a statement about a group *every* unit of which nests. If dev ever gains a top-level Shift unit, the group is legitimately primary and the selector is right to offer it; asserting unconditionally would fail on correct behaviour. The fixture's own two children always satisfy the rule, so on today's dev data the assertion runs | §3.5 SG-a, §4.5 |
+| **D28** | `wp/wp2.4c-acceptance-checklist.md` is written as steps **0–14** rather than §4.6's 0–12: §4.6 step 1 becomes steps 1–3 (build the shape, then what the Group control and card A now say), its step 10 becomes step 12, and two steps are added — "Assign people… on a sub-unit" (AP-a, which §4.6 does not walk) and a clean-up step of its own | §4.6 is a sketch for the implementer; the operator works only in a browser and needs one action per numbered line with one expected sentence (`wp/wp2.4-acceptance-checklist.md`'s shape). Nothing in §4.6 is dropped: every one of its expectations appears, in the same order, under a step number | §4.6 |
 
 ### 8.4 Stop conditions (implementer stops and reports; no workaround)
 
@@ -1819,3 +1825,103 @@ Five files changed this round: `v2/use-wall-chart-actions-v2.ts` (B-1, A-4), `v2
 A-2), `v2/use-wall-chart-group-view.ts` (A-1, A-2), `v2/wall-chart-group-band.tsx` (A-2, A-3, A-5),
 `v2/wall-chart-toolbar.tsx` (A-6), plus `campaign-unit-card.tsx` (D22's `title?`) and the three test files with
 their snapshot.
+
+---
+
+## 13. Stage 3 evidence (implementer)
+
+Stage 3 of §6.1, the part that needs no database: the e2e spec **written and type-checked, never run** (D80/D81 of
+wp2.2.md — this sandbox cannot host a browser suite), and the operator's hand test. Branch
+`feat/oux-wp2.4c-nested-units` at `7d1f0c34` (Stage 2 plus its review round). **No database of any kind was touched**:
+no connector call, no `supabase` command, no `.env.local` read, no `pnpm dev`, no Playwright run. No source file is
+modified in this stage — only the e2e helpers, the new spec and the documents.
+
+The rest of the §6.1 Stage-3 row stays **open** and belongs to the operator:
+
+- **HT-a** — the checklist below, run by hand on the branch preview; the orchestrator pastes the result into §9.2.
+- **`00_nesting_shape.sql` on dev** — read-only, to be run through the connector with the operator's confirmation
+  (this implementer was instructed to make no database access at all).
+- **The production counts for campaign 42** — the operator's, and they settle NP-b and stop condition 6.
+
+### 13.1 Files
+
+New:
+
+| File | What |
+|---|---|
+| `apps/organising-db/tests/e2e/groups-v2/nesting.spec.ts` | Two tests over the campaign-42 shape, built by the spec itself (a worksite root **A** with `shift` sub-units "Day" and "Night" created through `structure_units_create` with `parent_ou_id`, the shape Split leaves behind). **1.** the tree on screen: Day and Night drawn INSIDE A's card under "Units in \<A\>", the "2 sub-units" badge, the roll-up count button ("Select all in \<A\>'s own area (\<n\> in unit · \<m\> not yet in a sub-unit)"), the worker in A's own area, and SG-a — the Shift group absent from the Group control with no "Unassigned in Shift" card anywhere. **2.** the §3.7 drags, each asserted three ways (the ORDERED `structure_placements_move` payloads, `campaign_group_membership`, and the worker sheet's Units tab): A's own area → Day (one `move(null → Day, keep_in_parent)`); Day → Night (one `move(Day → Night)`); Night → A's own area (one `unassign within Shift`, NS-a); back into Day; Day → "Unassigned in \<Group\>" (unassign within the group, **then** within Shift — D1). `withUserPrefs({ mode: "full", flags: { groups_v2: true } })`, both hint dismissals seeded, the sync route scripted all-zero, the worker's placements restored and the two sub-units deleted in `afterAll` |
+| `docs/organiser-ux-review/wp/wp2.4c-acceptance-checklist.md` | HT-a, steps 0–14 (D28), in the shape of `wp/wp2.4-acceptance-checklist.md`: a blank line for the branch preview address and where on the PR to find it; a **warning box** before anything else that Delete… on a unit card deletes everything underneath it and that the confirmation names the number ("is a group with N sub-units" / "Delete group + N sub-units"), to be read before confirming; then the WP2.4 flag setup, building the campaign-42 shape through ⋯ → Split… with "Keep workers in 'A' too" left **on**, the Shift group's absence from the Group control, the roll-up header and A's own area, the four drags with the sheet's Units tab as the check each time, Remove from Worksite taking the shift with it, the filter roll-up, the Units list and Find worker ("A › Night"), the menus (no Split… on a nested card; the Delete… sentence, cancelled), Assign people… on a sub-unit (AP-a), the legacy chart, and a clean-up that puts every worker back and deletes Day and Night |
+
+Modified:
+
+| File | Change |
+|---|---|
+| `apps/organising-db/tests/e2e/groups-v2/helpers.ts` | Eleven additive helper functions with their types (D24), all below the WP2.4 block, which is byte-for-byte unchanged: `NESTED_PREFIX`, `unitTreeOf`, `createNestedUnits`, `removeUnit`, `nestsUnder`, `isSubUnitOnlyGroup`, `findOrCreateNestedFixture`, `tileOn` / `expectTileOn`, `cardHeading`, `recordPlacementMoves`, `expectSheetUnits` |
+| `docs/organiser-ux-review/PROGRESS.md` | the WP2.4c row → "Stages 1–2 complete, Stage 3 pending the operator", with the figures below and the two open items |
+| `docs/organiser-ux-review/wp/wp2.4c.md` | §8.3 D23–D28 and this §13 |
+
+Not modified: every source file, `tests/e2e/groups-v2/groups-v2.spec.ts` and every other existing spec, anything under
+`supabase/` or `packages/db-types/`.
+
+### 13.2 Verification
+
+```
+$ pnpm exec tsc --noEmit ; echo "tsc exit=$?"        # from apps/organising-db; covers tests/e2e
+tsc exit=0
+
+$ pnpm exec eslint tests/e2e/groups-v2/nesting.spec.ts tests/e2e/groups-v2/helpers.ts ; echo "eslint exit=$?"
+eslint exit=0
+
+$ pnpm lint | grep problems
+✖ 295 problems (143 errors, 152 warnings)          # the §5 ceiling and main's number, unchanged
+
+$ pnpm exec vitest run                              # whole app
+ Test Files  1 failed | 115 passed (116)
+      Tests  1 failed | 1662 passed (1663)
+# the one failure is the pre-existing LEGACY wall-chart.render-cost timing case
+# (8187 ms vs a 6000 ms budget), untouched by this package — as in §12.3 / §12.11.
+
+$ pnpm exec vitest run src/lib/campaign/groups src/components/campaigns/wall-chart/v2/__tests__ \
+    src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx \
+    src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ Test Files  13 passed (13)        Tests  217 passed (217)
+
+$ git status --short
+ M apps/organising-db/tests/e2e/groups-v2/helpers.ts
+ M docs/organiser-ux-review/PROGRESS.md
+?? apps/organising-db/tests/e2e/groups-v2/nesting.spec.ts
+?? docs/organiser-ux-review/wp/wp2.4c-acceptance-checklist.md
+
+$ git diff --stat main -- supabase/ packages/db-types/ tests/e2e/groups-v2/groups-v2.spec.ts
+(empty: no migration, no regen, no existing spec changed)
+```
+
+1,663 tests, unchanged by this stage (it adds no vitest case: an e2e spec is not collected by vitest). Nothing is
+skipped, quarantined or deleted.
+
+### 13.3 The §4.5 flows → what the spec asserts
+
+| §4.5 flow | Spec | Ordered payloads asserted |
+|---|---|---|
+| The Shift group is absent from the selector; Day/Night nested in A | test 1 | — (the selector's options, the "Units in \<A\>" caption, the badge, the roll-up button, no "Unassigned in Shift") |
+| W from A's area onto Day | test 2 (a) | `move(from null → Day, within null, keep_in_parent true)` |
+| Day → Night | test 2 (b) | `move(from Day → Night, keep_in_parent true)` |
+| Night → A's area | test 2 (c) | `unassign(within Shift)` — the group's row is already A, so nothing is written for it |
+| Day → Unassigned in \<Group\> | test 2 (d) | `unassign(within Group)`, then `unassign(within Shift)` (D1, in that order) |
+| The oracle after each | test 2 | `campaign_group_membership` (Worksite row / Shift row) **and** the sheet's Units tab ("\<Group\> › \<Unit\>" lines, including the ones that must be **absent**) |
+| `afterAll` restores W and removes the two children | both | `restoreWorker`, then `structure_unit_delete` per child, then the `UNIT_PREFIX` sweep |
+
+Existing specs are unaffected: the WP2.4 spec's own units and helpers are untouched, and both suites skip together
+without credentials.
+
+### 13.4 Findings and open questions (§8.4)
+
+No stop condition was met. Two things the operator and the orchestrator should know:
+
+1. **The spec has never been executed.** Everything above is static: TypeScript compiles it and ESLint reads it, but
+   no assertion in `nesting.spec.ts` has ever run against a browser or a database (wp2.2.md D80/D81; the operator
+   declined e2e secrets for WP2.2 and WP2.4). HT-a, not HT-b, is this package's acceptance.
+2. **The checklist creates and deletes two units on dev campaign 1**, and its step 12.4 adds one worker to that
+   campaign (Assign people…). The clean-up step puts every worker back and deletes "Day" and "Night"; the worker
+   added at 12.4 stays a member of campaign 1, which is ordinary dev data and harmless. Nothing in the checklist
+   touches production, and no SQL is run at any point.

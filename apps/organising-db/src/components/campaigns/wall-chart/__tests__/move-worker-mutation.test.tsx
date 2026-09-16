@@ -33,7 +33,9 @@ vi.mock("@/lib/workers/sync-campaign-universe", () => ({
   syncWorkersToMatchingCampaigns: state.sync,
 }));
 
-import { useMoveWorkersMutation, type MoveWorkerResult, type MoveWorkerVars } from "../move-worker-mutation";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
+
+import { MoveStepError, useMoveWorkersMutation, type MoveWorkerResult, type MoveWorkerVars } from "../move-worker-mutation";
 
 type Mutation = ReturnType<typeof useMoveWorkersMutation>;
 
@@ -157,5 +159,105 @@ describe("useMoveWorkersMutation — withinGroupId (WP2.4)", () => {
     const copy = await run(mutation, { refs: [{ workerId: 1, fromOuId: 10 }], toOuId: null, mode: "copy", withinGroupId: 5 });
     expect(copy).toEqual({ inserted: 0, deleted: 0, skipped: 1 });
     expect(state.fake.rpcCalls()).toHaveLength(1);
+  });
+  // ---------------------------------------------------------------------------
+  // WP2.4c (wp2.4c.md §3.7 NX-a, §4.1) — the additive `steps`
+  // ---------------------------------------------------------------------------
+
+  it("steps run in order, one structure_placements_move each, and the refs loop does not run", async () => {
+    for (let i = 0; i < 3; i++) state.fake.answerRpc("structure_placements_move", { data: { ...MOVE_RESULT, moved: 1, removed: 0 } });
+    const mutation = await mount();
+
+    // "Barrow area → Day": the parent row first, then the child row, then the
+    // shift held under the old worksite (adds before removes).
+    await run(mutation, {
+      refs: [{ workerId: 1, fromOuId: 11 }],
+      toOuId: 20,
+      mode: "move",
+      steps: [
+        { kind: "move", toOuId: 10, fromOuId: 11, workerIds: [1, 2], keepInParent: true },
+        { kind: "move", toOuId: 20, fromOuId: null, workerIds: [1, 2], keepInParent: true },
+        { kind: "unassign", withinGroupId: 5, workerIds: [1] },
+      ],
+    });
+
+    expect(state.fake.rpcCalls().map((c) => c.args)).toEqual([
+      { p_campaign_id: 7, p_worker_ids: [1, 2], p_from_ou_id: 11, p_to_ou_id: 10, p_within_group_id: null, p_keep_source: false, p_keep_in_parent: true },
+      { p_campaign_id: 7, p_worker_ids: [1, 2], p_from_ou_id: null, p_to_ou_id: 20, p_within_group_id: null, p_keep_source: false, p_keep_in_parent: true },
+      { p_campaign_id: 7, p_worker_ids: [1], p_from_ou_id: null, p_to_ou_id: null, p_within_group_id: 5, p_keep_source: false, p_keep_in_parent: true },
+    ]);
+    expect(state.fake.rpcCalls()).toHaveLength(3);
+  });
+
+  it("the stamping and the reverse sync run once, after the last step", async () => {
+    for (let i = 0; i < 2; i++) state.fake.answerRpc("structure_placements_move", { data: MOVE_RESULT });
+    const mutation = await mount();
+
+    await run(mutation, {
+      refs: [{ workerId: 1, fromOuId: null }],
+      toOuId: 20,
+      mode: "move",
+      steps: [
+        { kind: "move", toOuId: 10, fromOuId: null, workerIds: [1], keepInParent: true },
+        { kind: "move", toOuId: 20, fromOuId: null, workerIds: [1], keepInParent: true },
+      ],
+    });
+
+    expect(state.sync).toHaveBeenCalledTimes(1);
+    expect(state.fake.trace()).toEqual([
+      "rpc:structure_placements_move",
+      "rpc:structure_placements_move",
+      "from:campaign_organising_units.select.eq.maybeSingle",
+    ]);
+  });
+
+  it("a refusal on step 2 stops the run and rejects with the step index and the structure sentence", async () => {
+    state.fake.answerRpc("structure_placements_move", { data: MOVE_RESULT });
+    state.fake.answerRpc("structure_placements_move", {
+      error: { message: "organising unit 21 is a group container", code: "P0001", details: null, hint: null },
+    });
+    const mutation = await mount();
+
+    let error: unknown = null;
+    await act(async () => {
+      try {
+        await mutation.mutateAsync({
+          refs: [{ workerId: 1, fromOuId: null }],
+          toOuId: 20,
+          mode: "move",
+          steps: [
+            { kind: "move", toOuId: 10, fromOuId: null, workerIds: [1], keepInParent: true },
+            { kind: "move", toOuId: 20, fromOuId: null, workerIds: [1], keepInParent: true },
+            { kind: "unassign", withinGroupId: 5, workerIds: [1] },
+          ],
+        });
+      } catch (err) {
+        error = err;
+      }
+    });
+    await flush();
+
+    expect(error).toBeInstanceOf(MoveStepError);
+    const stepError = error as MoveStepError;
+    expect(stepError.stepIndex).toBe(2);
+    expect(stepError.stepCount).toBe(3);
+    expect(stepError.message).toBe(
+      "Step 2 of 3 failed: Not allowed by the unit structure rules: organising unit 21 is a group container. The chart shows what was saved."
+    );
+    expect(structureErrorMessage(stepError, "Moving the worker failed.")).toBe(stepError.message);
+    // The third step is never issued, and nothing is stamped or synced.
+    expect(state.fake.rpcCalls()).toHaveLength(2);
+    expect(state.stamp).not.toHaveBeenCalled();
+    expect(state.sync).not.toHaveBeenCalled();
+  });
+
+  it("an empty steps list leaves the WP2.4 refs path in charge", async () => {
+    state.fake.answerRpc("structure_placements_move", { data: MOVE_RESULT });
+    const mutation = await mount();
+
+    await run(mutation, { refs: [{ workerId: 1, fromOuId: 10 }], toOuId: null, mode: "move", withinGroupId: 5, steps: [] });
+
+    expect(state.fake.rpcCalls()).toHaveLength(1);
+    expect(state.fake.rpcCalls()[0].args).toMatchObject({ p_to_ou_id: null, p_within_group_id: 5 });
   });
 });

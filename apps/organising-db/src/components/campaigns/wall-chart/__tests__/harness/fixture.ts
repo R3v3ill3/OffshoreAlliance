@@ -11,6 +11,13 @@
  * one unit with `user_rating`, two multi-unit workers, one unassigned worker,
  * one delegate / activist / contact, one HSR, one non-OA union member.
  * `large` — 305 members / 161 units, used only by the render-cost baseline.
+ * `nested` — WP2.4c (wp2.4c.md §4.3): the campaign-42 shape, 20 members / 9
+ * units, an Employer container with four worksites under it, two shift
+ * sub-units nested under the largest worksite, a same-kind worksite child of
+ * another worksite (a SIBLING root, never nested — NE-a as narrowed by ruling
+ * 1) and a legacy custom container. The rows are `CAMPAIGN_42_SHAPE`, shared with the
+ * pure suites (`lib/campaign/groups/__tests__/fixtures/campaign-42-shape.ts`)
+ * so the interaction tests and the unit tests describe one campaign.
  *
  * WP2.4 (wp2.4.md §4.3): every unit row also carries `group_id` (WP2.1), the
  * `campaign_groups` and `user_campaign_prefs` tables exist (empty prefs), and
@@ -26,8 +33,14 @@ import type {
   WallChartRatingSummary,
 } from "../../types";
 import type { RawCampaignMemberRow } from "../../normalize-members";
+import {
+  CAMPAIGN_42_GROUPS,
+  CAMPAIGN_42_MEMBERS,
+  CAMPAIGN_42_PLACEMENTS,
+  CAMPAIGN_42_UNITS,
+} from "@/lib/campaign/groups/__tests__/fixtures/campaign-42-shape";
 
-export type WallChartFixtureSize = "small" | "large";
+export type WallChartFixtureSize = "small" | "large" | "nested";
 
 export type CampaignGroupFixtureRow = {
   group_id: number;
@@ -193,6 +206,61 @@ const LARGE_GROUPS: readonly CampaignGroupFixtureRow[] = [
   { group_id: 1, campaign_id: 1, kind: "employer", name: "Employer", display_order: 2 },
 ];
 
+/**
+ * WP2.4c — the `nested` size (wp2.4c.md §4.3). The campaign-42 rows, dressed
+ * with the harness's deterministic worker attributes: every fourth member is a
+ * delegate / activist / contact, every fifth a non-OA member, so the roll-ups
+ * and the colour-by controls have content on both the root and the nested
+ * cards. No generated id, no `Date.now()`.
+ */
+function buildNested(): {
+  members: RawCampaignMemberRow[];
+  ous: WallChartOU[];
+  assignments: WallChartOUAssignment[];
+  ratings: WallChartRatingSummary[];
+} {
+  const members = CAMPAIGN_42_MEMBERS.map((m, i) =>
+    memberRow(
+      {
+        workerId: m.worker_id,
+        firstName: m.first_name,
+        lastName: m.last_name,
+        email: i % 3 === 0 ? `${m.first_name.toLowerCase()}@example.test` : null,
+        phone: i % 2 === 0 ? `04000${String(m.worker_id).padStart(5, "0")}` : null,
+        role: i % 7 === 0 ? "delegate" : i % 7 === 3 ? "activist" : i % 7 === 5 ? "contact" : null,
+        isHsr: i % 9 === 4,
+        isBargainingRep: i % 11 === 2,
+        membershipTypeId: i % 5 === 0 ? 2 : i % 4 === 3 ? 3 : 1,
+        nonOaBadge: i % 5 === 0 ? "MUA" : null,
+        occupationId: i % 2 === 0 ? 71 : 72,
+      },
+      i
+    )
+  );
+  const ous: WallChartOU[] = CAMPAIGN_42_UNITS.map((u) => ({
+    ou_id: u.ou_id,
+    campaign_id: u.campaign_id,
+    name: u.name,
+    ou_type: u.ou_type,
+    total_workers_estimated: u.total_workers_estimated,
+    display_order: u.display_order,
+    is_group_container: u.is_group_container,
+    parent_ou_id: u.parent_ou_id,
+    ou_group_id: u.ou_group_id,
+    group_id: u.group_id,
+    user_rating: u.user_rating,
+  }));
+  const assignments: WallChartOUAssignment[] = CAMPAIGN_42_PLACEMENTS.map((p) => ({
+    ou_id: p.ou_id,
+    worker_id: p.worker_id,
+    is_primary: p.is_primary,
+  }));
+  const ratings = CAMPAIGN_42_MEMBERS.filter((_, i) => i % 3 !== 2).map((m, i) =>
+    ratingSummaryRow(m.worker_id, (i % 5) + 1, (i % 4) + 1, i % 4 === 0)
+  );
+  return { members, ous, assignments, ratings };
+}
+
 /** The sync-on-open route's JSON with nothing changed (wp2.4.md §3.14). */
 export const SYNC_NOTHING_CHANGED = {
   success: true,
@@ -343,7 +411,9 @@ export function buildWallChartFixture(
           ratings: [...SMALL_RATING_SUMMARY],
           estimate: 20,
         }
-      : { ...buildLarge(), estimate: 400 };
+      : size === "nested"
+        ? { ...buildNested(), estimate: 24 }
+        : { ...buildLarge(), estimate: 400 };
 
   return {
     campaignId,
@@ -367,7 +437,8 @@ export function buildWallChartFixture(
       workers: [],
       worker_tags: [],
       // WP2.4: read by the v2 chart only.
-      campaign_groups: size === "small" ? SMALL_GROUPS : LARGE_GROUPS,
+      campaign_groups:
+        size === "small" ? SMALL_GROUPS : size === "nested" ? CAMPAIGN_42_GROUPS : LARGE_GROUPS,
       user_campaign_prefs: [],
     },
     apiRoutes: {

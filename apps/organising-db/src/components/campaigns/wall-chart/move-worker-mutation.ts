@@ -4,10 +4,35 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { structureApi, type PlacementsMoveResult } from "@/lib/campaign/structure-api";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
+import type { MoveStep } from "@/lib/campaign/groups/plan-nested-drop";
 import {
   stampEmployerWorksiteFromOu,
   syncWorkersToMatchingCampaigns,
 } from "@/lib/workers/sync-campaign-universe";
+
+/**
+ * WP2.4c (wp2.4c.md §3.7, NX-a): a refusal on one step of a multi-step drop.
+ * The message is the sentence the chart toasts — it names which step failed,
+ * because the steps before it are committed and the board will show them
+ * after the `onSettled` refetch.
+ */
+export class MoveStepError extends Error {
+  /** 1-based index of the step that was refused. */
+  readonly stepIndex: number;
+  readonly stepCount: number;
+  /** The refusal the structure API raised (usually a `StructureApiError`). */
+  readonly cause: unknown;
+
+  constructor(stepIndex: number, stepCount: number, cause: unknown) {
+    const sentence = structureErrorMessage(cause, "The change was refused.").trim().replace(/\.+$/u, "");
+    super(`Step ${stepIndex} of ${stepCount} failed: ${sentence}. The chart shows what was saved.`);
+    this.name = "MoveStepError";
+    this.stepIndex = stepIndex;
+    this.stepCount = stepCount;
+    this.cause = cause;
+  }
+}
 
 export type MoveWorkerVars = {
   /**
@@ -47,6 +72,17 @@ export type MoveWorkerVars = {
    * Has no effect when toOuId is null or the target is a top-level OU.
    */
   keepInParent?: boolean;
+  /**
+   * WP2.4c (wp2.4c.md §3.7, NX-a): the ordered RPC calls of a drop inside a
+   * nested group (`planNestedDrop`). When present they REPLACE the refs loop:
+   * each step is one `structure_placements_move` (a move, or an unassign
+   * within one group), issued in order, each its own transaction, stopping at
+   * the first refusal with a `MoveStepError` naming the step. `refs`, `toOuId`
+   * and `mode` are still read for the stamping and the reverse sync that
+   * follow the last step, exactly as for a single move. Every WP2.4 and
+   * legacy caller leaves this undefined and is unchanged.
+   */
+  steps?: MoveStep[];
 };
 
 export type MoveWorkerResult = {
@@ -86,11 +122,14 @@ export function useMoveWorkersMutation(campaignId: string | number) {
 
   return useAuthAwareMutation({
     mutationFn: async (vars: MoveWorkerVars): Promise<MoveWorkerResult> => {
-      if (vars.refs.length === 0) return { inserted: 0, deleted: 0, skipped: 0 };
+      const steps = vars.steps ?? [];
+      if (vars.refs.length === 0 && steps.length === 0) return { inserted: 0, deleted: 0, skipped: 0 };
 
       const api = structureApi(supabase);
       const campaignIdNum = Number(campaignId);
-      const workerIds = [...new Set(vars.refs.map((r) => r.workerId))];
+      const workerIds = [
+        ...new Set([...vars.refs.map((r) => r.workerId), ...steps.flatMap((s) => s.workerIds)]),
+      ];
       let inserted = 0;
       let deleted = 0;
       let skipped = 0;
@@ -105,7 +144,35 @@ export function useMoveWorkersMutation(campaignId: string | number) {
         skipped += result.skipped;
       };
 
-      if (vars.toOuId == null) {
+      if (steps.length > 0) {
+        // WP2.4c (§3.7): the nested plan, in order — adds before removes, so a
+        // refusal part-way never leaves the worker with fewer placements than
+        // they started with. Each step is one transaction; the first refusal
+        // stops the run and names itself.
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          try {
+            tally(
+              step.kind === "move"
+                ? await api.placements.move({
+                    campaignId: campaignIdNum,
+                    workerIds: step.workerIds,
+                    fromOuId: step.fromOuId,
+                    toOuId: step.toOuId,
+                    keepInParent: step.keepInParent,
+                  })
+                : await api.placements.move({
+                    campaignId: campaignIdNum,
+                    workerIds: step.workerIds,
+                    toOuId: null,
+                    withinGroupId: step.withinGroupId,
+                  })
+            );
+          } catch (err) {
+            throw new MoveStepError(i + 1, steps.length, err);
+          }
+        }
+      } else if (vars.toOuId == null) {
         // "Move to Unassigned" = strip all OU assignments for these workers in
         // this campaign — or, within a group (WP2.4), only that group's.
         if (vars.mode !== "move") return { inserted: 0, deleted: 0, skipped: workerIds.length };

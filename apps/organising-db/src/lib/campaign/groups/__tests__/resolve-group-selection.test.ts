@@ -8,6 +8,13 @@ import {
   resolveGroupSelection,
   type ResolveGroupSelectionInput,
 } from "../resolve-group-selection";
+import { primaryGroups } from "../derive-group-tree";
+import {
+  CAMPAIGN_42_GROUPS,
+  CAMPAIGN_42_GROUP_IDS,
+  CAMPAIGN_42_OU_IDS,
+  CAMPAIGN_42_UNITS,
+} from "./fixtures/campaign-42-shape";
 
 const GROUPS = [
   { group_id: 30, display_order: 2 },
@@ -85,5 +92,71 @@ describe("resolveGroupSelection — precedence ?ou → ?group → prefs → firs
         prefsGroup: -1,
       })
     ).not.toThrow();
+  });
+});
+
+/**
+ * WP2.4c Stage 1 (wp2.4c.md §3.5 SG-a, §4.1) — the optional `primaryIds`.
+ * Absent, every case above is unchanged; present, the chain is narrowed to the
+ * groups the selector offers and a nested unit opens on its root's group.
+ */
+describe("resolveGroupSelection — primaryIds (WP2.4c SG-a)", () => {
+  const groups = CAMPAIGN_42_GROUPS;
+  const ous = CAMPAIGN_42_UNITS;
+  const primaryIds = primaryGroups(groups, ous).map((g) => g.group_id);
+
+  function resolvePrimary(overrides: Partial<ResolveGroupSelectionInput> = {}) {
+    return resolveGroupSelection({ groups, ous, primaryIds, ...overrides });
+  }
+
+  it("Shift is sub-unit-only, so it is not among the primary ids", () => {
+    expect(primaryIds).toEqual([CAMPAIGN_42_GROUP_IDS.employer, CAMPAIGN_42_GROUP_IDS.worksite]);
+  });
+
+  it("a ?group= or a stored preference naming a sub-unit-only group falls through", () => {
+    expect(resolvePrimary({ groupParam: String(CAMPAIGN_42_GROUP_IDS.shift) })).toEqual({
+      selection: CAMPAIGN_42_GROUP_IDS.employer,
+      source: "first",
+    });
+    expect(resolvePrimary({ prefsGroup: CAMPAIGN_42_GROUP_IDS.shift })).toEqual({
+      selection: CAMPAIGN_42_GROUP_IDS.employer,
+      source: "first",
+    });
+    expect(
+      resolvePrimary({ groupParam: String(CAMPAIGN_42_GROUP_IDS.shift), prefsGroup: CAMPAIGN_42_GROUP_IDS.worksite })
+    ).toEqual({ selection: CAMPAIGN_42_GROUP_IDS.worksite, source: "prefs" });
+    // "none" is always reachable.
+    expect(resolvePrimary({ groupParam: "none" })).toEqual({ selection: "none", source: "url" });
+  });
+
+  it("?ou= naming a nested unit resolves to its root's group, and the focus id is unchanged", () => {
+    expect(resolvePrimary({ ouParam: String(CAMPAIGN_42_OU_IDS.day) })).toEqual({
+      selection: CAMPAIGN_42_GROUP_IDS.worksite,
+      source: "ou",
+    });
+    expect(resolvePrimary({ ouParam: String(CAMPAIGN_42_OU_IDS.kgp) })).toEqual({
+      selection: CAMPAIGN_42_GROUP_IDS.worksite,
+      source: "ou",
+    });
+    // A unit whose whole chain carries no primary group still falls through.
+    expect(resolvePrimary({ ouParam: String(CAMPAIGN_42_OU_IDS.legacyContainer), groupParam: "none" })).toEqual({
+      selection: "none",
+      source: "url",
+    });
+  });
+
+  it("without primaryIds the WP2.4 behaviour is byte-for-byte: the nested unit's OWN group wins", () => {
+    expect(resolveGroupSelection({ groups, ous, ouParam: String(CAMPAIGN_42_OU_IDS.day) })).toEqual({
+      selection: CAMPAIGN_42_GROUP_IDS.shift,
+      source: "ou",
+    });
+    expect(resolveGroupSelection({ groups, ous, groupParam: String(CAMPAIGN_42_GROUP_IDS.shift) })).toEqual({
+      selection: CAMPAIGN_42_GROUP_IDS.shift,
+      source: "url",
+    });
+  });
+
+  it("with no primary group at all only Not in any group remains", () => {
+    expect(resolvePrimary({ primaryIds: [], groupParam: "20" })).toEqual({ selection: "none", source: "none" });
   });
 });

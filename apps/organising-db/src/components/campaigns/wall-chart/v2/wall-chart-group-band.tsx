@@ -7,6 +7,7 @@ import { UnitRatingControl } from "../unit-rating-control";
 import { UnitSummaryMetrics } from "../unit-summary-metrics";
 import { WallChartTile, type WallChartTileContext } from "../wall-chart-tile";
 import { participationSourceLabel } from "../participation-selector";
+import { nestingParentOf } from "@/lib/campaign/groups/derive-group-tree";
 import { ouDisplayName, type WallChartOU } from "../types";
 import type { WallChartCoreData } from "../hooks/use-wall-chart-core-data";
 import { UnitCardMenu, type UnitCardMenuAction } from "./unit-card-menu";
@@ -128,7 +129,22 @@ export function UnitCardV2({
   const est = ou.total_workers_estimated ?? 0;
   const placeholders = Math.max(0, est - allIds.length);
   const allSelected = sorted.length > 0 && sorted.every((id) => shell.selection.has(ou.ou_id, id));
-  const title = ouDisplayName(ou);
+  /**
+   * §3.6 / §3.13: a flat "foreign-nested" card — a unit of this Group nested
+   * under a unit of ANOTHER group — is titled "<Parent> › <Unit>", so two
+   * shifts called "Day" under two worksites are told apart. A root has no
+   * nesting parent (so this is `ouDisplayName`), and a nested card is titled
+   * by its own name with the root named in the "Units in <Root>" caption
+   * above it (review A-2, fix round 1).
+   */
+  const title = nested ? ouDisplayName(ou) : structure.cardTitle(ou);
+  /**
+   * SP-a (§3.8): Split… is offered only on a card with NO nesting parent. On a
+   * nested card and on a flat foreign-nested card alike it would ask for a
+   * grandchild under a plain parent, which the depth trigger always refuses
+   * (review A-3, fix round 1).
+   */
+  const canSplit = !nested && nestingParentOf(ou, structure.ouById) == null;
   /** Every child of this root, hidden ones included: the roll-up and the badge count them (§3.6). */
   const subUnitCount = nested ? 0 : (structure.childrenByRoot.get(ou.ou_id) ?? []).length;
   const hasSubUnits = subUnitCount > 0;
@@ -142,7 +158,16 @@ export function UnitCardV2({
   const countLabel = hasSubUnits
     ? `${allIds.length} in unit · ${ownIds.length} not yet in a sub-unit`
     : undefined;
-  const selectAllLabel = `${allSelected ? "Deselect" : "Select"} all in ${title}`;
+  /**
+   * The count button selects this card's OWN visible tiles, never a nested
+   * card's, so on a root with children its accessible name says so before it
+   * carries §3.12's two numbers (review A-5, fix round 1): the numbers are the
+   * derived roll-up (D15) and would otherwise read as the size of the
+   * selection the click makes.
+   */
+  const selectAllLabel = `${allSelected ? "Deselect" : "Select"} all in ${title}${
+    hasSubUnits ? "'s own area" : ""
+  }`;
 
   return (
     <div
@@ -155,6 +180,7 @@ export function UnitCardV2({
     >
       <CampaignUnitCard
         ou={ou}
+        title={title}
         nested={nested}
         workerCount={sorted.length}
         countLabel={countLabel}
@@ -209,7 +235,7 @@ export function UnitCardV2({
             <UnitCardMenu
               ou={ou}
               canMerge={actions.mergeCandidatesFor(ou).length > 0}
-              canSplit={!nested}
+              canSplit={canSplit}
               onAction={onMenuAction}
             />
           ) : undefined

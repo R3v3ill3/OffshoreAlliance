@@ -107,7 +107,7 @@ export function WallChartDialogsV2({
     addWorkerFormKey,
   } = shell.dialogs;
   const { setHighlightedOuId } = shell.highlight;
-  const { ous, ouById, groupUnits, nextDisplayOrder, workersByUnit, tree, rollupByUnit } = structure;
+  const { ous, ouById, groupUnits, nextDisplayOrder, workersByUnit, tree, rollupByUnit, cardTitle } = structure;
   const { workerById } = structure.index;
   const group = groupsState.selectedGroup;
 
@@ -128,26 +128,38 @@ export function WallChartDialogsV2({
           out.push({ ou: child, group, label: `${ouDisplayName(root)} › ${ouDisplayName(child)}` });
         }
       }
-      for (const flat of tree.foreignNested) out.push({ ou: flat, group });
+      // A flat foreign-nested card is titled "<Parent> › <Unit>" here too
+      // (§3.13; review A-2, fix round 1).
+      for (const flat of tree.foreignNested) out.push({ ou: flat, group, label: cardTitle(flat) });
       return out;
     }
     return groupsState.groups.flatMap((g) =>
       (structure.unitsByGroup.get(g.group_id) ?? []).map((ou) => ({ ou, group: g }))
     );
-  }, [group, tree, groupUnits, groupsState.groups, structure.unitsByGroup]);
+  }, [group, tree, groupUnits, groupsState.groups, structure.unitsByGroup, cardTitle]);
 
   /**
-   * The delete dialog's inputs (wp2.4c.md §3.9). A ROOT hands over its nested
-   * children, so the dialog's existing "Delete group + N sub-units" branch is
-   * ANNOUNCED instead of deleting them silently (WP2.4 D17 passed `[]`); a
-   * NESTED card hands over no children and, as reassignment targets, its
+   * The delete dialog's inputs (wp2.4c.md §3.9). `childOuIds` is EVERY unit
+   * whose `parent_ou_id` is the target — not the NE-a nesting set — because
+   * `delete-organising-unit-dialog.tsx:121` sends `deleteChildren: true`
+   * unconditionally and `structure_unit_delete` then removes every child with
+   * its placements. What the dialog announces has to be what the RPC deletes
+   * (review B-2, fix round 1): the nesting set left two classes unannounced —
+   * a group container's members (Delete… on campaign 42's "EDI Downer" card
+   * takes all four worksites, their shifts and their placements) and a C-k
+   * same-group child (deleting "Barrow" takes the "Barrow Jetty" card beside
+   * it). Both are real children of the target and neither nests under NE-a.
+   * With them named, the dialog takes its "Delete group + N sub-units" branch
+   * and drops the reassignment step, which is right: those placements go too.
+   *
+   * A NESTED card has no children and hands over, as reassignment targets, its
    * siblings in the same Group under the same root plus that Group's roots —
    * the dialog's own same-parent rule then narrows them.
    */
   const deleteChildOuIds = useMemo(() => {
     if (!deleteTargetOu) return [] as number[];
-    return (tree?.childrenByRoot.get(deleteTargetOu.ou_id) ?? []).map((c) => c.ou_id);
-  }, [deleteTargetOu, tree]);
+    return ous.filter((o) => o.parent_ou_id === deleteTargetOu.ou_id).map((o) => o.ou_id);
+  }, [deleteTargetOu, ous]);
   const deleteAllOus = useMemo(() => {
     if (!deleteTargetOu || !tree) return groupUnits;
     const nestedSiblings = [...tree.childrenByRoot.values()]

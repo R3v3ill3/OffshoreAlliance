@@ -393,7 +393,7 @@ exports[`CampaignWallChartV2 characterization > default: writable, hints dismiss
     "Rate 5 — Hostile",
     "Rating distribution",
     "Select all in Acme North",
-    "Select all in Acme South (3 in unit · 2 not yet in a sub-unit)",
+    "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit)",
     "Select all in South Deck",
     "Select all in Unassigned in Employer",
     "Show empty units",
@@ -507,7 +507,7 @@ exports[`CampaignWallChartV2 characterization > default: writable, hints dismiss
     {
       "assessing": "Assessing: Cumulative",
       "controls": [
-        "Select all in Acme South (3 in unit · 2 not yet in a sub-unit) | pressed=false",
+        "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit) | pressed=false",
         "Rate 1 — Extremely strong",
         "Rate 2 — Strong",
         "Rate 3 — Mediocre",
@@ -797,7 +797,7 @@ exports[`CampaignWallChartV2 characterization > hidden-unit: one unit hidden by 
     "Rate 4 — Weak",
     "Rate 5 — Hostile",
     "Rating distribution",
-    "Select all in Acme South (3 in unit · 2 not yet in a sub-unit)",
+    "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit)",
     "Select all in South Deck",
     "Select all in Unassigned in Employer",
     "Show empty units",
@@ -857,7 +857,7 @@ exports[`CampaignWallChartV2 characterization > hidden-unit: one unit hidden by 
     {
       "assessing": "Assessing: Cumulative",
       "controls": [
-        "Select all in Acme South (3 in unit · 2 not yet in a sub-unit) | pressed=false",
+        "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit) | pressed=false",
         "Rate 1 — Extremely strong",
         "Rate 2 — Strong",
         "Rate 3 — Mediocre",
@@ -1151,7 +1151,7 @@ exports[`CampaignWallChartV2 characterization > hint-visible: group-selector hin
     "Rate 5 — Hostile",
     "Rating distribution",
     "Select all in Acme North",
-    "Select all in Acme South (3 in unit · 2 not yet in a sub-unit)",
+    "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit)",
     "Select all in South Deck",
     "Select all in Unassigned in Employer",
     "Show empty units",
@@ -1265,7 +1265,7 @@ exports[`CampaignWallChartV2 characterization > hint-visible: group-selector hin
     {
       "assessing": "Assessing: Cumulative",
       "controls": [
-        "Select all in Acme South (3 in unit · 2 not yet in a sub-unit) | pressed=false",
+        "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit) | pressed=false",
         "Rate 1 — Extremely strong",
         "Rate 2 — Strong",
         "Rate 3 — Mediocre",
@@ -1574,7 +1574,7 @@ exports[`CampaignWallChartV2 characterization > nested: the campaign-42 shape, W
     "Select all in Barrow Jetty",
     "Select all in Day",
     "Select all in Ichthys",
-    "Select all in KGP (7 in unit · 3 not yet in a sub-unit)",
+    "Select all in KGP's own area (7 in unit · 3 not yet in a sub-unit)",
     "Select all in Night",
     "Select all in Unassigned in Worksite",
     "Select all in Wheatstone",
@@ -1635,7 +1635,7 @@ exports[`CampaignWallChartV2 characterization > nested: the campaign-42 shape, W
     {
       "assessing": "Assessing: Cumulative",
       "controls": [
-        "Select all in KGP (7 in unit · 3 not yet in a sub-unit) | pressed=false",
+        "Select all in KGP's own area (7 in unit · 3 not yet in a sub-unit) | pressed=false",
         "Rate 1 — Extremely strong",
         "Rate 2 — Strong",
         "Rate 3 — Mediocre",
@@ -2661,7 +2661,7 @@ exports[`CampaignWallChartV2 characterization > read-only: canWrite false 1`] = 
     "Rate 5 — Hostile",
     "Rating distribution",
     "Select all in Acme North",
-    "Select all in Acme South (3 in unit · 2 not yet in a sub-unit)",
+    "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit)",
     "Select all in South Deck",
     "Select all in Unassigned in Employer",
     "Show empty units",
@@ -2771,7 +2771,7 @@ exports[`CampaignWallChartV2 characterization > read-only: canWrite false 1`] = 
     {
       "assessing": "Assessing: Cumulative",
       "controls": [
-        "Select all in Acme South (3 in unit · 2 not yet in a sub-unit) | pressed=false",
+        "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit) | pressed=false",
         "Rate 1 — Extremely strong | disabled",
         "Rate 2 — Strong | disabled",
         "Rate 3 — Mediocre | disabled",

@@ -199,7 +199,7 @@ describe("the nested band (B1, B5)", () => {
 
     // B5: the roll-up sentence and the sub-unit badge.
     expect(
-      button(kgp, "Select all in KGP (7 in unit · 3 not yet in a sub-unit)")
+      button(kgp, "Select all in KGP's own area (7 in unit · 3 not yet in a sub-unit)")
     ).toBeTruthy();
     expect(kgp.textContent).toContain("2 sub-units");
 
@@ -470,6 +470,31 @@ describe("the card menus and the dialogs (SP-a, §3.9)", () => {
     ]);
   });
 
+  it("Delete… names EVERY child the RPC removes, not only the nested ones (review B-2)", async () => {
+    // The Employer view draws the container "EDI Downer" as an ordinary card
+    // (NE-a: a container link is a facet, so nothing nests under it) — but
+    // `structure_unit_delete` still removes every `parent_ou_id` child, which
+    // here is all four worksites and, through them, their shifts.
+    const { container } = await mount({ search: "group=1" });
+
+    await chooseMenuItem(unitCard(container, "EDI Downer"), "Delete…");
+    const dialog = openDialog();
+    expect(dialog.textContent).toContain("is a group with 4 sub-units");
+    expect(button(dialog, "Delete group + 4 sub-units")).toBeTruthy();
+  });
+
+  it("Delete… on a root announces its C-k same-group child too (review B-2)", async () => {
+    // "Barrow Jetty" is a worksite child of "Barrow": ruling 1 makes it a
+    // SIBLING root card, so it is not in `childrenByRoot` — but it is still a
+    // `parent_ou_id` child and the RPC deletes it with Barrow.
+    const { container } = await mount();
+
+    await chooseMenuItem(unitCard(container, "Barrow"), "Delete…");
+    const dialog = openDialog();
+    expect(dialog.textContent).toContain("is a group with 1 sub-unit");
+    expect(button(dialog, "Delete group + 1 sub-unit")).toBeTruthy();
+  });
+
   it("Delete… on a nested card offers its sibling as the reassignment target", async () => {
     const { container } = await mount();
 
@@ -480,7 +505,6 @@ describe("the card menus and the dialogs (SP-a, §3.9)", () => {
     if (!target) throw new Error("No reassignment target control");
     await click(target);
     const options = [...document.body.querySelectorAll('[role="option"]')].map((o) => o.textContent);
-    console.log("OPTIONS", JSON.stringify(options));
     expect(options).toContain("Night");
     expect(options).not.toContain("Barrow");
   });
@@ -522,7 +546,7 @@ describe("hidden units, empty units, the Units manager and search", () => {
 
     expect(unitTitles(container)).not.toContain("Day");
     expect(
-      button(unitCard(container, "KGP"), "Select all in KGP (7 in unit · 3 not yet in a sub-unit)")
+      button(unitCard(container, "KGP"), "Select all in KGP's own area (7 in unit · 3 not yet in a sub-unit)")
     ).toBeTruthy();
     // And they are NOT moved into the parent's own area.
     expect(cardTiles(unitCard(container, "KGP"))).toEqual(["212 Alan Ashby", "220 Ivy Ingram", "203 Rosa Ramirez"]);
@@ -540,6 +564,37 @@ describe("hidden units, empty units, the Units manager and search", () => {
       "Barrow Jetty",
       UNASSIGNED,
     ]);
+  });
+
+  it("finding a worker un-hides BOTH the hidden root and the hidden nested card in one write (review A-1)", async () => {
+    const { container } = await mount({
+      fixture: buildWallChartFixtureV2("nested", { prefs: { wallChart: { v: 1, hiddenOuIds: [KGP, DAY] } } }),
+    });
+    expect(unitTitles(container)).not.toContain("KGP");
+
+    await click(button(container, "Find worker"));
+    const input = document.body.querySelector<HTMLInputElement>('input[placeholder="Search workers by name…"]');
+    if (!input) throw new Error("No search input");
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    await act(async () => {
+      setter?.call(input, "priya");
+      input.dispatchEvent(new window.Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const item = [...document.body.querySelectorAll<HTMLElement>('[cmdk-item], [role="option"]')].find((i) =>
+      i.textContent?.includes("Priya Patel")
+    );
+    if (!item) throw new Error("No search result for Priya Patel");
+    await click(item);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+
+    // Two `toggleHidden` calls in a row would have written the second only,
+    // leaving the root hidden and the highlight on a card nobody renders.
+    expect(unitTitles(container)).toContain("KGP");
+    expect(unitTitles(container)).toContain("Day");
+    expect(container.querySelector(`[data-ou-id="${DAY}"]`)?.className).toContain("ring-2");
   });
 
   it("the Units manager lists the nested cards under their root", async () => {
@@ -569,25 +624,32 @@ describe("hidden units, empty units, the Units manager and search", () => {
     expect(rpcInvocations()).toEqual([
       {
         name: "structure_unit_reorder",
-        args: { p_campaign_id: CAMPAIGN, p_ou_ids: [BARROW, KGP, DAY, NIGHT, 12, 13, 14] },
+        // A-6: the Shift units (Day, Night) are NOT renumbered — only the
+        // selected Group's own units are sent.
+        args: { p_campaign_id: CAMPAIGN, p_ou_ids: [BARROW, KGP, 12, 13, 14] },
       },
     ]);
   });
 
-  it("Show empty units off hides a nested card emptied by the Filter, and counts it", async () => {
+  it("Show empty units off hides a nested card emptied by the Filter, and D17 counts both levels", async () => {
     const { container } = await mount();
-    // Only Priya and Bea are on Day; a filter that keeps neither empties it.
+    // The only activist in KGP's subtree is Sam, on Night: Day and KGP's own
+    // area empty, KGP's SUBTREE does not, so KGP stays with Night inside it.
     await click(button(container, "Filter"));
     const box = [...document.body.querySelectorAll('[role="checkbox"]')].find(
-      (c) => (c.parentElement?.textContent ?? "").trim() === "HSR"
+      (c) => (c.parentElement?.textContent ?? "").trim() === "Activist"
     );
-    if (!box) throw new Error("No HSR filter checkbox");
+    if (!box) throw new Error("No Activist filter checkbox");
     await click(box);
     await keydown(document.body, "Escape");
     await flush(2);
 
-    expect(unitTitles(container)).not.toContain("Day");
-    expect(container.textContent).toContain("empty");
+    expect(unitTitles(container)).toEqual(["KGP", "Night", "Barrow Jetty", UNASSIGNED]);
+    expect(cardTiles(unitCard(container, "Night"))).toEqual([`${SAM} Sam Singh`]);
+    // D17: three roots whose whole subtree is empty (Barrow, Ichthys,
+    // Wheatstone) counted once each, plus the one empty child of a rendered
+    // root (Day) — never a dropped root's children on top.
+    expect(container.textContent).toContain("4 empty units hidden");
   });
 
   it("Find worker names the nested card as <Root> › <Child> and highlights it", async () => {
@@ -687,6 +749,118 @@ describe("the sheet and Assign people… (NC-a visibility, AP-a)", () => {
 
     // One follow-up move onto the root: the writer behind the dialog places
     // the worker on the sub-unit only (§3.10).
+    expect(placementCalls()).toEqual([["structure_placements_move", null, KGP, null]]);
+  });
+
+  it("AP-a on a FLAT foreign-nested card never moves a worker off their worksite (review B-1)", async () => {
+    // The mixed case (§3.4): a standalone shift root makes Shift primary, so
+    // Day and Night render FLAT in the Shift view while their root KGP is a
+    // unit of Worksite. The selected group is Shift; the root's group is not.
+    const base = buildWallChartFixtureV2("nested");
+    const fixture = {
+      ...base,
+      tables: {
+        ...base.tables,
+        campaign_organising_units: [
+          ...(base.tables.campaign_organising_units as WallChartOU[]),
+          {
+            ou_id: 22,
+            campaign_id: 1,
+            name: "Swing",
+            ou_type: "shift",
+            total_workers_estimated: 2,
+            display_order: 10,
+            is_group_container: false,
+            parent_ou_id: null,
+            ou_group_id: null,
+            group_id: SHIFT,
+            user_rating: null,
+          } as WallChartOU,
+        ],
+      },
+      apiRoutes: {
+        ...base.apiRoutes,
+        // The added worker turns out to be Cal, already a member sitting on
+        // the worksite "Barrow".
+        "/api/campaigns/1/create-worker": { success: true, worker_id: CAL },
+        "/api/workers/search": { workers: [] },
+      },
+    };
+    const { container } = await mount({ fixture, search: `group=${SHIFT}` });
+
+    // §3.6 / §3.13: the flat cards are titled "<Parent> › <Unit>" (A-2).
+    // Swing holds nobody, so Show empty units off leaves the two flat cards.
+    expect(unitTitles(container)).toEqual(["KGP › Day", "KGP › Night", "Unassigned in Shift"]);
+
+    await chooseMenuItem(unitCard(container, "KGP › Day"), "Assign people…");
+    const dialog = openDialog();
+    const newWorkerTab = [...dialog.querySelectorAll<HTMLElement>('[role="tab"]')].find((t) =>
+      (t.textContent ?? "").includes("New worker")
+    );
+    if (!newWorkerTab) throw new Error("No New worker tab");
+    await fire(newWorkerTab, new window.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    await click(newWorkerTab);
+    await flush(2);
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    for (const [id, value] of [
+      ["wc-add-fn", "Cal"],
+      ["wc-add-ln", "Curtis"],
+    ] as const) {
+      const input = document.body.querySelector<HTMLInputElement>(`#${id}`);
+      if (!input) throw new Error(`No ${id} input`);
+      await act(async () => {
+        setter?.call(input, value);
+        input.dispatchEvent(new window.Event("input", { bubbles: true }));
+        await Promise.resolve();
+      });
+    }
+    await click(button(openDialog(), "Add worker"));
+    await flush(8);
+
+    // Cal holds Barrow in the ROOT's group (Worksite), so nothing is sent:
+    // `move(null → KGP)` would displace Barrow (C-b) and silently move him to
+    // another worksite out of a dialog's success callback.
+    expect(placementCalls()).toEqual([]);
+  });
+
+  it("AP-a on a flat card still adds the root row for a worker who holds no worksite (review B-1)", async () => {
+    const base = buildWallChartFixtureV2("nested");
+    const fixture = {
+      ...base,
+      apiRoutes: {
+        ...base.apiRoutes,
+        // Gita holds no placement at all — Unassigned in every group.
+        "/api/campaigns/1/create-worker": { success: true, worker_id: 218 },
+        "/api/workers/search": { workers: [] },
+      },
+    };
+    const { container } = await mount({ fixture });
+
+    await chooseMenuItem(unitCard(container, "Day"), "Assign people…");
+    const dialog = openDialog();
+    const newWorkerTab = [...dialog.querySelectorAll<HTMLElement>('[role="tab"]')].find((t) =>
+      (t.textContent ?? "").includes("New worker")
+    );
+    if (!newWorkerTab) throw new Error("No New worker tab");
+    await fire(newWorkerTab, new window.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    await click(newWorkerTab);
+    await flush(2);
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    for (const [id, value] of [
+      ["wc-add-fn", "Gita"],
+      ["wc-add-ln", "Gupta"],
+    ] as const) {
+      const input = document.body.querySelector<HTMLInputElement>(`#${id}`);
+      if (!input) throw new Error(`No ${id} input`);
+      await act(async () => {
+        setter?.call(input, value);
+        input.dispatchEvent(new window.Event("input", { bubbles: true }));
+        await Promise.resolve();
+      });
+    }
+    await click(button(openDialog(), "Add worker"));
+    await flush(8);
+
     expect(placementCalls()).toEqual([["structure_placements_move", null, KGP, null]]);
   });
 

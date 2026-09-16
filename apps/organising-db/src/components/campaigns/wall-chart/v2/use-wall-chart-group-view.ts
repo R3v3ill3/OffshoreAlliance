@@ -11,7 +11,7 @@ import {
   unitsByWorker as unitsByWorkerAllGroups,
   unitsOfGroup,
 } from "@/lib/campaign/groups/derive-group-view";
-import { deriveGroupTree, type GroupTree } from "@/lib/campaign/groups/derive-group-tree";
+import { deriveGroupTree, nestingParentOf, type GroupTree } from "@/lib/campaign/groups/derive-group-tree";
 import type { GroupSelection } from "@/lib/campaign/groups/resolve-group-selection";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import type { SetWallChartPrefs } from "@/lib/hooks/useUserCampaignPrefs";
@@ -279,6 +279,21 @@ export function useWallChartGroupView({
   /** The cards of the band: the roots, then the flat foreign-nested cards (§3.6). */
   const rootUnits = useMemo(() => (tree ? [...tree.roots, ...tree.foreignNested] : NO_UNITS), [tree]);
   /**
+   * §3.6 / §3.13: a `foreignNested` card renders FLAT in its own group's view
+   * although it is nested under a unit of another group, so its title names
+   * that parent — "&lt;Parent&gt; › &lt;Unit&gt;" — or two shifts called "Day"
+   * under two worksites would be indistinguishable (review A-2, fix round 1).
+   * Every other card keeps `ouDisplayName`.
+   */
+  const cardTitle = useCallback(
+    (ou: WallChartOU): string => {
+      const parentId = nestingParentOf(ou, ouById);
+      const parent = parentId == null ? null : ouById.get(parentId);
+      return parent ? `${ouDisplayName(parent)} › ${ouDisplayName(ou)}` : ouDisplayName(ou);
+    },
+    [ouById]
+  );
+  /**
    * node → the workers its header count, placeholders and metrics cover: a
    * root's whole subtree (B5), any other card's own tiles. Every rendered card
    * has an entry.
@@ -341,6 +356,22 @@ export function useWallChartGroupView({
     },
     [liveHiddenIds, setWallChart]
   );
+  /**
+   * Un-hide several cards in ONE write (review A-1, fix round 1). Calling
+   * `toggleHidden` twice in a row cannot work: both recompute from the
+   * `hiddenOuIds` prop, which does not change between two synchronous calls,
+   * and `setWallChart` merges patches — so the second write's array would
+   * overwrite the first and only the last card would be un-hidden.
+   */
+  const unhideUnits = useCallback(
+    (ouIds: readonly number[]) => {
+      if (ouIds.length === 0) return;
+      const next = new Set(liveHiddenIds());
+      for (const id of ouIds) next.delete(id);
+      setWallChart({ hiddenOuIds: [...next].sort((a, b) => a - b) });
+    },
+    [liveHiddenIds, setWallChart]
+  );
   /** "Show all" clears the selected group's units only; other groups' hidden units are untouched (§3.12). */
   const showAllHidden = useCallback(() => {
     const next = liveHiddenIds().filter((id) => !nodeIds.has(id)).sort((a, b) => a - b);
@@ -394,9 +425,14 @@ export function useWallChartGroupView({
         // will see highlighted.
         const nodeId = nodeByWorker.get(row.worker_id);
         const rootId = rootByWorker.get(row.worker_id);
-        const nodeName = nodeId != null ? ouNameById.get(nodeId) : undefined;
+        const node = nodeId != null ? ouById.get(nodeId) : undefined;
         const rootName = rootId != null && rootId !== nodeId ? ouNameById.get(rootId) : undefined;
-        unitLabel = nodeName ? (rootName ? `${rootName} › ${nodeName}` : nodeName) : "Unassigned";
+        const nodeName = node ? ouDisplayName(node) : undefined;
+        unitLabel = node
+          ? rootName
+            ? `${rootName} › ${nodeName}`
+            : cardTitle(node)
+          : "Unassigned";
       } else if (noneSet.has(row.worker_id)) {
         unitLabel = "Not in any group";
       } else {
@@ -415,7 +451,7 @@ export function useWallChartGroupView({
     }
     items.sort((a, b) => a.name.localeCompare(b.name));
     return items;
-  }, [memberRows, groupId, nodeByWorker, rootByWorker, ouNameById, notInAnyGroupIds, unitsByWorkerAll]);
+  }, [memberRows, groupId, nodeByWorker, rootByWorker, ouById, ouNameById, cardTitle, notInAnyGroupIds, unitsByWorkerAll]);
 
   const focusWorker = useCallback(
     (workerId: number) => {
@@ -427,10 +463,11 @@ export function useWallChartGroupView({
         // would point at a card that is not rendered (wp2.4c.md §3.6).
         if (typeof key === "number") {
           const rootId = rootByWorker.get(workerId);
-          const unhide = [...new Set([rootId, key])].filter(
-            (id): id is number => id != null && hiddenOuIds.has(id)
+          unhideUnits(
+            [...new Set([rootId, key])].filter(
+              (id): id is number => id != null && hiddenOuIds.has(id)
+            )
           );
-          for (const id of unhide) toggleHidden(id);
         }
       } else if (notInAnyGroupIds.includes(workerId)) {
         key = NOT_IN_ANY_GROUP_CARD_KEY;
@@ -446,7 +483,7 @@ export function useWallChartGroupView({
         window.setTimeout(() => setHighlightedOuId(null), 2500);
       }, 80);
     },
-    [groupId, nodeByWorker, rootByWorker, hiddenOuIds, toggleHidden, notInAnyGroupIds, workerDetail, setHighlightedOuId]
+    [groupId, nodeByWorker, rootByWorker, hiddenOuIds, unhideUnits, notInAnyGroupIds, workerDetail, setHighlightedOuId]
   );
 
   // ---- WP1.7 rating hint: the first tile in the v2 DOM order (units, then Unassigned).
@@ -486,6 +523,7 @@ export function useWallChartGroupView({
     /** wp2.4c.md §3.4: the nested view of the selected group, or null outside one. */
     tree,
     rootUnits,
+    cardTitle,
     childrenByRoot,
     shownChildrenByRoot,
     rollupByUnit,
@@ -496,6 +534,7 @@ export function useWallChartGroupView({
     hiddenInGroupIds,
     hiddenInGroupCount,
     toggleHidden,
+    unhideUnits,
     showAllHidden,
     unitsByGroup,
     workersByUnit,

@@ -209,11 +209,23 @@ export function useWallChartActionsV2({
   );
 
   /**
-   * AP-a (wp2.4c.md §3.10): "Assign people…" on a NESTED card places the
-   * worker on the sub-unit only (the add-workers writer has no parent logic),
-   * so the chart adds the root row itself for the workers who hold none —
-   * one `placements.move({ fromOuId: null, toOuId: root })`. On a root, or
-   * for a worker who already holds a row in the root's group, nothing is sent.
+   * AP-a (wp2.4c.md §3.10): "Assign people…" on a card with a nesting parent
+   * places the worker on the sub-unit only (the add-workers writer has no
+   * parent logic), so the chart adds the root row itself for the workers who
+   * hold none — one `placements.move({ fromOuId: null, toOuId: root })`. On a
+   * root, nothing is sent.
+   *
+   * The test is membership of the ROOT's group, read from the placement rows
+   * (review B-1, fix round 1). It is NOT `placementByWorker`, which is the
+   * worker's row in the SELECTED group: the two coincide only while the card
+   * is drawn nested. On a `foreignNested` card — a shift under a worksite,
+   * seen from the Shift group's own view (§3.6, the mixed case) — the selected
+   * group is Shift while the root's group is Worksite, so a worker already on
+   * another worksite would have passed the old filter and been moved to this
+   * card's worksite by `structure_placements_move`'s displace rule (C-b): a
+   * silent structural move out of a dialog's success callback, which §12.10
+   * item 5 says must never happen. Such a worker is left exactly where they
+   * are; moving them is a drag, not a side effect of adding them.
    */
   const handleWorkersAdded = useCallback(
     (contextOu: WallChartOU | null, workerIds: readonly number[]) => {
@@ -222,10 +234,10 @@ export function useWallChartActionsV2({
       if (parentOuId == null) return;
       const parentGroup = groupOf(parentOuId);
       if (parentGroup == null) return;
-      // "the added workers who hold no root placement" (§3.10): a worker who
-      // already holds a row in the root's group keeps it — the RPC would
-      // displace it and the drag rules, not this callback, own that move.
-      const withoutAnyRow = workerIds.filter((id) => !structure.placementByWorker.has(id));
+      const heldInParentGroup = new Set(
+        ouAssignments.filter((a) => groupOf(a.ou_id) === parentGroup).map((a) => a.worker_id)
+      );
+      const withoutAnyRow = workerIds.filter((id) => !heldInParentGroup.has(id));
       if (withoutAnyRow.length === 0) return;
       moveWorkers.mutate(
         {
@@ -239,7 +251,7 @@ export function useWallChartActionsV2({
         }
       );
     },
-    [canWrite, ous, groupOf, structure.placementByWorker, moveWorkers]
+    [canWrite, ous, groupOf, ouAssignments, moveWorkers]
   );
 
   /** "Select all" = a click on the card count (§3.6): toggles the card's visible tiles in the selection. */
@@ -275,10 +287,21 @@ export function useWallChartActionsV2({
   }, [deleteTargetOu, workersByUnit, ouAssignments, workerById]);
 
   // ── Split: members for the targeted unit (block F, verbatim read) ─────────
+  //
+  // Every member who holds the unit's OWN row, not the card's tiles (review
+  // A-4, fix round 1): Stage 2 re-pointed `workersByUnit` to the tree's
+  // per-card list, which on a root with children is "members not yet in a
+  // sub-unit". Splitting KGP into crews must still be able to place the
+  // workers who are on Day or Night — they hold KGP's row and
+  // `structure_unit_split` moves exactly that row. This is WP2.4's list
+  // (`deriveGroupView().workersByUnit`), restated over the flat placement map.
   const splitMemberWorkerIds = useMemo(() => {
     if (!splitTargetOu) return [] as number[];
-    return workersByUnit.get(splitTargetOu.ou_id) ?? [];
-  }, [splitTargetOu, workersByUnit]);
+    const ouId = splitTargetOu.ou_id;
+    return memberRows
+      .map((r) => r.worker_id)
+      .filter((id) => structure.placementByWorker.get(id) === ouId);
+  }, [splitTargetOu, memberRows, structure.placementByWorker]);
 
   const { data: splitMembers = [] } = useQuery({
     queryKey: ["split-unit-members", splitTargetOu?.ou_id ?? "none", splitMemberWorkerIds.join(",")],

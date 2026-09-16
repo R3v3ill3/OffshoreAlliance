@@ -918,7 +918,7 @@ describe("the card's ⋯ menu (MN-a) and the sheet (A8)", () => {
     expect(cardTiles(unitCard(container, "South Deck"))).toEqual([`${DAN} Dan Dawson`]);
     expect(cardTiles(unitCard(container, EMPLOYER))).not.toContain(`${DAN} Dan Dawson`);
     // The roll-up counts him under Acme South (B5), whose own area does not.
-    expect(button(unitCard(container, "Acme South"), "Select all in Acme South (3 in unit · 2 not yet in a sub-unit)")).toBeTruthy();
+    expect(button(unitCard(container, "Acme South"), "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit)")).toBeTruthy();
 
     // SG-a: there is no Shift view to switch to.
     await click(groupTrigger(container));

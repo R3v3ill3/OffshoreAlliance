@@ -1000,6 +1000,8 @@ any existing e2e spec.
 | **D18** | The v2 chart routes **every** drop, "Move to unit…" and tile dialog through `planNestedDrop`, including the Not-in-any-group view; `plan-drop.ts` is no longer imported by the chart (the file and its cases are untouched under NV-a) | §3.7 defines the nested planner as "a superset of `planDrop` … with a group whose units have no children this planner emits exactly the calls `planDrop` + `useMoveWorkersMutation` issue today", and the Stage-1 superset case proves it. Keeping two planners behind a branch would mean a flat group's drop never exercised the code every nested drop uses | §3.7; `plan-drop.ts` unchanged (§5 grep) |
 | **D19** | "Remove from \<Group\>" keeps issuing `placements.unassign` (one call per group: the selected group, then each sub-unit group the selection holds a row in) rather than going through the mutation's `steps` | §3.7's bullet defines the operation, not the RPC; WP2.4 shipped it on `structure_placements_unassign` and its case pins that payload. The D1 second call is added in the same shape, so the suite reads as one list of unassigns | §3.7 bullet, D1 |
 | **D20** | The Stage-2 nesting suite asserts that Split… opens the unchanged dialog on a root and is absent on a nested card; it does not drive the split wizard to its Review step | §4.3 asks for "the switch on and the payload carries `p_keep_in_source: true`", which is `split-unit-dialog.tsx`'s own behaviour on a different-kind child — unchanged by this package and already pinned by its own suite (wp2.2.md D33/D39), and reached in the product by the operator's checklist step 1 (HT-a). The chart's part — that the item exists on a root and not on a child — is what this package decides | §4.3, §8.1 B4 |
+| **D21** | The Units manager's reorder sends **only the selected Group's own units** (the manager's list is filtered before `units.reorder`); a nested child keeps its own `display_order` | Review A-6, fix round 1. `structure_unit_reorder` sets `display_order` from the array position, and the projected tree's ids include each root's nested children — units of ANOTHER group — so passing them renumbered that group behind the organiser's back and §3.9's "other groups untouched, `wp/wp2.4.md` §3.12" was no longer true. Children keep their own order, which is what decides the order of the nested cards inside a root, so the manager's "children follow their parent" behaviour is unaffected on screen | §3.9, `wp/wp2.4.md` §3.12 |
+| **D22** | `campaign-unit-card.tsx` gains a third additive prop, `title?`, and the count button's accessible name on a root with children reads "Select all in \<Root\>**'s own area** (\<n\> in unit · \<m\> not yet in a sub-unit)" | Review A-2 and A-5, fix round 1. §3.6/§3.13 title a flat foreign-nested card "\<Parent\> › \<Unit\>", which the card computes from `ou` alone, and a pseudo-unit's `fallbackTitle` cannot be used without losing `ou`'s drop target, type chip and estimate. A-5: the button selects the card's OWN visible tiles while D15's numbers are the unfiltered roll-up, so the name says which it acts on before it carries §3.12's two numbers. Both default-preserving: absent → `ouDisplayName(ou)` and "Select all in \<Unit\>" | §3.6, §3.12, §3.13, D15, D16 |
 
 ### 8.4 Stop conditions (implementer stops and reports; no workaround)
 
@@ -1501,7 +1503,7 @@ Modified (additive, default-preserving):
 | `v2/__tests__/wall-chart-v2.control-census.test.tsx` | the nested-card region, and the campaign-42 census |
 | `v2/__tests__/wall-chart-v2.characterization.test.tsx` (+ snapshot) | two snapshots change, a `nested` snapshot is added |
 | `v2/__tests__/wall-chart-v2.render-cost.test.tsx` | a third mount on `nested`, reported |
-| `docs/organiser-ux-review/wp/wp2.4c.md` | §8.3 D11–D20 and this §12 |
+| `docs/organiser-ux-review/wp/wp2.4c.md` | §8.3 D11–D22 and this §12 |
 
 Not modified, as §7 requires: every legacy composition file, `wall-chart-unit-manager.tsx`, `split-unit-dialog.tsx`,
 `delete-organising-unit-dialog.tsx`, `ou-reassignment-targets.ts`, `structure-api.ts`, `derive-group-view.ts`,
@@ -1698,9 +1700,122 @@ skeleton are unchanged. A `nested` snapshot is added.
    the retry fixes the root case too. The effect is otherwise WP2.4's.
 5. **AP-a's second writer.** The chart's "Assign people…" follow-up is issued for the added workers who hold **no** row
    in the root's group (§3.10's wording). A worker who already sits on another unit of that group keeps it: displacing
-   it is a move, and the drag rules — not a dialog's success callback — own moves. §4.6 step 1 and the e2e spec do not
-   exercise that case; noted for the reviewer.
+   it is a move, and the drag rules — not a dialog's success callback — own moves. **Fix round 1, review B-1:** the
+   first pass read the SELECTED group's rows rather than the root's, which on a flat foreign-nested card was the very
+   write this item says must not happen; it now reads the root's group and both directions are pinned (§12.11).
 6. **Not in this stage (as planned):** `tests/e2e/groups-v2/nesting.spec.ts` and its two helpers, the acceptance
    checklist `wp/wp2.4c-acceptance-checklist.md`, the `00_nesting_shape.sql` runs (dev with the operator's
    confirmation, production by the operator) and the HT-a checklist are Stage 3; NP-b is still open on the production
    counts.
+
+### 12.11 Fix round 1 — the Stage-2 review (B-1, B-2 blocking; A-1…A-8)
+
+Review: `wp24c-stage2-review.md` against `a9ce2b9c` — "FIX ROUND NEEDED", two blocking findings and eight
+advisories. All ten are applied. No database, no CLI, no Playwright; nothing committed by the implementer.
+
+**B-1 (blocking) — AP-a tested the wrong group and could move a worker off their worksite.**
+`use-wall-chart-actions-v2.ts` computed `parentGroup` and then filtered on `structure.placementByWorker`, which is
+the worker's row in the **selected** group. The two coincide only while the card is drawn nested. On a
+`foreignNested` card — the mixed case of §3.4, a shift under a worksite seen from the Shift group's own view — the
+selected group is Shift and the root's group is Worksite, so a member already on worksite Barrow passed the filter
+and the chart issued `move(null → KGP, keepInParent)`, whose displace rule (C-b) moved them to KGP: a silent
+structural write out of a dialog's success callback, which §12.10 item 5 says must never happen.
+
+Fix, as the reviewer sketched: the held-set is built from the placement rows filtered by the **parent's** group.
+
+```ts
+const heldInParentGroup = new Set(
+  ouAssignments.filter((a) => groupOf(a.ou_id) === parentGroup).map((a) => a.worker_id)
+);
+const withoutAnyRow = workerIds.filter((id) => !heldInParentGroup.has(id));
+```
+
+Two cases added, both on the flat-card shape: "AP-a on a FLAT foreign-nested card never moves a worker off their
+worksite" (a standalone "Swing" shift makes Shift primary, Day/Night render flat, and the added worker turns out to
+be Cal, already on Barrow → **no** RPC at all) and "…still adds the root row for a worker who holds no worksite"
+(Gita, unplaced → the one `move(null → KGP)`). **Reverted-fix check: the first case fails without the fix**
+(`expected [ [ 'structure_placements_move', null, 10, null ] ] to deeply equal []`).
+
+**B-2 (blocking) — Delete still removed children the dialog never named.**
+`wall-chart-dialogs-v2.tsx` passed the NE-a `childrenByRoot` set while
+`delete-organising-unit-dialog.tsx:121` sends `deleteChildren: true` unconditionally, so
+`structure_unit_delete` removes every `parent_ou_id` child. Two classes went unannounced: a group container's
+members — on campaign 42, Delete… on the "EDI Downer" card in the Employer view took all four worksites, their
+shifts and their placements behind copy that only warns about losing a unit assignment — and a C-k same-group child,
+so deleting "Barrow" silently took "Barrow Jetty" with it.
+
+Fix: announce what the RPC removes, not what the tree nests.
+
+```ts
+return ous.filter((o) => o.parent_ou_id === deleteTargetOu.ou_id).map((o) => o.ou_id);
+```
+
+`hasChildren` then also suppresses the reassignment step, which is right: those placements are deleted with the
+units. Two cases added: the container card reads "is a group with 4 sub-units" / "Delete group + 4 sub-units", and
+Delete… on Barrow reads "is a group with 1 sub-unit". **Both fail without the fix** (the dialog takes the ordinary
+branch, so `openDialog()` has no such text and no such button). D17 of WP2.4 is now closed in full, and §12.1's
+claim is true as written.
+
+**Advisories applied**
+
+| # | Change |
+|---|---|
+| A-1 | `focusWorker` un-hides the root and the nested card in **one** write, through a new `unhideUnits(ids)` on the group-view hook. Two `toggleHidden` calls could not work: both recompute from the `hiddenOuIds` prop, which does not change between two synchronous calls, and `setWallChart` merges patches — so the second overwrote the first and the root stayed hidden, leaving the highlight on a card nobody rendered. A case over `hiddenOuIds: [KGP, DAY]` pins it and **fails without the fix** |
+| A-2 | A flat `foreignNested` card is titled "\<Parent\> › \<Unit\>" — in the band (a new additive `title` prop on `CampaignUnitCard`, D22), in "Move to unit…" (`label`) and in the Find-worker item. A nested card keeps its own name with the root in the "Units in \<Root\>" caption, and a root is `ouDisplayName` as before. Pinned by the mixed-case case's `unitTitles` (`["KGP › Day", "KGP › Night", "Unassigned in Shift"]`) |
+| A-3 | `canSplit` is `!nested && nestingParentOf(ou, ouById) == null`, so a flat foreign-nested card offers no Split… either — the depth trigger refuses a grandchild under a plain parent there just as it does on a nested card, which is SP-a's own rationale |
+| A-4 | The split dialog's member list is the unit's own rows in the group again (`placementByWorker`), not the tree's per-card list. Stage 2 had re-pointed `workersByUnit` to the card, so splitting a root into crews could no longer place the workers who sit on Day or Night — although they hold the root's row and `structure_unit_split` moves exactly that row. The delete dialog is unaffected (a unit with children takes the `hasChildren` branch, which has no reassignment step) |
+| A-5 | The count button's accessible name says what it selects before it carries the two numbers: "Select all in KGP**'s own area** (7 in unit · 3 not yet in a sub-unit)" (D22). D15 itself is unchanged, as the reviewer confirmed |
+| A-6 | The Units manager's reorder is filtered to the selected Group's own units, so a nested child's group is never renumbered (D21). The case now pins `p_ou_ids: [BARROW, KGP, 12, 13, 14]` |
+| A-7 | The leftover `console.log("OPTIONS", …)` is removed from the nesting suite |
+| A-8 | The weak `toContain("empty")` case is replaced by a real D17 count: an Activist filter leaves KGP's subtree non-empty through Night while Day and three whole roots empty, and the band reports "**4 empty units hidden**" — three roots counted once each plus the one empty child of a rendered root |
+
+Re-verification after the fix round:
+
+```
+$ pnpm exec tsc --noEmit ; echo "tsc exit=$?"
+tsc exit=0
+
+$ pnpm exec vitest run src/components/campaigns/wall-chart/v2/__tests__ \
+    src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx \
+    src/lib/campaign/groups src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ ✓ wall-chart-v2.nesting.test.tsx (35)        ✓ wall-chart-v2.interaction.test.tsx (41)
+ ✓ wall-chart-v2.control-census.test.tsx (3)  ✓ wall-chart-v2.characterization.test.tsx (9)
+ ✓ wall-chart-v2.render-cost.test.tsx (1)     ✓ move-worker-mutation.test.tsx (8)
+ ✓ derive-group-tree.test.ts (30)             ✓ plan-nested-drop.test.ts (23)
+ ✓ derive-group-view.test.ts (31)             ✓ plan-drop.test.ts (8)
+ ✓ resolve-group-selection.test.ts (14)       ✓ wall-chart-prefs.test.ts (11)
+ ✓ no-direct-structure-writes.test.ts (3)
+ Test Files  13 passed (13)        Tests  217 passed (217)
+
+$ pnpm exec vitest run          # whole app
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > … within budget
+AssertionError: expected 8488.333788000002 to be less than 6000
+ Test Files  1 failed | 115 passed (116)
+      Tests  1 failed | 1662 passed (1663)
+
+$ pnpm exec eslint <the 9 files this round touched> ; echo "eslint exit=$?"
+eslint exit=0
+
+$ pnpm lint | grep problems
+✖ 295 problems (143 errors, 152 warnings)
+
+$ git diff --stat main -- supabase/ packages/db-types/                                   → empty
+$ git diff --stat main -- .../wall-chart/hooks .../wall-chart-unit-hierarchy.tsx .../campaign-wall-chart.tsx → empty
+$ git diff --stat main -- .../derive-group-view.ts .../plan-drop.ts                      → empty
+$ rg -n "localStorage" .../v2 .../campaign-wall-chart-v2.tsx .../lib/campaign/groups     → only WP2.4's own assertion
+$ rg -n "hierarchyViewByParent|subUnitView|applyToAllScopes|UNASSIGNED_KEY|UnitAssessmentViewControl" .../v2 → exit 1
+$ rg -n --pcre2 "…campaign_(organising_units|worker_ou)….(insert|update|upsert|delete)\(" src --glob '!**/__tests__/**' → exit 1
+$ grep -niE "insert|update|delete|…" scripts/data-hygiene/oux-wp2.4c/00_nesting_shape.sql → exit 1 (still not run)
+```
+
+**1,663 tests** (+5 on this round: the two B-1 cases, the two B-2 cases and the A-1 case; A-8 and A-6 tightened
+existing ones), the same single pre-existing legacy render-cost timing failure, lint back at the 295 ceiling — the
+first pass of the A-2 fix reached the card title through `structure.cardTitle` inside a `useMemo`, which
+`react-hooks/preserve-manual-memoization` refused (297); destructuring it with the hook's other values restores 295 —
+and the boundaries still empty. Stop conditions: none fired; this is fix round 1 of Stage 2, so 11 ("a third fix
+round") is not in play.
+
+Five files changed this round: `v2/use-wall-chart-actions-v2.ts` (B-1, A-4), `v2/wall-chart-dialogs-v2.tsx` (B-2,
+A-2), `v2/use-wall-chart-group-view.ts` (A-1, A-2), `v2/wall-chart-group-band.tsx` (A-2, A-3, A-5),
+`v2/wall-chart-toolbar.tsx` (A-6), plus `campaign-unit-card.tsx` (D22's `title?`) and the three test files with
+their snapshot.

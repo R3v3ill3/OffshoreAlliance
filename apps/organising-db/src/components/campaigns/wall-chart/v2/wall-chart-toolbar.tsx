@@ -301,7 +301,15 @@ export function WallChartToolbar({
                 hiddenOuIds={structure.hiddenInGroupIds}
                 onToggleHidden={structure.toggleHidden}
                 onShowAllHidden={structure.showAllHidden}
-                onReorder={(ids) => structure.reorderOus.mutate(ids)}
+                // §3.9 / wp2.4.md §3.12: `structure_unit_reorder` sets
+                // `display_order` from the array position, so only the
+                // SELECTED Group's own units are sent. The manager's list
+                // carries each root's nested children — units of another
+                // group — and passing them would renumber that group behind
+                // the organiser's back (review A-6, fix round 1). The children
+                // keep their own order, which is what decides the order of the
+                // nested cards inside a root.
+                onReorder={(ids) => structure.reorderOus.mutate(ids.filter((id) => structure.groupUnitIds.has(id)))}
                 onOpenCreateUnit={() => setCreateUnitOpen(true)}
                 // The manager hands back its own projected row; the dialogs
                 // need the real unit (its `parent_ou_id` drives the

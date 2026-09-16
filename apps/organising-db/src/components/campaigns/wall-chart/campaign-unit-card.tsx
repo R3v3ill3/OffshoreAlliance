@@ -20,6 +20,12 @@ export type CampaignUnitCardProps = {
   ou: WallChartOU | null;
   /** Title override for pseudo-units like "Unassigned". */
   fallbackTitle?: string;
+  /**
+   * WP2.4c (wp2.4c.md §3.6, §3.13): an explicit heading for a real unit — the
+   * v2 chart titles a flat "foreign-nested" card "<Parent> › <Unit>". Absent
+   * (every legacy and WP2.4 caller) → `ouDisplayName(ou)`, unchanged.
+   */
+  title?: string;
   workerCount: number;
   estimate?: number | null;
   /** Optional summary metric content rendered in the header band. */
@@ -119,6 +125,7 @@ const PLACEHOLDER_CAP = 24;
 export function CampaignUnitCard({
   ou,
   fallbackTitle,
+  title: titleOverride,
   workerCount,
   estimate,
   summary,
@@ -145,7 +152,7 @@ export function CampaignUnitCard({
   countAction,
   countLabel,
 }: CampaignUnitCardProps) {
-  const title = ou ? ouDisplayName(ou) : (fallbackTitle ?? "Unit");
+  const title = titleOverride ?? (ou ? ouDisplayName(ou) : (fallbackTitle ?? "Unit"));
   const typeChip = ou?.ou_type ? humanizeOuType(ou.ou_type) : null;
   const est = estimate ?? ou?.total_workers_estimated ?? 0;
   const cappedPlaceholders = Math.max(0, placeholders);

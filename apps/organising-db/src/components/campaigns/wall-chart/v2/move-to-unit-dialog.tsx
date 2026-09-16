@@ -23,7 +23,15 @@ import type { CampaignGroupRow } from "./use-wall-chart-groups";
 
 const UNASSIGNED_VALUE = "__unassigned__";
 
-export type MoveToUnitTarget = { ou: WallChartOU; group: CampaignGroupRow | null };
+export type MoveToUnitTarget = {
+  ou: WallChartOU;
+  group: CampaignGroupRow | null;
+  /**
+   * WP2.4c (wp2.4c.md §3.7, §3.13): an explicit label, used for a nested
+   * card's "<Root> › <Child>". Absent → the WP2.4 rule below.
+   */
+  label?: string;
+};
 
 /**
  * WP2.4 (wp2.4.md §3.9, §3.13) — move-only "Move to unit…": from a Group's
@@ -87,7 +95,7 @@ export function MoveToUnitDialog({
                 {group && <SelectItem value={UNASSIGNED_VALUE}>Unassigned in {group.name}</SelectItem>}
                 {targets.map((t) => (
                   <SelectItem key={t.ou.ou_id} value={String(t.ou.ou_id)}>
-                    {t.group && !group ? `${t.group.name} › ${ouDisplayName(t.ou)}` : ouDisplayName(t.ou)}
+                    {t.label ?? (t.group && !group ? `${t.group.name} › ${ouDisplayName(t.ou)}` : ouDisplayName(t.ou))}
                   </SelectItem>
                 ))}
               </SelectContent>

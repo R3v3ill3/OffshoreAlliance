@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { trackWallchartGroupSelected } from "@/lib/analytics/events";
+import { primaryGroups as derivePrimaryGroups } from "@/lib/campaign/groups/derive-group-tree";
 import {
   groupParamValue,
   orderGroups,
@@ -32,6 +33,15 @@ export const CAMPAIGN_GROUPS_QUERY_KEY = "campaign-groups";
  * owns the setter: a change writes `?group=` (preserving every other param,
  * dropping `?ou=` so the focused unit's group stops winning), writes the
  * prefs document, records the telemetry and clears the selection.
+ *
+ * WP2.4c (wp2.4c.md §3.5, SG-a): the Group control offers the PRIMARY groups
+ * only — a group every unit of which is nested under a unit of another group
+ * (campaign 42's Shift) is already on screen inside its parents' cards, so
+ * listing it would produce the "Unassigned in Shift" band the operator
+ * rejected. The same ids are handed to the resolver as `primaryIds`, so a
+ * `?group=` or a stored preference naming a sub-unit-only group falls through
+ * exactly as a deleted group does, `?ou=` on a nested unit opens its root's
+ * group, and no view the Group control cannot reach is reachable.
  *
  * On first render, once groups, units and prefs are known, the resolved
  * selection is written to the URL when `?group=` is absent or invalid, so a
@@ -103,13 +113,17 @@ export function useWallChartGroups({
     return m;
   }, [groups]);
 
+  /** SG-a: the selector's list — every group but the sub-unit-only ones. */
+  const primaryGroups = useMemo(() => derivePrimaryGroups(groups, ous), [groups, ous]);
+  const primaryIds = useMemo(() => new Set(primaryGroups.map((g) => g.group_id)), [primaryGroups]);
+
   const ouParam = searchParams.get("ou");
   const groupParam = searchParams.get("group");
   const ready = groupsLoaded && ousLoaded && prefsSettled;
 
   const resolved = useMemo(
-    () => resolveGroupSelection({ groups, ous, ouParam, groupParam, prefsGroup }),
-    [groups, ous, ouParam, groupParam, prefsGroup]
+    () => resolveGroupSelection({ groups, ous, ouParam, groupParam, prefsGroup, primaryIds }),
+    [groups, ous, ouParam, groupParam, prefsGroup, primaryIds]
   );
 
   // A change made here, remembered together with the `?group=` it was made
@@ -119,7 +133,7 @@ export function useWallChartGroups({
   const chosenApplies =
     chosen !== null &&
     (chosen.underParam === groupParam || groupParam === groupParamValue(chosen.selection)) &&
-    (chosen.selection === "none" || groupById.has(chosen.selection));
+    (chosen.selection === "none" || primaryIds.has(chosen.selection));
   const selection: GroupSelection = chosenApplies ? chosen.selection : resolved.selection;
   const source: GroupSelectionSource = chosenApplies ? "url" : resolved.source;
 
@@ -139,7 +153,7 @@ export function useWallChartGroups({
   useEffect(() => {
     if (!ready || chosen !== null) return;
     const fromUrl = parseGroupParam(groupParam);
-    const valid = fromUrl !== null && (fromUrl === "none" || groupById.has(fromUrl));
+    const valid = fromUrl !== null && (fromUrl === "none" || primaryIds.has(fromUrl));
     const value = groupParamValue(resolved.selection);
     // A valid `?group=` is left alone — unless `?ou=` won over it, in which
     // case the copied link would name the wrong group (fix round 2, A6).
@@ -147,7 +161,7 @@ export function useWallChartGroups({
     if (written.current === value) return;
     written.current = value;
     replaceParams((params) => params.set("group", value));
-  }, [ready, chosen, groupParam, groupById, resolved.selection, resolved.source, replaceParams]);
+  }, [ready, chosen, groupParam, primaryIds, resolved.selection, resolved.source, replaceParams]);
 
   const setSelection = useCallback(
     (next: GroupSelection) => {
@@ -157,7 +171,7 @@ export function useWallChartGroups({
         campaign_id: Number(campaignId),
         ou_type: next === "none" ? null : (groupById.get(next)?.kind ?? null),
         previous_ou_type: previous,
-        group_count: groups.length,
+        group_count: primaryGroups.length,
         control: "group_selector",
       });
       setChosen({ selection: next, underParam: groupParam });
@@ -168,7 +182,7 @@ export function useWallChartGroups({
       setWallChart({ group: next });
       clearSelection();
     },
-    [selection, groupById, campaignId, groups.length, groupParam, replaceParams, setWallChart, clearSelection]
+    [selection, groupById, campaignId, primaryGroups.length, groupParam, replaceParams, setWallChart, clearSelection]
   );
 
   const selectedGroup = selection === "none" ? null : (groupById.get(selection) ?? null);
@@ -177,6 +191,9 @@ export function useWallChartGroups({
     ous,
     ousLoaded,
     groups,
+    /** SG-a: the groups the selector offers (`primaryGroups`), in display order. */
+    primaryGroups,
+    primaryIds,
     groupsLoaded,
     groupById,
     groupNameById,

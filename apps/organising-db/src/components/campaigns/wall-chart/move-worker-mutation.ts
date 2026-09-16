@@ -38,7 +38,16 @@ export class MoveStepError extends Error {
 
   constructor(stepIndex: number, stepCount: number, cause: unknown) {
     const sentence = structureErrorMessage(cause, "The change was refused.").trim().replace(/\.+$/u, "");
-    super(`Step ${stepIndex} of ${stepCount} failed: ${sentence}. The chart shows what was saved.`);
+    // Stage 2 (wp2.4c.md §8.3 D11): a ONE-step plan is the plain WP2.4 call —
+    // a flat group's drop plans exactly one step — so its refusal reads as it
+    // did before this package, with no "Step 1 of 1" and nothing left half
+    // done to warn about. The §3.13 sentence is what a plan of two or more
+    // steps raises, which is the case it was written for.
+    super(
+      stepCount <= 1
+        ? `${sentence}.`
+        : `Step ${stepIndex} of ${stepCount} failed: ${sentence}. The chart shows what was saved.`
+    );
     this.name = "MoveStepError";
     this.stepIndex = stepIndex;
     this.stepCount = stepCount;

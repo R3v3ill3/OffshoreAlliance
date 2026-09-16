@@ -79,6 +79,7 @@ export function useWallChartViewV2({
   const selectionByActivity = core.assessmentOptions.selectionByActivity;
   const { memberRows, workerById, ratingByWorker, unitsByWorkerAll } = structure.index;
   const { workersByUnit, unassignedWorkerIds, notInAnyGroupIds, campaign, shownUnits } = structure;
+  const { rollupByUnit, shownChildrenByRoot } = structure;
 
   // ---- Colour by (§3.10): the stored selection, resolved against the live options.
   const colourBy = useMemo<AssessmentSelection>(() => {
@@ -244,20 +245,63 @@ export function useWallChartViewV2({
     },
     [workerById, ratingByWorker, filter, colourByRatings, colourBy, factsByWorker, ratingLookup, unitsByWorkerAll, leaderLinks, participationPredicate]
   );
+  /**
+   * The tiles each card draws: every shown card of the tree — a root, each of
+   * its shown nested children, and the flat foreign-nested cards (wp2.4c.md
+   * §3.6). A root's own list is the members in NONE of its children (B1).
+   */
   const visibleByUnit = useMemo(() => {
     const m = new Map<number, number[]>();
-    for (const u of shownUnits) m.set(u.ou_id, visibleIds(workersByUnit.get(u.ou_id) ?? []));
+    for (const u of shownUnits) {
+      m.set(u.ou_id, visibleIds(workersByUnit.get(u.ou_id) ?? []));
+      for (const c of shownChildrenByRoot.get(u.ou_id) ?? []) {
+        m.set(c.ou_id, visibleIds(workersByUnit.get(c.ou_id) ?? []));
+      }
+    }
     return m;
-  }, [shownUnits, workersByUnit, visibleIds]);
+  }, [shownUnits, shownChildrenByRoot, workersByUnit, visibleIds]);
   const visibleUnassigned = useMemo(() => visibleIds(unassignedWorkerIds), [visibleIds, unassignedWorkerIds]);
   const visibleNotInAnyGroup = useMemo(() => visibleIds(notInAnyGroupIds), [visibleIds, notInAnyGroupIds]);
 
+  /**
+   * The roll-up each card is emptiness-tested on: a root's WHOLE subtree, a
+   * child's own tiles — a hidden child's workers still count for its root
+   * (§3.6), so the test is over `rollupByUnit`, not over the rendered cards.
+   */
+  const visibleRollupCount = useCallback(
+    (ouId: number) => visibleIds(rollupByUnit.get(ouId) ?? []).length,
+    [visibleIds, rollupByUnit]
+  );
+
   /** "Show empty units" off hides units with no VISIBLE worker after filtering (§3.5 item 2). */
   const renderedUnits = useMemo(
-    () => (showEmptyUnits ? shownUnits : shownUnits.filter((u) => (visibleByUnit.get(u.ou_id)?.length ?? 0) > 0)),
-    [showEmptyUnits, shownUnits, visibleByUnit]
+    () => (showEmptyUnits ? shownUnits : shownUnits.filter((u) => visibleRollupCount(u.ou_id) > 0)),
+    [showEmptyUnits, shownUnits, visibleRollupCount]
   );
-  const emptyHiddenCount = shownUnits.length - renderedUnits.length;
+  /** The nested cards actually rendered under each rendered root, same rule. */
+  const renderedChildrenByRoot = useMemo(() => {
+    const m = new Map<number, typeof shownUnits>();
+    for (const u of renderedUnits) {
+      const children = shownChildrenByRoot.get(u.ou_id) ?? [];
+      m.set(
+        u.ou_id,
+        showEmptyUnits ? children : children.filter((c) => (visibleByUnit.get(c.ou_id)?.length ?? 0) > 0)
+      );
+    }
+    return m;
+  }, [renderedUnits, shownChildrenByRoot, showEmptyUnits, visibleByUnit]);
+  /**
+   * "N empty units hidden" counts both levels (§3.6): a root whose whole
+   * subtree is empty counts once (its children are empty by construction and
+   * are not rendered either), plus every empty child of a rendered root.
+   */
+  const emptyHiddenCount = useMemo(() => {
+    let n = shownUnits.length - renderedUnits.length;
+    for (const u of renderedUnits) {
+      n += (shownChildrenByRoot.get(u.ou_id) ?? []).length - (renderedChildrenByRoot.get(u.ou_id) ?? []).length;
+    }
+    return n;
+  }, [shownUnits, renderedUnits, shownChildrenByRoot, renderedChildrenByRoot]);
 
   // ---- Metrics: unfiltered members of each scope under the one Colour by (as block D).
   const metricsInput = useMemo(
@@ -269,13 +313,18 @@ export function useWallChartViewV2({
     () => computeMetrics(allWorkerIds, workerById, ratingByWorker, participationPredicate, metricsInput),
     [allWorkerIds, workerById, ratingByWorker, participationPredicate, metricsInput]
   );
+  /**
+   * Per card, over the members it rolls up (B5): a root's summary metrics and
+   * placeholders cover its subtree, a child's cover its own list. Unfiltered,
+   * as every other v2 metric is.
+   */
   const metricsByUnit = useMemo(() => {
     const m = new Map<number, WallChartMetrics>();
-    for (const [ouId, ids] of workersByUnit) {
+    for (const [ouId, ids] of rollupByUnit) {
       m.set(ouId, computeMetrics(ids, workerById, ratingByWorker, participationPredicate, metricsInput));
     }
     return m;
-  }, [workersByUnit, workerById, ratingByWorker, participationPredicate, metricsInput]);
+  }, [rollupByUnit, workerById, ratingByWorker, participationPredicate, metricsInput]);
   const unassignedMetrics = useMemo(
     () => computeMetrics(unassignedWorkerIds, workerById, ratingByWorker, participationPredicate, metricsInput),
     [unassignedWorkerIds, workerById, ratingByWorker, participationPredicate, metricsInput]
@@ -322,6 +371,7 @@ export function useWallChartViewV2({
     visibleUnassigned,
     visibleNotInAnyGroup,
     renderedUnits,
+    renderedChildrenByRoot,
     emptyHiddenCount,
     metrics: { campaignMetrics, metricsByUnit, unassignedMetrics, notInAnyGroupMetrics },
     campaignGreySlots,

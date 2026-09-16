@@ -11,6 +11,7 @@ import {
   unitsByWorker as unitsByWorkerAllGroups,
   unitsOfGroup,
 } from "@/lib/campaign/groups/derive-group-view";
+import { deriveGroupTree, type GroupTree } from "@/lib/campaign/groups/derive-group-tree";
 import type { GroupSelection } from "@/lib/campaign/groups/resolve-group-selection";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import type { SetWallChartPrefs } from "@/lib/hooks/useUserCampaignPrefs";
@@ -35,8 +36,23 @@ import type { HighlightKey, WallChartShellV2Env } from "./use-wall-chart-shell-v
 export const UNASSIGNED_CARD_KEY = "unassigned";
 export const NOT_IN_ANY_GROUP_CARD_KEY = "not-in-any-group";
 
-/** The tile resolves overrides up this chain; v2 has no nesting and no overrides, so it is empty. */
+/**
+ * The tile resolves per-unit assessment overrides up this chain. The v2 chart
+ * has no per-unit override (§3.10) — nested cards included (XP-a, wp2.4c.md
+ * §3.6) — so it stays empty.
+ */
 const EMPTY_PARENT_MAP = new Map<number, number | null>();
+
+/** Reused for a group view that has no tree (Not in any group), so the memos stay stable. */
+const EMPTY_CHILDREN = new Map<number, WallChartOU[]>();
+const EMPTY_NUMBER_LIST_MAP = new Map<number, number[]>();
+const EMPTY_NUMBER_MAP = new Map<number, number>();
+const EMPTY_ID_SET = new Set<number>();
+const NO_UNITS: WallChartOU[] = [];
+
+/** `?ou=` focus: how long to wait for the card, and how many times to look. */
+const FOCUS_RETRY_MS = 150;
+const FOCUS_ATTEMPTS = 20;
 
 /**
  * WP2.4 block C′ — the v2 wall chart's structure (wp2.4.md §3.4).
@@ -215,7 +231,7 @@ export function useWallChartGroupView({
   }, [ous]);
   const unitsByWorkerAll = useMemo(() => unitsByWorkerAllGroups(ouAssign), [ouAssign]);
 
-  // ---- The group view (§3.3) ------------------------------------------------------
+  // ---- The group view (§3.3) and the nested tree (wp2.4c.md §3.4) -----------------
   const groupId = selection === "none" ? null : selection;
   const view = useMemo(() => {
     if (groupId == null) return null;
@@ -223,6 +239,19 @@ export function useWallChartGroupView({
     for (const list of v.workersByUnit.values()) list.sort(compareWorkerIds);
     v.unassignedWorkerIds.sort(compareWorkerIds);
     return v;
+  }, [groupId, memberRows, ous, ouAssign, compareWorkerIds]);
+  /**
+   * The nested view of the same rows. Every per-card list is sorted by the
+   * chart's one comparator, exactly as the flat view's are, so a tile sits in
+   * the same place whether its card is a root or a nested child.
+   */
+  const tree = useMemo<GroupTree<WallChartOU> | null>(() => {
+    if (groupId == null) return null;
+    const t = deriveGroupTree(memberRows, ous, ouAssign, groupId);
+    for (const list of t.workersByNode.values()) list.sort(compareWorkerIds);
+    for (const list of t.subtreeByRoot.values()) list.sort(compareWorkerIds);
+    t.unassignedWorkerIds.sort(compareWorkerIds);
+    return t;
   }, [groupId, memberRows, ous, ouAssign, compareWorkerIds]);
   const notInAnyGroupIds = useMemo(() => {
     if (groupId != null) return [] as number[];
@@ -232,32 +261,69 @@ export function useWallChartGroupView({
   /** Units of the selected group, in the units query's order (D8). */
   const groupUnits = useMemo(() => view?.units ?? [], [view]);
   const groupUnitIds = useMemo(() => new Set(groupUnits.map((u) => u.ou_id)), [groupUnits]);
-  /** worker → the ONE unit the worker holds in the selected group (the tile index of §3.13). */
+  /**
+   * worker → the ONE card that draws the tile (§3.13, wp2.4c.md §3.6): the
+   * nested child when the worker holds one under their root, else the root.
+   * Still one entry per worker — a nested worker is never drawn twice.
+   */
   const unitsByWorkerInGroup = useMemo(() => {
     const m = new Map<number, number[]>();
-    if (!view) return m;
-    for (const [workerId, ouId] of view.placementByWorker) m.set(workerId, [ouId]);
+    if (!tree) return m;
+    for (const [workerId, ouId] of tree.nodeByWorker) m.set(workerId, [ouId]);
     return m;
-  }, [view]);
-  const workersByUnit = useMemo(
-    () => view?.workersByUnit ?? new Map<number, number[]>(),
-    [view]
-  );
-  const unassignedWorkerIds = useMemo(() => view?.unassignedWorkerIds ?? [], [view]);
+  }, [tree]);
+  /** node (root, nested child or flat foreign-nested card) → the tiles IT draws. */
+  const workersByUnit = useMemo(() => tree?.workersByNode ?? EMPTY_NUMBER_LIST_MAP, [tree]);
+  /** root → its nested children, in the units query's order (B1). */
+  const childrenByRoot = useMemo(() => tree?.childrenByRoot ?? EMPTY_CHILDREN, [tree]);
+  /** The cards of the band: the roots, then the flat foreign-nested cards (§3.6). */
+  const rootUnits = useMemo(() => (tree ? [...tree.roots, ...tree.foreignNested] : NO_UNITS), [tree]);
+  /**
+   * node → the workers its header count, placeholders and metrics cover: a
+   * root's whole subtree (B5), any other card's own tiles. Every rendered card
+   * has an entry.
+   */
+  const rollupByUnit = useMemo(() => {
+    if (!tree) return EMPTY_NUMBER_LIST_MAP;
+    const m = new Map<number, number[]>();
+    for (const [nodeId, ids] of tree.workersByNode) m.set(nodeId, ids);
+    for (const [rootId, ids] of tree.subtreeByRoot) m.set(rootId, ids);
+    return m;
+  }, [tree]);
+  /** Every card of the tree (roots, their children, the flat cards). */
+  const nodeIds = useMemo(() => tree?.nodeIds ?? EMPTY_ID_SET, [tree]);
+  /** worker → the root they count under (the compare/list value of "in U"). */
+  const rootByWorker = useMemo(() => tree?.rootByWorker ?? EMPTY_NUMBER_MAP, [tree]);
+  /** worker → the card that draws their tile. */
+  const nodeByWorker = useMemo(() => tree?.nodeByWorker ?? EMPTY_NUMBER_MAP, [tree]);
+  const unassignedWorkerIds = useMemo(() => tree?.unassignedWorkerIds ?? [], [tree]);
+  /** The worker's ACTUAL row in the group — what `structure_placements_move` needs. */
   const placementByWorker = useMemo(
-    () => view?.placementByWorker ?? new Map<number, number>(),
+    () => view?.placementByWorker ?? EMPTY_NUMBER_MAP,
     [view]
   );
 
-  /** Units of the selected group the user has not hidden (HU-a). */
+  /**
+   * HU-a under nesting (wp2.4c.md §3.6): hiding a root hides its subtree (the
+   * card and its children go together); hiding a child hides that card only —
+   * its workers still count in the root's roll-up and are NOT moved into the
+   * root's own area, exactly as the legacy chart behaved.
+   */
   const shownUnits = useMemo(
-    () => groupUnits.filter((u) => !hiddenOuIds.has(u.ou_id)),
-    [groupUnits, hiddenOuIds]
+    () => rootUnits.filter((u) => !hiddenOuIds.has(u.ou_id)),
+    [rootUnits, hiddenOuIds]
   );
-  /** The hidden ids that are units of the selected group — what the Units manager shows (fix round 2, A9). */
+  const shownChildrenByRoot = useMemo(() => {
+    const m = new Map<number, WallChartOU[]>();
+    for (const u of shownUnits) {
+      m.set(u.ou_id, (childrenByRoot.get(u.ou_id) ?? []).filter((c) => !hiddenOuIds.has(c.ou_id)));
+    }
+    return m;
+  }, [shownUnits, childrenByRoot, hiddenOuIds]);
+  /** The hidden ids that are cards of the selected group's tree — what the Units manager shows (A9). */
   const hiddenInGroupIds = useMemo(
-    () => new Set(groupUnits.filter((u) => hiddenOuIds.has(u.ou_id)).map((u) => u.ou_id)),
-    [groupUnits, hiddenOuIds]
+    () => new Set([...nodeIds].filter((id) => hiddenOuIds.has(id))),
+    [nodeIds, hiddenOuIds]
   );
   const hiddenInGroupCount = hiddenInGroupIds.size;
 
@@ -277,9 +343,9 @@ export function useWallChartGroupView({
   );
   /** "Show all" clears the selected group's units only; other groups' hidden units are untouched (§3.12). */
   const showAllHidden = useCallback(() => {
-    const next = liveHiddenIds().filter((id) => !groupUnitIds.has(id)).sort((a, b) => a - b);
+    const next = liveHiddenIds().filter((id) => !nodeIds.has(id)).sort((a, b) => a - b);
     setWallChart({ hiddenOuIds: next });
-  }, [liveHiddenIds, groupUnitIds, setWallChart]);
+  }, [liveHiddenIds, nodeIds, setWallChart]);
 
   /** The whole-groups map the delete dialog and the sheet's "other groups" need. */
   const unitsByGroup = useMemo(() => {
@@ -289,16 +355,29 @@ export function useWallChartGroupView({
   }, [groups, ous]);
 
   // ---- `?ou=` focus: scroll to and highlight the unit card once units are on screen.
+  //
+  // The card is looked for on a short, bounded retry rather than once (WP2.4c,
+  // wp2.4c.md §8.3 D12): which cards render depends on the placements query
+  // and on "Show empty units", so at the moment this effect first runs the
+  // band can still be the loading placeholder or a set of empty units — and a
+  // single miss meant `?ou=` silently did nothing, for a nested card and a
+  // root alike. The loop stops on the first hit, after `FOCUS_ATTEMPTS` tries,
+  // or on unmount.
   useEffect(() => {
     if (!focusOuId || ous.length === 0) return;
-    const el = document.querySelector<HTMLElement>(`[data-ou-id="${focusOuId}"]`);
-    if (!el) return;
-    const t = window.setTimeout(() => {
+    let attempts = 0;
+    let timer = window.setTimeout(function tick() {
+      const el = document.querySelector<HTMLElement>(`[data-ou-id="${focusOuId}"]`);
+      if (!el) {
+        if (++attempts >= FOCUS_ATTEMPTS) return;
+        timer = window.setTimeout(tick, FOCUS_RETRY_MS);
+        return;
+      }
       el.scrollIntoView({ behavior: "smooth", block: "start" });
       setHighlightedOuId(focusOuId);
-      window.setTimeout(() => setHighlightedOuId(null), 2500);
-    }, 150);
-    return () => window.clearTimeout(t);
+      timer = window.setTimeout(() => setHighlightedOuId(null), 2500);
+    }, FOCUS_RETRY_MS);
+    return () => window.clearTimeout(timer);
   }, [focusOuId, ous.length, setHighlightedOuId]);
 
   // ---- Worker search (§3.12): the worker's unit IN THE SELECTED GROUP ---------------
@@ -310,8 +389,14 @@ export function useWallChartGroupView({
       if (!w) continue;
       let unitLabel: string;
       if (groupId != null) {
-        const ouId = placementByWorker.get(row.worker_id);
-        unitLabel = ouId != null ? (ouNameById.get(ouId) ?? "Unassigned") : "Unassigned";
+        // wp2.4c.md §3.6: the card the tile is on, named "<Root> › <Child>"
+        // when that card is nested, so the item points at what the organiser
+        // will see highlighted.
+        const nodeId = nodeByWorker.get(row.worker_id);
+        const rootId = rootByWorker.get(row.worker_id);
+        const nodeName = nodeId != null ? ouNameById.get(nodeId) : undefined;
+        const rootName = rootId != null && rootId !== nodeId ? ouNameById.get(rootId) : undefined;
+        unitLabel = nodeName ? (rootName ? `${rootName} › ${nodeName}` : nodeName) : "Unassigned";
       } else if (noneSet.has(row.worker_id)) {
         unitLabel = "Not in any group";
       } else {
@@ -330,15 +415,23 @@ export function useWallChartGroupView({
     }
     items.sort((a, b) => a.name.localeCompare(b.name));
     return items;
-  }, [memberRows, groupId, placementByWorker, ouNameById, notInAnyGroupIds, unitsByWorkerAll]);
+  }, [memberRows, groupId, nodeByWorker, rootByWorker, ouNameById, notInAnyGroupIds, unitsByWorkerAll]);
 
   const focusWorker = useCallback(
     (workerId: number) => {
       let key: HighlightKey | null = null;
       if (groupId != null) {
-        const ouId = placementByWorker.get(workerId);
-        key = ouId ?? UNASSIGNED_CARD_KEY;
-        if (typeof key === "number" && hiddenOuIds.has(key)) toggleHidden(key);
+        const nodeId = nodeByWorker.get(workerId);
+        key = nodeId ?? UNASSIGNED_CARD_KEY;
+        // Un-hide the card AND the root it is nested in, or the highlight
+        // would point at a card that is not rendered (wp2.4c.md §3.6).
+        if (typeof key === "number") {
+          const rootId = rootByWorker.get(workerId);
+          const unhide = [...new Set([rootId, key])].filter(
+            (id): id is number => id != null && hiddenOuIds.has(id)
+          );
+          for (const id of unhide) toggleHidden(id);
+        }
       } else if (notInAnyGroupIds.includes(workerId)) {
         key = NOT_IN_ANY_GROUP_CARD_KEY;
       }
@@ -353,7 +446,7 @@ export function useWallChartGroupView({
         window.setTimeout(() => setHighlightedOuId(null), 2500);
       }, 80);
     },
-    [groupId, placementByWorker, hiddenOuIds, toggleHidden, notInAnyGroupIds, workerDetail, setHighlightedOuId]
+    [groupId, nodeByWorker, rootByWorker, hiddenOuIds, toggleHidden, notInAnyGroupIds, workerDetail, setHighlightedOuId]
   );
 
   // ---- WP1.7 rating hint: the first tile in the v2 DOM order (units, then Unassigned).
@@ -362,10 +455,18 @@ export function useWallChartGroupView({
       firstTileAnchor({
         inGroup: groupId != null,
         notInAnyGroupIds,
-        units: shownUnits.map((u) => ({ ouId: u.ou_id, workerIds: workersByUnit.get(u.ou_id) ?? [] })),
+        // DOM order: each root's own tiles, then its nested children's
+        // (wp2.4c.md §3.6), then Unassigned.
+        units: shownUnits.flatMap((u) => [
+          { ouId: u.ou_id, workerIds: workersByUnit.get(u.ou_id) ?? [] },
+          ...(shownChildrenByRoot.get(u.ou_id) ?? []).map((c) => ({
+            ouId: c.ou_id,
+            workerIds: workersByUnit.get(c.ou_id) ?? [],
+          })),
+        ]),
         unassignedWorkerIds,
       }),
-    [groupId, notInAnyGroupIds, shownUnits, workersByUnit, unassignedWorkerIds]
+    [groupId, notInAnyGroupIds, shownUnits, shownChildrenByRoot, workersByUnit, unassignedWorkerIds]
   );
   const ratingHint = useFirstUseHint("wall_chart_rating", {
     hasTiles: ratingHintAnchor !== null,
@@ -382,6 +483,15 @@ export function useWallChartGroupView({
     groupId,
     groupUnits,
     groupUnitIds,
+    /** wp2.4c.md §3.4: the nested view of the selected group, or null outside one. */
+    tree,
+    rootUnits,
+    childrenByRoot,
+    shownChildrenByRoot,
+    rollupByUnit,
+    nodeIds,
+    nodeByWorker,
+    rootByWorker,
     shownUnits,
     hiddenInGroupIds,
     hiddenInGroupCount,

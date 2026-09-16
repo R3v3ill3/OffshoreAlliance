@@ -107,17 +107,58 @@ export function WallChartDialogsV2({
     addWorkerFormKey,
   } = shell.dialogs;
   const { setHighlightedOuId } = shell.highlight;
-  const { ous, ouById, groupUnits, nextDisplayOrder, workersByUnit } = structure;
+  const { ous, ouById, groupUnits, nextDisplayOrder, workersByUnit, tree, rollupByUnit } = structure;
   const { workerById } = structure.index;
   const group = groupsState.selectedGroup;
 
-  // Move targets: the Group's units, or — outside any Group — every unit that has a Group, "Group › Unit".
+  /**
+   * Move targets (wp2.4c.md §3.7): inside a Group, its roots, each root's
+   * nested children right after it as "<Root> › <Child>", then the flat
+   * foreign-nested cards — the same order the band renders. Outside any Group
+   * they stay every unit that has a Group, "Group › Unit" (§3.5: the Not in
+   * any group view is unchanged).
+   */
   const moveTargets = useMemo<MoveToUnitTarget[]>(() => {
-    if (group) return groupUnits.map((ou) => ({ ou, group }));
+    if (group) {
+      if (!tree) return groupUnits.map((ou) => ({ ou, group }));
+      const out: MoveToUnitTarget[] = [];
+      for (const root of tree.roots) {
+        out.push({ ou: root, group });
+        for (const child of tree.childrenByRoot.get(root.ou_id) ?? []) {
+          out.push({ ou: child, group, label: `${ouDisplayName(root)} › ${ouDisplayName(child)}` });
+        }
+      }
+      for (const flat of tree.foreignNested) out.push({ ou: flat, group });
+      return out;
+    }
     return groupsState.groups.flatMap((g) =>
       (structure.unitsByGroup.get(g.group_id) ?? []).map((ou) => ({ ou, group: g }))
     );
-  }, [group, groupUnits, groupsState.groups, structure.unitsByGroup]);
+  }, [group, tree, groupUnits, groupsState.groups, structure.unitsByGroup]);
+
+  /**
+   * The delete dialog's inputs (wp2.4c.md §3.9). A ROOT hands over its nested
+   * children, so the dialog's existing "Delete group + N sub-units" branch is
+   * ANNOUNCED instead of deleting them silently (WP2.4 D17 passed `[]`); a
+   * NESTED card hands over no children and, as reassignment targets, its
+   * siblings in the same Group under the same root plus that Group's roots —
+   * the dialog's own same-parent rule then narrows them.
+   */
+  const deleteChildOuIds = useMemo(() => {
+    if (!deleteTargetOu) return [] as number[];
+    return (tree?.childrenByRoot.get(deleteTargetOu.ou_id) ?? []).map((c) => c.ou_id);
+  }, [deleteTargetOu, tree]);
+  const deleteAllOus = useMemo(() => {
+    if (!deleteTargetOu || !tree) return groupUnits;
+    const nestedSiblings = [...tree.childrenByRoot.values()]
+      .flat()
+      .filter((c) => c.parent_ou_id === deleteTargetOu.parent_ou_id && c.group_id === deleteTargetOu.group_id);
+    // A card is nested when it is one of its root's children; a root and a
+    // flat foreign-nested card both keep WP2.4's Group-wide list.
+    const isNested = nestedSiblings.some((c) => c.ou_id === deleteTargetOu.ou_id);
+    if (!isNested) return groupUnits;
+    return [...nestedSiblings, ...groupUnits];
+  }, [deleteTargetOu, tree, groupUnits]);
 
   const tileDialogWorker = tileUnitDialog != null ? workerById.get(tileUnitDialog.workerId) : undefined;
   const tileRefs: DropRef[] = tileUnitDialog
@@ -130,8 +171,11 @@ export function WallChartDialogsV2({
   const workerCountByOu = useMemo(() => {
     const m = new Map<number, number>();
     for (const [ouId, ids] of workersByUnit) m.set(ouId, ids.length);
+    // A root's count is its roll-up, so the merge dialog names the same
+    // number the card shows (wp2.4c.md §3.6).
+    for (const [ouId, ids] of rollupByUnit) m.set(ouId, ids.length);
     return m;
-  }, [workersByUnit]);
+  }, [workersByUnit, rollupByUnit]);
 
   return (
     <>
@@ -212,7 +256,7 @@ export function WallChartDialogsV2({
           key={`merge-${mergeSourceOu.ou_id}`}
           campaignId={campaignId}
           source={mergeSourceOu}
-          candidates={groupUnits.filter((u) => u.ou_id !== mergeSourceOu.ou_id)}
+          candidates={actions.mergeCandidatesFor(mergeSourceOu)}
           workerCountByOu={workerCountByOu}
           onClose={() => setMergeSourceOu(null)}
         />
@@ -265,6 +309,10 @@ export function WallChartDialogsV2({
         contextOu={addWorkerContextOu}
         organisingUnits={ous}
         formResetKey={addWorkerFormKey}
+        // AP-a (wp2.4c.md §3.10): "Assign people…" on a nested card places the
+        // worker on the sub-unit only (the route has no parent logic), so the
+        // chart adds the root row itself for the workers who hold none.
+        onAdded={(workerIds) => actions.handleWorkersAdded(addWorkerContextOu, workerIds)}
       />
 
       {splitTargetOu && (
@@ -298,10 +346,11 @@ export function WallChartDialogsV2({
           }}
           campaignId={campaignId}
           unit={deleteTargetOu}
-          // Same-Group targets only (§3.13): the dialog's own same-parent /
-          // same-container rule then applies within them.
-          allOus={groupUnits}
-          childOuIds={[]}
+          // Same-Group targets only (§3.13), plus a nested source's siblings
+          // (wp2.4c.md §3.9); the dialog's own same-parent / same-container
+          // rule then applies within them.
+          allOus={deleteAllOus}
+          childOuIds={deleteChildOuIds}
           workers={actions.deleteUnitWorkers}
           onDeleted={() => {
             setDeleteTargetOu(null);

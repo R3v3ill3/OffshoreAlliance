@@ -64,6 +64,12 @@ export type CampaignUnitCardProps = {
    * nested sub-unit cards under a parent OU (one level of nesting).
    */
   subUnits?: ReactNode;
+  /**
+   * WP2.4c (wp2.4c.md §3.6, §3.13): the caption above `subUnits`. The
+   * legacy chart leaves it at "Sub-units", so its DOM is unchanged; the v2
+   * chart passes "Units in <Root>".
+   */
+  subUnitsLabel?: string;
   /** Optional chips/badges shown next to the unit name (e.g. sub-unit count). */
   headerBadges?: ReactNode;
   /** Optional subjective unit-rating control rendered in the header. */
@@ -99,6 +105,13 @@ export type CampaignUnitCardProps = {
     /** Rendered as `aria-pressed` so the state reads back. */
     pressed: boolean;
   };
+  /**
+   * WP2.4c (wp2.4c.md §3.6, §3.13): replaces the "N named" text of the
+   * header count with one string — "<n> in unit · <m> not yet in a sub-unit"
+   * on a root card that has nested children. The `/ est.` suffix still
+   * follows. Absent (every legacy and WP2.4 caller) → "N named", unchanged.
+   */
+  countLabel?: string;
 };
 
 const PLACEHOLDER_CAP = 24;
@@ -121,6 +134,7 @@ export function CampaignUnitCard({
   onWorkerDrop,
   dropDisabled,
   subUnits,
+  subUnitsLabel,
   headerBadges,
   ratingControl,
   nested,
@@ -129,6 +143,7 @@ export function CampaignUnitCard({
   onUnitDragSessionStart,
   onUnitDragSessionEnd,
   countAction,
+  countLabel,
 }: CampaignUnitCardProps) {
   const title = ou ? ouDisplayName(ou) : (fallbackTitle ?? "Unit");
   const typeChip = ou?.ou_type ? humanizeOuType(ou.ou_type) : null;
@@ -257,7 +272,7 @@ export function CampaignUnitCard({
             </div>
             {showHeaderDetails && !countAction && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                {workerCount} named{est > 0 && ` / ${est} est.`}{unfilledSlots != null && unfilledSlots > 0 && ` · ${unfilledSlots} unfilled`}
+                {countLabel ?? `${workerCount} named`}{est > 0 && ` / ${est} est.`}{unfilledSlots != null && unfilledSlots > 0 && ` · ${unfilledSlots} unfilled`}
               </p>
             )}
             {showHeaderDetails && countAction && (
@@ -270,7 +285,7 @@ export function CampaignUnitCard({
                   aria-pressed={countAction.pressed}
                   title={countAction.label}
                 >
-                  {workerCount} named
+                  {countLabel ?? `${workerCount} named`}
                 </button>
                 {est > 0 && ` / ${est} est.`}{unfilledSlots != null && unfilledSlots > 0 && ` · ${unfilledSlots} unfilled`}
               </p>
@@ -323,7 +338,7 @@ export function CampaignUnitCard({
         {subUnits && (
           <div className="mt-3 ml-3 pl-3 border-l-2 border-muted space-y-3">
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              Sub-units
+              {subUnitsLabel ?? "Sub-units"}
             </div>
             {subUnits}
           </div>

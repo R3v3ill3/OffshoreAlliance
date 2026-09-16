@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,7 @@ import { WallChartSelectionBar } from "../wall-chart-selection-bar";
 import { WallChartSummaryHeader } from "../wall-chart-summary-header";
 import { WallChartUnitManager } from "../wall-chart-unit-manager";
 import { WorkerSearch } from "../worker-search";
-import { ouDisplayName } from "../types";
+import { ouDisplayName, type WallChartOU } from "../types";
 import type { WallChartCoreData } from "../hooks/use-wall-chart-core-data";
 import { FilterChips } from "./filter-chips";
 import { GroupSelector } from "./group-selector";
@@ -77,6 +77,25 @@ export function WallChartToolbar({
   const buildListController = structure.buildList.controller;
   const groupHint = useFirstUseHint("wall_chart_group_selector", { hasTiles: true, canWrite });
 
+  /**
+   * WP2.4c (wp2.4c.md §3.9): the Units manager lists the selected Group's
+   * TREE — each root with its nested children under it — through the
+   * manager's own parent → children rendering, which keys on `parent_ou_id`.
+   * The rows are PROJECTED onto the tree: a root's link to its container (a
+   * facet link, never nesting under NE-a) is dropped so the root is top-level,
+   * and a nested child keeps its real parent. Nothing else about the manager
+   * changes — it is not edited by this package (§7) — and reordering a root
+   * still carries its children with it.
+   */
+  const managerOus = useMemo(() => {
+    const rows: WallChartOU[] = [];
+    for (const root of structure.rootUnits) {
+      rows.push(root.parent_ou_id == null ? root : { ...root, parent_ou_id: null });
+      for (const child of structure.childrenByRoot.get(root.ou_id) ?? []) rows.push(child);
+    }
+    return rows;
+  }, [structure.rootUnits, structure.childrenByRoot]);
+
   const otherGroups = groupsState.groups.filter((g) => g.group_id !== groupsState.selection);
   const otherGroupUnitIds = view.filter.otherGroupUnitIds ?? new Set<number>();
   const toggleOtherGroupUnit = (ouId: number) => {
@@ -130,7 +149,7 @@ export function WallChartToolbar({
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-end gap-3">
                 <GroupSelector
-                  groups={groupsState.groups}
+                  groups={groupsState.primaryGroups}
                   value={groupsState.selection}
                   onChange={groupsState.setSelection}
                   hintVisible={groupHint.visible}
@@ -277,16 +296,20 @@ export function WallChartToolbar({
                 </Button>
               )}
               <WallChartUnitManager
-                ous={structure.groupUnits}
+                ous={managerOus}
                 canWrite={canWrite}
                 hiddenOuIds={structure.hiddenInGroupIds}
                 onToggleHidden={structure.toggleHidden}
                 onShowAllHidden={structure.showAllHidden}
                 onReorder={(ids) => structure.reorderOus.mutate(ids)}
                 onOpenCreateUnit={() => setCreateUnitOpen(true)}
-                onDeleteUnit={canWrite ? (ou) => setDeleteTargetOu(ou) : undefined}
+                // The manager hands back its own projected row; the dialogs
+                // need the real unit (its `parent_ou_id` drives the
+                // reassignment rule), so it is looked up by id.
+                onDeleteUnit={
+                  canWrite ? (ou) => setDeleteTargetOu(structure.ouById.get(ou.ou_id) ?? ou) : undefined
+                }
                 serverSide
-                flat
               />
             </div>
           }

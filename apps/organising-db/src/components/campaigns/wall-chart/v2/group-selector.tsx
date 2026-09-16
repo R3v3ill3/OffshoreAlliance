@@ -23,6 +23,13 @@ export const NOT_IN_ANY_GROUP_LABEL = "Not in any group";
  * in display order, then "Not in any group"; single-select; always shown,
  * even with one group or none. The WP1.7 `wall_chart_group_selector` hint
  * anchors here (§3.16).
+ *
+ * WP2.4c (wp2.4c.md §3.5, SG-a / B2): `groups` is the PRIMARY list
+ * (`groupsState.primaryGroups`). A group every unit of which is nested under
+ * a unit of another group is already on screen inside those parents' cards,
+ * so it is not offered — and, since the resolver validates `?group=` and the
+ * stored preference against the same ids, no view exists that this control
+ * cannot reach and "Unassigned in <a sub-unit-only group>" is never rendered.
  */
 export function GroupSelector({
   groups,
@@ -31,6 +38,7 @@ export function GroupSelector({
   hintVisible,
   onHintDismiss,
 }: {
+  /** The primary groups, in display order (wp2.4c.md §3.5). */
   groups: readonly CampaignGroupRow[];
   value: GroupSelection;
   onChange: (next: GroupSelection) => void;

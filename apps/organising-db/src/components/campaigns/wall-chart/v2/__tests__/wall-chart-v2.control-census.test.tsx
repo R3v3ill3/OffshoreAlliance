@@ -11,6 +11,15 @@
  * sub-units", "Expand all", "Collapse all" or "Copy to unit…" anywhere, and
  * at most 2 controls per unit card (+1 for the build-list drag handle).
  *
+ * WP2.4c (wp2.4c.md §4.3) adds the NESTED unit card as a region of its own —
+ * a root card contains its children's cards, so a child's controls are
+ * excluded from its parent's region and reported under "nested unit card:
+ * <name>" with the same rule: at most the rating control and the ⋯ menu, plus
+ * the count click. The FORBIDDEN_NAMES stay absent (XP-a: nesting brings back
+ * no "Show sub-units" / "Unit view" / "Expand all" / "Collapse all"), and the
+ * fixed page total is unchanged. The second `it` runs the same census over
+ * the `nested` fixture, the campaign-42 shape.
+ *
  * Counting rule (stated so the numbers can be read): an "element" is a
  * button, input, select, textarea, link or an element with an interactive
  * role; a "control" collapses the five buttons of one rating control into
@@ -122,7 +131,11 @@ function census(container: HTMLElement, label: string): Record<string, Region> {
   )?.parentElement?.parentElement;
   const cards = [...container.querySelectorAll(CARD_ROOT)].filter((c) => c.querySelector("h3"));
   const unassigned = cards.find((c) => c.querySelector("h3")?.textContent?.startsWith("Unassigned in"));
-  const unitCards = cards.filter((c) => c !== unassigned);
+  const allUnitCards = cards.filter((c) => c !== unassigned);
+  /** A nested card is one whose nearest card ancestor is another unit card (wp2.4c.md §3.6). */
+  const isNested = (c: Element) => allUnitCards.some((other) => other !== c && other.contains(c));
+  const unitCards = allUnitCards.filter((c) => !isNested(c));
+  const nestedCards = allUnitCards.filter(isNested);
   const firstTile = container.querySelector("[data-worker-id]");
   if (!toolbar || !bar || !charts || !unassigned || unitCards.length === 0 || !firstTile) {
     throw new Error(`Census regions missing: toolbar=${!!toolbar} bar=${!!bar} charts=${!!charts} unassigned=${!!unassigned} units=${unitCards.length} tile=${!!firstTile}`);
@@ -134,14 +147,28 @@ function census(container: HTMLElement, label: string): Record<string, Region> {
   out.toolbar = region("toolbar (sticky header)", toolbar, (el) => bar.contains(el));
   out.charts = region("charts card", charts);
   out.print = region("print", chart, (el) => name(el) !== "Print");
-  unitCards.forEach((card, i) => {
-    const r = region(`unit card: ${card.querySelector("h3")?.textContent}`, card, inTile);
-    const handle = card.querySelector('[draggable="true"]:not([data-worker-id])');
+  /** A card owns an element when no nested card between them does (wp2.4c.md §3.6). */
+  const ownedElsewhere = (card: Element) => (el: Element) =>
+    inTile(el) || nestedCards.some((n) => n !== card && n.contains(el));
+  const describeCard = (card: Element, label: string): Region => {
+    const r = region(label, card, ownedElsewhere(card));
+    const handle = [...card.querySelectorAll('[draggable="true"]:not([data-worker-id])')].find(
+      (h) => !nestedCards.some((n) => n !== card && n.contains(h))
+    );
     if (handle) {
       r.elements.push(`[build-list drag handle] ${name(handle)}`);
       r.controls.push(`[build-list drag handle] ${name(handle)}`);
     }
-    out[`unitCard${i}`] = r;
+    return r;
+  };
+  unitCards.forEach((card, i) => {
+    out[`unitCard${i}`] = describeCard(card, `unit card: ${card.querySelector("h3")?.textContent}`);
+  });
+  nestedCards.forEach((card, i) => {
+    out[`nestedUnitCard${i}`] = describeCard(
+      card,
+      `nested unit card: ${card.querySelector("h3")?.textContent}`
+    );
   });
   out.unassignedCard = region(`unassigned card: ${unassigned.querySelector("h3")?.textContent}`, unassigned, inTile);
   out.tile = region(`tile: ${firstTile.getAttribute("data-worker-name")}`, firstTile);
@@ -203,11 +230,16 @@ describe("WP2.4 control census (appendix A §3 re-count)", () => {
     for (const re of FORBIDDEN_NAMES) expect(everything.filter((n) => re.test(n))).toEqual([]);
     expect(container.querySelector('button[role="combobox"][aria-label="View"]')).toBeNull();
 
-    // Per unit card: rating + ⋯ menu, and the count click.
-    for (const key of Object.keys(c).filter((k) => k.startsWith("unitCard"))) {
+    // Per unit card — root AND nested alike: rating + ⋯ menu, and the count click.
+    const cardKeys = Object.keys(c).filter((k) => k.startsWith("unitCard") || k.startsWith("nestedUnitCard"));
+    for (const key of cardKeys) {
       expect(unitCardControls(c[key])).toEqual(["Rating (5 levels)", "Unit actions"]);
       expect(unitCardControls(c[key]).length).toBeLessThanOrEqual(2);
     }
+    // The `small` fixture's Employer view nests South Deck inside Acme South.
+    expect(Object.values(c).filter((r) => r.name.startsWith("nested unit card:")).map((r) => r.name)).toEqual([
+      "nested unit card: South Deck",
+    ]);
     // Unassigned card: no toolbar control at all (only the count click).
     expect(unitCardControls(c.unassignedCard)).toEqual([]);
     // Fixed page controls: board 4 + selection bar 5 (Add to build list needs the panel) + toolbar 12 + charts 2 + print 1.
@@ -225,7 +257,8 @@ describe("WP2.4 control census (appendix A §3 re-count)", () => {
       "Find worker",
       "Add worker",
       "Import Workers",
-      "Units (2)",
+      // wp2.4c.md §3.9: the manager lists the tree (Acme North, Acme South, South Deck).
+      "Units (3)",
     ]);
     expect(c.charts.controls.length).toBe(2);
     expect(c.print.controls).toEqual(["Print"]);
@@ -241,11 +274,39 @@ describe("WP2.4 control census (appendix A §3 re-count)", () => {
 
     expect(c.selectionBar.controls.length).toBe(6);
     expect(fixedPageTotal(c)).toBe(25);
-    for (const key of Object.keys(c).filter((k) => k.startsWith("unitCard"))) {
+    for (const key of Object.keys(c).filter((k) => k.startsWith("unitCard") || k.startsWith("nestedUnitCard"))) {
       const controls = unitCardControls(c[key]);
       expect(controls.length).toBeLessThanOrEqual(3);
       expect(controls.filter((n) => !n.startsWith("[build-list"))).toEqual(["Rating (5 levels)", "Unit actions"]);
     }
+  });
+
+  it("the campaign-42 nested shape: the same per-card rule, and no revived hierarchy control", async () => {
+    resetSpies();
+    mounted?.unmount();
+    mounted = await mountWallChart({
+      Component: WorkforceBoard,
+      fixture: buildWallChartFixtureV2("nested"),
+      // Worksite is the operator's primary grouping (wp2.4c.md §1.1).
+      search: "view=wall-chart&group=2",
+    });
+    const container = mounted.container;
+    await click(tileButton(container, 201), { ctrlKey: true });
+    const c = census(container, "nested fixture, Worksite, one worker selected");
+
+    // KGP holds Day and Night; the other worksites hold nothing (§4.3).
+    expect(Object.values(c).filter((r) => r.name.startsWith("nested unit card:")).map((r) => r.name)).toEqual([
+      "nested unit card: Day",
+      "nested unit card: Night",
+    ]);
+    for (const key of Object.keys(c).filter((k) => k.startsWith("unitCard") || k.startsWith("nestedUnitCard"))) {
+      expect(unitCardControls(c[key])).toEqual(["Rating (5 levels)", "Unit actions"]);
+    }
+    expect(unitCardControls(c.unassignedCard)).toEqual([]);
+    const everything = interactiveIn(container, () => false).map(name);
+    for (const re of FORBIDDEN_NAMES) expect(everything.filter((n) => re.test(n))).toEqual([]);
+    expect(fixedPageTotal(c)).toBe(24);
+
     mounted?.unmount();
     mounted = null;
   });

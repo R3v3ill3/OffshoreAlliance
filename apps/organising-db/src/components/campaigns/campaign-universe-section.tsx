@@ -415,6 +415,7 @@ export function CampaignUniverseSection({
               ? "Sector-wide worksites always use employer or worksite matching. Switch back to specific sites to use employer and worksite."
               : undefined
           }
+          campaignId={cid}
         />
       )}
 

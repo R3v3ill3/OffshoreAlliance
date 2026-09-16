@@ -1009,6 +1009,7 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
               onContinue={() => saveScopeMutation.mutate()}
               showBackButton={false}
               continueLabel="Save employers & worksites"
+              campaignId={campaignId}
             />
           </AccordionContent>
         </AccordionItem>

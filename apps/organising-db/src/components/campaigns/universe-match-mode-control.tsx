@@ -1,7 +1,11 @@
 "use client";
 
+import { useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { UniverseMembershipRefreshDialog } from "@/components/campaigns/universe-membership-refresh-dialog";
 
 /**
  * Campaign-level membership rule. Default AND (employer and worksite).
@@ -13,12 +17,18 @@ export function UniverseMatchModeControl({
   onOrMatchingChange,
   disabled,
   disabledReason,
+  campaignId,
 }: {
   orMatching: boolean;
   onOrMatchingChange: (orMatching: boolean) => void;
   disabled?: boolean;
   disabledReason?: string;
+  /** Saved campaign — shows Refresh, which reads campaign_employers from the DB. */
+  campaignId?: number | null;
 }) {
+  const [refreshOpen, setRefreshOpen] = useState(false);
+  const canRefresh = campaignId != null && Number.isFinite(campaignId);
+
   return (
     <div className="rounded-md border p-4 space-y-2">
       <div className="flex items-start justify-between gap-4">
@@ -32,13 +42,32 @@ export function UniverseMatchModeControl({
               : "Employer and worksite — only workers whose employer is on this campaign and whose site is listed."}
           </p>
         </div>
-        <Switch
-          id="universe-or-match"
-          checked={orMatching}
-          onCheckedChange={onOrMatchingChange}
-          disabled={disabled}
-          aria-label="Include workers from other employers at these sites"
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          {canRefresh ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={orMatching}
+              title={
+                orMatching
+                  ? "Turn off “Include other employers at these sites” before refreshing membership."
+                  : "Review allocated workers and remove those with another employer."
+              }
+              onClick={() => setRefreshOpen(true)}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </Button>
+          ) : null}
+          <Switch
+            id="universe-or-match"
+            checked={orMatching}
+            onCheckedChange={onOrMatchingChange}
+            disabled={disabled}
+            aria-label="Include workers from other employers at these sites"
+          />
+        </div>
       </div>
       <p className="text-xs text-muted-foreground">
         Default is employer <span className="font-medium">and</span> worksite. Turn this on
@@ -46,6 +75,13 @@ export function UniverseMatchModeControl({
       </p>
       {disabledReason ? (
         <p className="text-xs text-muted-foreground">{disabledReason}</p>
+      ) : null}
+      {canRefresh ? (
+        <UniverseMembershipRefreshDialog
+          campaignId={campaignId}
+          open={refreshOpen}
+          onOpenChange={setRefreshOpen}
+        />
       ) : null}
     </div>
   );

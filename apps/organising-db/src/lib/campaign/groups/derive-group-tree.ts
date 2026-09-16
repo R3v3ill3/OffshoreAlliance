@@ -73,12 +73,32 @@ export type GroupTree<U extends TreeUnitLike = TreeUnitLike> = {
   rootByWorker: Map<number, number>;
   /** node → tiles, member order. Every node has an entry. */
   workersByNode: Map<number, number[]>;
-  /** root → every worker in its subtree (own area + children), member order — the roll-up (B5). */
+  /**
+   * root → every worker in its subtree (own area + children), member order —
+   * the roll-up (B5). Every rendered root has an entry, `foreignNested` cards
+   * included (they render as roots without children, §3.6).
+   */
   subtreeByRoot: Map<number, number[]>;
   /** worker → their actual placement on a unit of G, when any (= `deriveGroupView().placementByWorker`). */
   placementByWorker: Map<number, number>;
-  /** worker → the child node they hold under their root, when any (the row the RPC re-points; absent for a root-only worker). */
+  /**
+   * worker → the child node whose card DRAWS the tile, when any (the row the
+   * RPC re-points; absent for a root-only worker). When a worker legitimately
+   * holds two children of one root in two groups (§3.7 row 9 — a shift and a
+   * crew under the same worksite), this is the first of them in the card order
+   * of `childrenByRoot`, so the choice never depends on the order the
+   * placement rows arrive in (the units query is ordered, the placements query
+   * is not).
+   */
   childPlacementByWorker: Map<number, number>;
+  /**
+   * worker → EVERY child-node row they hold in this tree, in card order
+   * (review B-1). The drawn one is `childPlacementByWorker`; an NC-a orphan is
+   * in here too. The drop planner reads this, so a drop that takes the worker
+   * out of a root's subtree clears every child row they held, not just the
+   * drawn one (NS-a, D1).
+   */
+  childPlacementsByWorker: Map<number, number[]>;
   /** Members with no placement on any node of G's tree — "Unassigned in G". */
   unassignedWorkerIds: number[];
   /** Divergence from the view (§3.2, §4.1): child-only workers → inferred root. */
@@ -98,8 +118,9 @@ export function indexUnitsById<U extends TreeUnitLike>(ous: readonly U[]): Map<n
  * NE-a (§3.3, ruling 1): the id of the unit `ou` nests under, or `null` when
  * the link is not a nesting edge — no parent, an unknown parent, a group
  * container (a facet link), a parent without a group of its own, a parent in
- * `ou`'s OWN group (the C-k same-group Split child, which is a sibling), or a
- * self-link.
+ * `ou`'s OWN group (the C-k same-group Split child, which is a sibling), a
+ * child that carries no group of its own (a legacy container, which can hold
+ * no placement), or a self-link.
  */
 export function nestingParentOf(ou: TreeUnitLike, ouById: ReadonlyMap<number, TreeUnitLike>): number | null {
   const parentId = ou.parent_ou_id ?? null;
@@ -108,7 +129,11 @@ export function nestingParentOf(ou: TreeUnitLike, ouById: ReadonlyMap<number, Tr
   if (!parent) return null;
   if (parent.is_group_container === true) return null;
   if (parent.group_id == null) return null;
-  if (parent.group_id === (ou.group_id ?? null)) return null;
+  // The child must carry a group of its own: a legacy `group_id NULL`
+  // container can hold no placement (`cwo_set_group_id`) and must never become
+  // an undroppable nested card (review A-3).
+  if (ou.group_id == null) return null;
+  if (parent.group_id === ou.group_id) return null;
   return parent.ou_id;
 }
 
@@ -139,8 +164,13 @@ export function childrenByNestingParent<U extends TreeUnitLike>(ous: readonly U[
  * written before ruling 1; a nesting parent is now never in G, so a same-group
  * child is a root here and the two readings agree.)
  */
-export function isPrimaryGroup(groupId: number, ous: readonly TreeUnitLike[]): boolean {
-  const ouById = indexUnitsById(ous);
+export function isPrimaryGroup(
+  groupId: number,
+  ous: readonly TreeUnitLike[],
+  /** An index built once by the caller; `primaryGroups` passes it so the scan stays linear (§3.15). */
+  index?: ReadonlyMap<number, TreeUnitLike>
+): boolean {
+  const ouById = index ?? indexUnitsById(ous);
   const units = unitsOfGroup(ous, groupId);
   if (units.length === 0) return true;
   return units.some((u) => nestingParentOf(u, ouById) === null);
@@ -148,7 +178,8 @@ export function isPrimaryGroup(groupId: number, ous: readonly TreeUnitLike[]): b
 
 /** The primary groups in selector order (`orderGroups`): the Group control's list (SG-a). */
 export function primaryGroups<G extends GroupLike>(groups: readonly G[], ous: readonly TreeUnitLike[]): G[] {
-  return orderGroups(groups).filter((g) => isPrimaryGroup(g.group_id, ous));
+  const index = indexUnitsById(ous);
+  return orderGroups(groups).filter((g) => isPrimaryGroup(g.group_id, ous, index));
 }
 
 /**
@@ -208,8 +239,19 @@ export function deriveGroupTree<U extends TreeUnitLike>(
 
   const memberIds = new Set(members.map((m) => m.worker_id));
 
+  // Card order for the child nodes: roots in the units query's order, each
+  // root's children in the same order. The rendered child of a worker who
+  // holds two is the first in THIS order, never the first placement row
+  // (`fetchOuAssignments` issues no `ORDER BY`).
+  const cardOrder = new Map<number, number>();
+  for (const root of roots) {
+    for (const child of childrenByRoot.get(root.ou_id) ?? []) {
+      if (!cardOrder.has(child.ou_id)) cardOrder.set(child.ou_id, cardOrder.size);
+    }
+  }
+
   // The worker's row in G (first in input order wins — `deriveGroupView`'s
-  // rule) and every child-node placement they hold, in input order.
+  // rule) and every child-node placement they hold, in card order.
   const placementByWorker = new Map<number, number>();
   const childPlacementsByWorker = new Map<number, number[]>();
   for (const p of placements) {
@@ -223,6 +265,9 @@ export function deriveGroupTree<U extends TreeUnitLike>(
       childPlacementsByWorker.set(p.worker_id, list);
     }
   }
+  for (const list of childPlacementsByWorker.values()) {
+    list.sort((a, b) => (cardOrder.get(a) ?? 0) - (cardOrder.get(b) ?? 0));
+  }
 
   const nodeByWorker = new Map<number, number>();
   const rootByWorker = new Map<number, number>();
@@ -231,8 +276,12 @@ export function deriveGroupTree<U extends TreeUnitLike>(
   const orphanChildByWorker = new Map<number, number>();
   const workersByNode = new Map<number, number[]>();
   for (const id of nodeIds) workersByNode.set(id, []);
+  // Every card that acts as a root — the roots, and the flat foreign-nested
+  // cards §3.6 renders "as a root without children" — has an entry, so a band
+  // that reads this map for a header count can never miss (review A-2).
   const subtreeByRoot = new Map<number, number[]>();
   for (const id of rootIds) subtreeByRoot.set(id, []);
+  for (const u of foreignNested) if (!subtreeByRoot.has(u.ou_id)) subtreeByRoot.set(u.ou_id, []);
   const unassignedWorkerIds: number[] = [];
 
   const seen = new Set<number>();
@@ -279,7 +328,9 @@ export function deriveGroupTree<U extends TreeUnitLike>(
     rootByWorker.set(w, root);
     if (child != null) childPlacementByWorker.set(w, child);
     workersByNode.get(node)!.push(w);
-    subtreeByRoot.get(root)?.push(w);
+    const subtree = subtreeByRoot.get(root) ?? [];
+    subtree.push(w);
+    subtreeByRoot.set(root, subtree);
   }
 
   return {
@@ -294,6 +345,7 @@ export function deriveGroupTree<U extends TreeUnitLike>(
     subtreeByRoot,
     placementByWorker,
     childPlacementByWorker,
+    childPlacementsByWorker,
     unassignedWorkerIds,
     childOnlyByWorker,
     orphanChildByWorker,

@@ -67,6 +67,12 @@ export const CAMPAIGN_42_WORKER_IDS = {
   legacyOnly: 210,
   /** On "Barrow Jetty" — a root of Worksite, not a nested card (ruling 1). */
   sameKindChild: 211,
+  /**
+   * KGP + Day (Shift) + KGP Crew (Crew) in the sub-unit-groups variant: a
+   * worker who legitimately holds TWO children of one root, in two groups
+   * (§3.7 row 9; the shape review B-1 found unhandled).
+   */
+  twoChildren: 220,
   /** A worker on none of the campaign's memberships, placed on Day. */
   nonMember: 299,
 } as const;
@@ -186,4 +192,56 @@ export const CAMPAIGN_42_PLACEMENTS: readonly Campaign42Placement[] = [
   { ou_id: 1, worker_id: 219, is_primary: true },
   { ou_id: 10, worker_id: 220, is_primary: true },
   { ou_id: 20, worker_id: 299, is_primary: true }, // not a member
+];
+
+// ---------------------------------------------------------------------------
+// The sub-unit-groups variant (§3.7 rows 7, 9, 10 and review B-1)
+// ---------------------------------------------------------------------------
+
+/** A second sub-unit group beside Shift, so one root can hold children in two groups. */
+export const CAMPAIGN_42_CREW_GROUP_ID = 5;
+
+export const CAMPAIGN_42_SUB_UNIT_OU_IDS = {
+  /** A shift under Barrow — the NS-a / orphan cases need a child under another root. */
+  barrowNight: 23,
+  /** A crew under KGP — a SIBLING GROUP under the same root (§3.7 row 9). */
+  kgpCrew: 24,
+  /** A crew under Barrow. */
+  barrowCrew: 25,
+} as const;
+
+function subUnit(over: Partial<Campaign42Unit> & { ou_id: number; name: string }): Campaign42Unit {
+  return {
+    campaign_id: 1,
+    ou_type: "shift",
+    total_workers_estimated: null,
+    display_order: 100 + over.ou_id,
+    is_group_container: false,
+    parent_ou_id: null,
+    ou_group_id: null,
+    group_id: null,
+    user_rating: null,
+    ...over,
+  };
+}
+
+/** `CAMPAIGN_42_UNITS` plus a shift under Barrow and a crew under each of KGP and Barrow. */
+export function campaign42UnitsWithSubUnitGroups(): Campaign42Unit[] {
+  return [
+    ...CAMPAIGN_42_UNITS,
+    subUnit({ ou_id: CAMPAIGN_42_SUB_UNIT_OU_IDS.barrowNight, name: "Barrow Night", ou_type: "shift", parent_ou_id: CAMPAIGN_42_OU_IDS.barrow, group_id: CAMPAIGN_42_GROUP_IDS.shift }),
+    subUnit({ ou_id: CAMPAIGN_42_SUB_UNIT_OU_IDS.kgpCrew, name: "KGP Crew", ou_type: "crew", parent_ou_id: CAMPAIGN_42_OU_IDS.kgp, group_id: CAMPAIGN_42_CREW_GROUP_ID }),
+    subUnit({ ou_id: CAMPAIGN_42_SUB_UNIT_OU_IDS.barrowCrew, name: "Barrow Crew", ou_type: "crew", parent_ou_id: CAMPAIGN_42_OU_IDS.barrow, group_id: CAMPAIGN_42_CREW_GROUP_ID }),
+  ];
+}
+
+/** `CAMPAIGN_42_PLACEMENTS` plus the rows those sub-units hold. */
+export const CAMPAIGN_42_SUB_UNIT_PLACEMENTS: readonly Campaign42Placement[] = [
+  ...CAMPAIGN_42_PLACEMENTS,
+  { ou_id: 23, worker_id: 203, is_primary: false }, // KGP + a shift under Barrow (an NC-a orphan)
+  { ou_id: 24, worker_id: 212, is_primary: false }, // KGP + a crew under KGP (a sibling group)
+  { ou_id: 25, worker_id: 214, is_primary: false }, // Barrow + a crew under Barrow
+  { ou_id: 23, worker_id: 215, is_primary: false }, // Barrow + a shift under Barrow (paired there)
+  { ou_id: 24, worker_id: 220, is_primary: false }, // KGP + a crew AND a shift under KGP …
+  { ou_id: 20, worker_id: 220, is_primary: false }, // … the two-children case (review B-1)
 ];

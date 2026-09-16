@@ -10,6 +10,15 @@
 -- production by the operator; paste the four outputs into wp2.4c.md §9.2. The
 -- counts settle NP-b (a repair script) and stop condition 6 (§8.4).
 --
+-- WHAT THE NUMBERS COUNT (review A-4, A-5): queries (b)–(e) count CAMPAIGN
+-- MEMBERS only — they join `campaign_worker_membership`, exactly as the view
+-- `campaign_group_membership` and `deriveGroupTree` do, so a placement whose
+-- worker is not a member of that campaign is in none of them. Each class is
+-- reported as a count of WORKERS (`count(distinct worker_id)`) with the
+-- placement count beside it, because a worker with sub-unit placements under
+-- two different parents can fall in two classes at once (paired under one,
+-- orphan under another); the worker counts are what NP-b would repair.
+--
 -- Definitions, matching `lib/campaign/groups/derive-group-tree.ts` exactly:
 --   * a NESTING EDGE (NE-a, as narrowed by ruling 1) is a `parent_ou_id` link
 --     whose parent exists, is NOT a group container, carries a `group_id`, and
@@ -59,23 +68,25 @@ order by g.campaign_id, g.group_id;
 -- (b) (c) (d) Placements on a NESTED sub-unit (a child whose group differs
 --     from its plain parent's — the only shape that nests), per campaign,
 --     split by what the worker holds in the PARENT's group:
---       paired_placements      — the parent's own unit (the shape every
---                                wall-chart writer intends);
---       child_only_placements  — nothing in the parent's group (the view says
---                                NULL there; the tree infers the root, NP-a);
---       orphan_child_placements— a DIFFERENT unit of the parent's group (the
---                                worker is drawn under that other unit and the
---                                sub-unit placement is not drawn at all, NC-a).
+--       paired      — the parent's own unit (the shape every wall-chart writer
+--                     intends);
+--       child_only  — nothing in the parent's group (the view says NULL there;
+--                     the tree infers the root, NP-a);
+--       orphan      — a DIFFERENT unit of the parent's group (the worker is
+--                     drawn under that other unit and the sub-unit placement is
+--                     not drawn at all, NC-a).
 with child_placements as (
   select
     u.campaign_id,
     p.worker_id,
-    p.ou_id                as child_ou_id,
     parent.ou_id           as parent_ou_id,
     parent.group_id        as parent_group_id
   from public.campaign_worker_ou p
   join public.campaign_organising_units u on u.ou_id = p.ou_id
   join public.campaign_organising_units parent on parent.ou_id = u.parent_ou_id
+  join public.campaign_worker_membership m
+    on m.worker_id = p.worker_id
+   and m.campaign_id = u.campaign_id
   where coalesce(parent.is_group_container, false) = false
     and parent.group_id is not null
     and u.group_id is distinct from parent.group_id
@@ -83,6 +94,7 @@ with child_placements as (
 classified as (
   select
     c.campaign_id,
+    c.worker_id,
     held.ou_id is not null                        as has_row_in_parent_group,
     coalesce(held.ou_id = c.parent_ou_id, false)  as on_the_parent
   from child_placements c
@@ -92,6 +104,11 @@ classified as (
 )
 select
   campaign_id,
+  count(distinct worker_id)                                                    as workers_in_a_sub_unit,
+  count(distinct worker_id) filter (where on_the_parent)                       as paired_workers,
+  count(distinct worker_id) filter (where not has_row_in_parent_group)         as child_only_workers,
+  count(distinct worker_id) filter (where has_row_in_parent_group
+                                      and not on_the_parent)                   as orphan_workers,
   count(*)                                                                     as sub_unit_placements,
   count(*) filter (where on_the_parent)                                        as paired_placements,
   count(*) filter (where not has_row_in_parent_group)                          as child_only_placements,
@@ -111,6 +128,9 @@ with child_placements as (
   from public.campaign_worker_ou p
   join public.campaign_organising_units u on u.ou_id = p.ou_id
   join public.campaign_organising_units parent on parent.ou_id = u.parent_ou_id
+  join public.campaign_worker_membership m
+    on m.worker_id = p.worker_id
+   and m.campaign_id = u.campaign_id
   where coalesce(parent.is_group_container, false) = false
     and parent.group_id is not null
     and u.group_id is distinct from parent.group_id
@@ -119,6 +139,7 @@ classified as (
   select
     c.campaign_id,
     c.parent_group_id,
+    c.worker_id,
     held.ou_id is not null                        as has_row_in_parent_group,
     coalesce(held.ou_id = c.parent_ou_id, false)  as on_the_parent
   from child_placements c
@@ -130,10 +151,12 @@ select
   c.campaign_id,
   c.parent_group_id,
   g.name                                                                 as parent_group_name,
-  count(*)                                                               as sub_unit_placements,
-  count(*) filter (where c.on_the_parent)                                as paired_placements,
-  count(*) filter (where not c.has_row_in_parent_group)                  as child_only_placements,
-  count(*) filter (where c.has_row_in_parent_group and not c.on_the_parent) as orphan_child_placements
+  count(distinct c.worker_id)                                            as workers_in_a_sub_unit,
+  count(distinct c.worker_id) filter (where c.on_the_parent)             as paired_workers,
+  count(distinct c.worker_id) filter (where not c.has_row_in_parent_group) as child_only_workers,
+  count(distinct c.worker_id) filter (where c.has_row_in_parent_group
+                                        and not c.on_the_parent)         as orphan_workers,
+  count(*)                                                               as sub_unit_placements
 from classified c
 left join public.campaign_groups g on g.group_id = c.parent_group_id
 group by c.campaign_id, c.parent_group_id, g.name

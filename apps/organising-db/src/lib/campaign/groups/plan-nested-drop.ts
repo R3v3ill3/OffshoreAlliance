@@ -96,15 +96,14 @@ export function planNestedDrop(input: PlanNestedDropInput): NestedDropPlan {
     for (const child of children) rootOfChild.set(child.ou_id, rootId);
   }
 
-  /** Every child-node placement the worker holds in this tree: the rendered one and the NC-a orphan. */
-  const heldChildrenOf = (workerId: number): number[] => {
-    const held: number[] = [];
-    const rendered = tree.childPlacementByWorker.get(workerId);
-    if (rendered != null) held.push(rendered);
-    const orphan = tree.orphanChildByWorker.get(workerId);
-    if (orphan != null && !held.includes(orphan)) held.push(orphan);
-    return held;
-  };
+  /**
+   * EVERY child-node placement the worker holds in this tree, in card order
+   * (review B-1): the drawn one, the NC-a orphan, and any further child of the
+   * same root in another group (§3.7 row 9 — a shift AND a crew under one
+   * worksite). Reading only the drawn row would leave the others behind on a
+   * drop out of the subtree, which NS-a and D1 forbid.
+   */
+  const heldChildrenOf = (workerId: number): number[] => tree.childPlacementsByWorker.get(workerId) ?? [];
 
   // Phase 1 (the row in the selected group), phase 2 (the row in the child's
   // group), phase 3 (the removes). Adds before removes, in that order.

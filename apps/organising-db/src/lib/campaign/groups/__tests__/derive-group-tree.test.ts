@@ -39,7 +39,11 @@ import {
   CAMPAIGN_42_PLACEMENTS,
   CAMPAIGN_42_UNITS,
   CAMPAIGN_42_WORKER_IDS as W,
+  CAMPAIGN_42_CREW_GROUP_ID,
+  CAMPAIGN_42_SUB_UNIT_OU_IDS as SUB,
+  CAMPAIGN_42_SUB_UNIT_PLACEMENTS,
   campaign42UnitsWithStandaloneShift,
+  campaign42UnitsWithSubUnitGroups,
   type Campaign42Placement,
   type Campaign42Unit,
 } from "./fixtures/campaign-42-shape";
@@ -87,6 +91,17 @@ describe("nestingParentOf / childrenByNestingParent (NE-a, §3.3)", () => {
     expect(childrenByNestingParent(UNITS).has(OU.barrow)).toBe(false);
   });
 
+  it("a child that carries no group of its own never nests (a legacy container cannot hold a drop)", () => {
+    const rows: TreeUnitLike[] = [
+      { ou_id: 10, group_id: 2, parent_ou_id: null },
+      { ou_id: 90, group_id: null, parent_ou_id: 10, is_group_container: true },
+    ];
+    expect(nestingParentOf(rows[1], indexUnitsById(rows))).toBeNull();
+    const tree = deriveGroupTree([{ worker_id: 1 }], rows, [{ ou_id: 90, worker_id: 1 }], 2);
+    expect([...tree.nodeIds]).toEqual([10]);
+    expect(tree.unassignedWorkerIds).toEqual([1]);
+  });
+
   it("an unknown parent, a parent without a group and a self-link are not nesting edges", () => {
     const odd: TreeUnitLike[] = [
       { ou_id: 1, group_id: 1, parent_ou_id: 999 }, // parent not in the campaign's rows
@@ -128,6 +143,12 @@ describe("isPrimaryGroup / primaryGroups (SG-a, §3.5)", () => {
     expect(ids(shift.roots)).toEqual([OU.swing]);
     expect(ids(shift.foreignNested)).toEqual([OU.day, OU.night]);
     expect([...shift.nodeIds].sort((a, b) => a - b)).toEqual([OU.day, OU.night, OU.swing]);
+    // Every rendered root has a roll-up entry, the flat cards included (A-2).
+    for (const card of [...shift.roots, ...shift.foreignNested]) {
+      expect(shift.subtreeByRoot.get(card.ou_id), `subtree ${card.ou_id}`).toEqual(
+        shift.workersByNode.get(card.ou_id)
+      );
+    }
   });
 
   it("primary groups come back in selector order, whatever order the caller holds them in", () => {
@@ -280,6 +301,52 @@ describe("deriveGroupTree — the Employer view and the hygiene rules", () => {
   });
 });
 
+describe("deriveGroupTree — a root with children in TWO groups (review B-1)", () => {
+  const units = campaign42UnitsWithSubUnitGroups();
+  const placements = CAMPAIGN_42_SUB_UNIT_PLACEMENTS;
+  const tree = deriveGroupTree(MEMBERS, units, placements, G.worksite);
+
+  it("the root's children are every nested unit of any group, in the units query's order", () => {
+    expect(ids(tree.childrenByRoot.get(OU.kgp)!)).toEqual([OU.day, OU.night, SUB.kgpCrew]);
+    expect(ids(tree.childrenByRoot.get(OU.barrow)!)).toEqual([SUB.barrowNight, SUB.barrowCrew]);
+  });
+
+  it("a worker holding two children of one root is drawn ONCE and counted once in the roll-up", () => {
+    // 220 holds KGP (Worksite) + KGP Crew (Crew) + Day (Shift).
+    expect(tree.nodeByWorker.get(W.twoChildren)).toBe(OU.day);
+    expect(tree.rootByWorker.get(W.twoChildren)).toBe(OU.kgp);
+    expect(tree.workersByNode.get(OU.day)).toContain(W.twoChildren);
+    expect(tree.workersByNode.get(SUB.kgpCrew)).not.toContain(W.twoChildren);
+    expect(tree.subtreeByRoot.get(OU.kgp)!.filter((w) => w === W.twoChildren)).toHaveLength(1);
+    const cards = [...tree.workersByNode.values()].filter((list) => list.includes(W.twoChildren));
+    expect(cards).toHaveLength(1);
+  });
+
+  it("EVERY held child row is reported, not just the drawn one (what the planner clears)", () => {
+    expect(tree.childPlacementsByWorker.get(W.twoChildren)).toEqual([OU.day, SUB.kgpCrew]);
+    expect(tree.childPlacementByWorker.get(W.twoChildren)).toBe(OU.day);
+    // It is not an NC-a orphan: both children are under the worker's own root.
+    expect(tree.orphanChildByWorker.has(W.twoChildren)).toBe(false);
+    // A child under ANOTHER root is still reported as the orphan (203: KGP + Barrow Night).
+    expect(tree.orphanChildByWorker.get(203)).toBe(SUB.barrowNight);
+    expect(tree.childPlacementsByWorker.get(203)).toEqual([SUB.barrowNight]);
+  });
+
+  it("which card draws the tile does not depend on the order the placement rows arrive in", () => {
+    // `fetchOuAssignments` issues no ORDER BY and pages with .range(), so the
+    // rows can come back in any order; the card order decides, not the rows.
+    const reversed = deriveGroupTree(MEMBERS, units, [...placements].reverse(), G.worksite);
+    expect(reversed.nodeByWorker.get(W.twoChildren)).toBe(OU.day);
+    expect(reversed.childPlacementsByWorker.get(W.twoChildren)).toEqual([OU.day, SUB.kgpCrew]);
+    expect(reversed.workersByNode.get(SUB.kgpCrew)).toEqual(tree.workersByNode.get(SUB.kgpCrew));
+  });
+
+  it("the Crew group is sub-unit-only too, so the selector still offers Employer and Worksite only", () => {
+    expect(isPrimaryGroup(CAMPAIGN_42_CREW_GROUP_ID, units)).toBe(false);
+    expect(primaryGroups(CAMPAIGN_42_GROUPS, units).map((g) => g.group_id)).toEqual([G.employer, G.worksite]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Equivalence with `campaign_group_membership` (§3.4, §4.1)
 // ---------------------------------------------------------------------------
@@ -304,7 +371,10 @@ type NestedPlacementRow = { worker_id: number; ou_id: number; parent_ou_id: numb
  * narrowed by ruling 1 is exactly "a placement on a nested sub-unit", and the
  * only shape in which the parent + child pair can exist at all (a same-group
  * parent can never hold the worker beside the child, wp2.2.md C-a) — split by
- * what the worker holds in the parent's group.
+ * what the worker holds in the parent's group. The SQL joins
+ * `campaign_worker_membership` (review A-4); here the caller filters by
+ * `memberIds`, and the cases assert both readings, so the non-member row the
+ * fixture carries on purpose is accounted for.
  */
 function nestingShapeRows(units: readonly Campaign42Unit[], placements: readonly Campaign42Placement[]) {
   const byId = new Map(units.map((u) => [u.ou_id, u]));
@@ -376,8 +446,11 @@ describe("equivalence with campaign_group_membership (§3.4, §4.1)", () => {
       { worker_id: W.orphan, ou_id: OU.day, parent_ou_id: OU.kgp },
     ]);
     expect([...worksite.orphanChildByWorker.keys()]).toEqual([W.orphan]);
-    // The pair is the ordinary case: four paired placements (one of them the non-member's is not).
+    // The pair is the ordinary case: three paired placements. The non-member's
+    // row (299 on Day) classifies as child-only and is filtered out above,
+    // exactly as `00_nesting_shape.sql` filters by membership (A-4).
     expect(shape.paired.map((r) => r.worker_id)).toEqual([201, 202, 213]);
+    expect(shape.childOnly.map((r) => r.worker_id)).toEqual([W.childOnly, W.nonMember]);
   });
 
   it("with the child-only and orphan rows removed, the two agree exactly", () => {

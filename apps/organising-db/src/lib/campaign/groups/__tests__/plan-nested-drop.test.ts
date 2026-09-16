@@ -17,48 +17,26 @@ import { groupOfUnit } from "../derive-group-view";
 import { planDrop, type DropPlan, type DropRef } from "../plan-drop";
 import { planNestedDrop, type MoveStep, type NestedDropPlan } from "../plan-nested-drop";
 import {
+  CAMPAIGN_42_CREW_GROUP_ID,
   CAMPAIGN_42_GROUP_IDS as G,
   CAMPAIGN_42_MEMBERS,
   CAMPAIGN_42_OU_IDS as OU,
   CAMPAIGN_42_PLACEMENTS,
+  CAMPAIGN_42_SUB_UNIT_OU_IDS,
+  CAMPAIGN_42_SUB_UNIT_PLACEMENTS,
   CAMPAIGN_42_UNITS,
   CAMPAIGN_42_WORKER_IDS as W,
   campaign42UnitsWithStandaloneShift,
-  type Campaign42Unit,
+  campaign42UnitsWithSubUnitGroups,
 } from "./fixtures/campaign-42-shape";
 
 const MEMBERS = CAMPAIGN_42_MEMBERS;
 
-/** A crew group, and the extra sub-units the "sibling group" rows of §3.7 need. */
-const CREW = 5;
-const unit = (over: Partial<Campaign42Unit> & { ou_id: number }): Campaign42Unit => ({
-  campaign_id: 1,
-  name: `Unit ${over.ou_id}`,
-  ou_type: "shift",
-  total_workers_estimated: null,
-  display_order: 100 + over.ou_id,
-  is_group_container: false,
-  parent_ou_id: null,
-  ou_group_id: null,
-  group_id: null,
-  user_rating: null,
-  ...over,
-});
-
-const VARIANT_UNITS: Campaign42Unit[] = [
-  ...CAMPAIGN_42_UNITS,
-  unit({ ou_id: 23, name: "Barrow Night", ou_type: "shift", parent_ou_id: OU.barrow, group_id: G.shift }),
-  unit({ ou_id: 24, name: "KGP Crew", ou_type: "crew", parent_ou_id: OU.kgp, group_id: CREW }),
-  unit({ ou_id: 25, name: "Barrow Crew", ou_type: "crew", parent_ou_id: OU.barrow, group_id: CREW }),
-];
-
-const VARIANT_PLACEMENTS = [
-  ...CAMPAIGN_42_PLACEMENTS,
-  { ou_id: 23, worker_id: 203, is_primary: false }, // KGP + a shift under Barrow (an NC-a orphan)
-  { ou_id: 24, worker_id: 212, is_primary: false }, // KGP + a crew under KGP (a sibling group)
-  { ou_id: 25, worker_id: 214, is_primary: false }, // Barrow + a crew under Barrow
-  { ou_id: 23, worker_id: 215, is_primary: false }, // Barrow + a shift under Barrow (paired there)
-];
+/** The crew group and the extra sub-units the "sibling group" rows of §3.7 need. */
+const CREW = CAMPAIGN_42_CREW_GROUP_ID;
+const SUB = CAMPAIGN_42_SUB_UNIT_OU_IDS;
+const VARIANT_UNITS = campaign42UnitsWithSubUnitGroups();
+const VARIANT_PLACEMENTS = CAMPAIGN_42_SUB_UNIT_PLACEMENTS;
 
 const tree = deriveGroupTree(MEMBERS, CAMPAIGN_42_UNITS, CAMPAIGN_42_PLACEMENTS, G.worksite);
 const variantTree = deriveGroupTree(MEMBERS, VARIANT_UNITS, VARIANT_PLACEMENTS, G.worksite);
@@ -92,6 +70,28 @@ const unassign = (withinGroupId: number, ...workerIds: number[]): MoveStep => ({
   withinGroupId,
   workerIds,
 });
+
+/**
+ * `structure_placements_move` in miniature, enough to re-derive the chart from
+ * what a plan leaves behind: a move displaces the worker's other rows in the
+ * target's group and then places them on the target (`:2809–2820`); an
+ * unassign removes their row in that group (`:2676–2690`).
+ */
+function applySteps(
+  placements: readonly { ou_id: number; worker_id: number; is_primary: boolean }[],
+  plan: MoveStep[]
+): { ou_id: number; worker_id: number; is_primary: boolean }[] {
+  const groupOf = (ouId: number) => groupOfUnit(VARIANT_UNITS, ouId);
+  let rows = placements.map((p) => ({ ...p }));
+  for (const step of plan) {
+    const group = step.kind === "move" ? groupOf(step.toOuId) : step.withinGroupId;
+    rows = rows.filter((r) => !(step.workerIds.includes(r.worker_id) && groupOf(r.ou_id) === group));
+    if (step.kind === "move") {
+      for (const workerId of step.workerIds) rows.push({ ou_id: step.toOuId, worker_id: workerId, is_primary: false });
+    }
+  }
+  return rows;
+}
 
 // ---------------------------------------------------------------------------
 // The §3.7 table, row by row
@@ -150,7 +150,7 @@ describe("planNestedDrop — a nested card as the target (§3.7 rows 6–11)", (
   it("row 7 — from the parent's own area: one move into the child, parent untouched", () => {
     expect(steps([203], OU.day)).toEqual([move(null, OU.day, 203)]);
     // With an orphan elsewhere in the child's group, that row is re-pointed (C-l).
-    expect(steps([203], OU.day, true)).toEqual([move(23, OU.day, 203)]);
+    expect(steps([203], OU.day, true)).toEqual([move(SUB.barrowNight, OU.day, 203)]);
   });
 
   it("row 8 — between siblings of the same group: the child row is re-pointed", () => {
@@ -159,17 +159,40 @@ describe("planNestedDrop — a nested card as the target (§3.7 rows 6–11)", (
 
   it("row 9 — a sibling in another group under the same root stays", () => {
     expect(steps([212], OU.day, true)).toEqual([move(null, OU.day, 212)]);
+    // …including for a worker who already holds BOTH children of this root:
+    // the crew row is neither re-pointed nor removed by a drop on the shift.
+    expect(steps([W.twoChildren], OU.night, true)).toEqual([move(OU.day, OU.night, W.twoChildren)]);
   });
 
   it("row 10 — from another root (or its child): parent first, then child, then the removes", () => {
     expect(steps([214], OU.day)).toEqual([move(OU.barrow, OU.kgp, 214), move(null, OU.day, 214)]);
     // The child held under the old root in the target's own group is re-pointed…
-    expect(steps([215], OU.day, true)).toEqual([move(OU.barrow, OU.kgp, 215), move(23, OU.day, 215)]);
+    expect(steps([215], OU.day, true)).toEqual([move(OU.barrow, OU.kgp, 215), move(SUB.barrowNight, OU.day, 215)]);
     // …and one held in another group is unassigned (NS-a).
     expect(steps([214], OU.day, true)).toEqual([
       move(OU.barrow, OU.kgp, 214),
       move(null, OU.day, 214),
       unassign(CREW, 214),
+    ]);
+  });
+
+  it("a worker holding TWO children of one root loses BOTH when they leave it (review B-1, NS-a)", () => {
+    // 220 holds KGP + Day (Shift) + KGP Crew (Crew).
+    expect(steps([W.twoChildren], OU.barrow, true)).toEqual([
+      move(OU.kgp, OU.barrow, W.twoChildren),
+      unassign(G.shift, W.twoChildren),
+      unassign(CREW, W.twoChildren),
+    ]);
+    // Onto a child of another root: the shift row is re-pointed, the crew row goes.
+    expect(steps([W.twoChildren], SUB.barrowNight, true)).toEqual([
+      move(OU.kgp, OU.barrow, W.twoChildren),
+      move(OU.day, SUB.barrowNight, W.twoChildren),
+      unassign(CREW, W.twoChildren),
+    ]);
+    // Onto the root's own area: "in none of its children" clears both (row 4).
+    expect(steps([W.twoChildren], OU.kgp, true)).toEqual([
+      unassign(G.shift, W.twoChildren),
+      unassign(CREW, W.twoChildren),
     ]);
   });
 
@@ -197,6 +220,24 @@ describe("planNestedDrop — Unassigned in the group (§3.7 row 12)", () => {
 
   it("an NC-a orphan is removed with the group's row (D1: 'each child group held', §3.7)", () => {
     expect(steps([W.orphan], null)).toEqual([unassign(G.worksite, W.orphan), unassign(G.shift, W.orphan)]);
+  });
+
+  it("every child row goes, so a removed worker cannot reappear inside the root (review B-1, D1)", () => {
+    expect(steps([W.twoChildren], null, true)).toEqual([
+      unassign(G.worksite, W.twoChildren),
+      unassign(G.shift, W.twoChildren),
+      unassign(CREW, W.twoChildren),
+    ]);
+
+    // …and re-deriving the chart from the rows the steps leave behind shows the
+    // worker Unassigned in Worksite and drawn on no card — the regression D1
+    // exists to prevent (checklist step 7).
+    const after = applySteps(VARIANT_PLACEMENTS, steps([W.twoChildren], null, true));
+    const tree = deriveGroupTree(MEMBERS, VARIANT_UNITS, after, G.worksite);
+    expect(tree.unassignedWorkerIds).toContain(W.twoChildren);
+    expect(tree.nodeByWorker.has(W.twoChildren)).toBe(false);
+    expect(tree.childOnlyByWorker.has(W.twoChildren)).toBe(false);
+    expect([...tree.workersByNode.values()].flat()).not.toContain(W.twoChildren);
   });
 });
 

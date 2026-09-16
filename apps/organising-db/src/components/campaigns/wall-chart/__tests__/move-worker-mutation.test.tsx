@@ -34,6 +34,7 @@ vi.mock("@/lib/workers/sync-campaign-universe", () => ({
 }));
 
 import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
+import { isLikelyAuthError } from "@/lib/supabase/session-recovery";
 
 import { MoveStepError, useMoveWorkersMutation, type MoveWorkerResult, type MoveWorkerVars } from "../move-worker-mutation";
 
@@ -249,6 +250,19 @@ describe("useMoveWorkersMutation — withinGroupId (WP2.4)", () => {
     expect(state.fake.rpcCalls()).toHaveLength(2);
     expect(state.stamp).not.toHaveBeenCalled();
     expect(state.sync).not.toHaveBeenCalled();
+  });
+
+  it("MoveStepError keeps the refusal's status/code, so the auth-aware retry still fires (A-1)", () => {
+    const authRefusal = Object.assign(new Error("JWT expired"), { status: 401, code: "PGRST301" });
+    const wrapped = new MoveStepError(2, 3, authRefusal);
+    expect(wrapped.status).toBe(401);
+    expect(wrapped.code).toBe("PGRST301");
+    expect(wrapped.cause).toBe(authRefusal);
+    expect(isLikelyAuthError(wrapped)).toBe(true);
+    // The sentence is still §3.13's.
+    expect(wrapped.message).toBe("Step 2 of 3 failed: JWT expired. The chart shows what was saved.");
+    // A structure refusal is not an auth error and is not retried.
+    expect(isLikelyAuthError(new MoveStepError(1, 2, new Error("Not allowed by the unit structure rules")))).toBe(false);
   });
 
   it("an empty steps list leaves the WP2.4 refs path in charge", async () => {

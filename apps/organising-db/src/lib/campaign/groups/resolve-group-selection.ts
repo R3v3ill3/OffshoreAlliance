@@ -113,7 +113,9 @@ export function resolveGroupSelection(input: ResolveGroupSelectionInput): Resolv
   //    nearest ancestor's (a nested unit opens on its root's group, §3.5).
   const ouId = parseId(input.ouParam);
   if (ouId != null) {
-    const byId = new Map(input.ous.map((o) => [o.ou_id, o]));
+    // First row wins for a duplicated `ou_id`, as WP2.4's `find` did.
+    const byId = new Map<number, (typeof input.ous)[number]>();
+    for (const o of input.ous) if (!byId.has(o.ou_id)) byId.set(o.ou_id, o);
     let unit = byId.get(ouId);
     const walked = new Set<number>();
     while (unit && !walked.has(unit.ou_id)) {

@@ -23,6 +23,18 @@ export class MoveStepError extends Error {
   readonly stepCount: number;
   /** The refusal the structure API raised (usually a `StructureApiError`). */
   readonly cause: unknown;
+  /**
+   * The refusal's own `status` / `code` and auth-js lock sentinels, copied
+   * across (review A-1): `useAuthAwareMutation` retries the whole `mutationFn`
+   * once when `isLikelyAuthError(error)` reads them, and re-issuing a plan is
+   * safe — a completed `move` re-issues as `skipped` and an `unassign` is
+   * idempotent. Without them the steps path would be the one move path with no
+   * token-refresh retry.
+   */
+  readonly status?: number;
+  readonly code?: string;
+  readonly isAcquireTimeout?: boolean;
+  readonly isAuthOpTimeout?: boolean;
 
   constructor(stepIndex: number, stepCount: number, cause: unknown) {
     const sentence = structureErrorMessage(cause, "The change was refused.").trim().replace(/\.+$/u, "");
@@ -31,6 +43,11 @@ export class MoveStepError extends Error {
     this.stepIndex = stepIndex;
     this.stepCount = stepCount;
     this.cause = cause;
+    const raw = (cause && typeof cause === "object" ? cause : {}) as Record<string, unknown>;
+    if (typeof raw.status === "number") this.status = raw.status;
+    if (typeof raw.code === "string") this.code = raw.code;
+    if (raw.isAcquireTimeout === true) this.isAcquireTimeout = true;
+    if (raw.isAuthOpTimeout === true) this.isAuthOpTimeout = true;
   }
 }
 

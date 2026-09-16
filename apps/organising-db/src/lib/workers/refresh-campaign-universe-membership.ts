@@ -118,7 +118,12 @@ export function planUniverseRefresh(
   review: UniverseRefreshReview,
   noEmployerChoices: readonly NoEmployerChoice[]
 ): UniverseRefreshPlan {
-  const blocked = review.blockedReason ?? refreshBlockedReason(review);
+  const blocked =
+    review.blockedReason ??
+    refreshBlockedReason({
+      matchMode: review.matchMode,
+      campaignEmployerCount: review.campaignEmployers.length,
+    });
   if (blocked) throw new Error(blocked);
 
   const choiceByWorker = new Map(noEmployerChoices.map((c) => [c.workerId, c]));

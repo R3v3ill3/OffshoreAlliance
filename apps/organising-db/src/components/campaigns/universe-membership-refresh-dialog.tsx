@@ -273,11 +273,7 @@ function ReviewBody({
           <p className="text-sm text-muted-foreground">
             These workers have an employer that is not saved on this campaign.
           </p>
-          <MemberTable
-            rows={review.wrongEmployer}
-            showEmployer
-            empty="None"
-          />
+          <MemberTable rows={review.wrongEmployer} showEmployer />
         </section>
       )}
 
@@ -419,7 +415,6 @@ function MemberTable({
 }: {
   rows: UniverseRefreshReview["wrongEmployer"];
   showEmployer?: boolean;
-  empty: string;
 }) {
   return (
     <div className="rounded-md border max-h-56 overflow-y-auto">

@@ -2,12 +2,13 @@
 
 Preview: `________________________________________` (paste it here before you start)
 
-**Where to find that address.** Open <https://github.com/R3v3ill3/OffshoreAlliance/pulls> and click the pull request
-for the branch **`feat/oux-wp2.4c-nested-units`** (title: "feat(oux-wp2.4c): nested sub-units inside the parent's group
-on the groups_v2 wall chart"). Scroll to the Vercel comment near the top of the conversation and click **Visit
-Preview** — or, at the bottom of the page, the **Preview** link beside the Vercel check. The address looks like
+**Where to find that address.** Open the pull request directly:
+<https://github.com/R3v3ill3/OffshoreAlliance/pull/49> ("fix(oux-wp2.4c): nesting within a group on the groups_v2 wall
+chart", branch `feat/oux-wp2.4c-nested-units`). Scroll to the Vercel comment near the top of the conversation and click
+**Visit Preview** — or, at the bottom of the page, the **Preview** link beside the Vercel check. The address looks like
 `https://offshore-alliance-git-feat-oux-wp24c-…-reveille-strategy.vercel.app`. It is the **dev** database (the normal
-dev project), the same data WP2.4's checklist used; nothing here touches production.
+dev project), the same data WP2.4's checklist used; nothing here touches production. If the Vercel comment has not
+appeared yet, give it a couple of minutes after the last push and reload the page.
 
 Plan: `wp/wp2.4c.md` §4.6 steps 0–12 (written out here as steps 0–14). The orchestrator records your results in §9.2 as the acceptance evidence for
 this package. Each numbered item ends with the one sentence you should be able to say is true. If an item does not

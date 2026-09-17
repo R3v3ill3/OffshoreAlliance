@@ -18,6 +18,7 @@ import { CampaignWallChart } from "../campaign-wall-chart";
 import { CampaignWallChartV2 } from "../campaign-wall-chart-v2";
 import { ImportParticipationDialog } from "../wall-chart/participation-import/import-participation-dialog";
 import { FindDuplicatesButton } from "../wall-chart/find-duplicate-workers-dialog";
+import { useDragAutoScroll } from "../wall-chart/use-drag-auto-scroll";
 import { SyncOnOpenNotice } from "./sync-on-open-notice";
 import { WorkforceListView } from "./workforce-list-view";
 
@@ -52,6 +53,15 @@ export function WorkforceBoard({
   );
   // WP2.4 (FL-b, wp2.4.md §3.1 principle 1): the one place that chooses a shell.
   const groupsV2 = useGroupsV2();
+
+  // Edge auto-scroll for the wall chart's native HTML5 drags. It lives here,
+  // above the shell choice, because this is the single place both the legacy
+  // and the v2 chart are rendered from, and because the hook renders nothing:
+  // mounting it leaves both component trees — and the golden-master
+  // characterisation snapshots taken of them — byte-for-byte unchanged. It is
+  // inert unless a drag is actually in progress, so the list view pays nothing
+  // for it either.
+  useDragAutoScroll();
 
   const setView = useCallback(
     (next: WorkforceView) => {

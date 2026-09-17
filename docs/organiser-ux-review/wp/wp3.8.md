@@ -1,6 +1,6 @@
 # WP3.8 — Campaign families and shared assessments
 
-Status: **Revision 1 (2026-09-17) — approved by the orchestrator subject to the §9.1 answers; implementation starts when they are in.** Orchestrator amendments over Revision 0: §0.1 step 4 (no ledger catch-up on the realistic set; WP2.2a/b absent there, out of scope), §5.4 step 8 rewritten, §9.1 gains the `OUX_CONTRACT_ADMIN_*` input. Written against `main` at `e2cf34a2` (WP2.4c merged; lint baseline 298).
+Status: **Revision 1 (2026-09-17) — approved; §9.1 answered by the operator the same day (all recommendations); Stage 1 implementing.** Orchestrator amendments over Revision 0: §0.1 step 4 (no ledger catch-up on the realistic set; WP2.2a/b absent there, out of scope), §5.4 step 8 rewritten, §9.1 gains the `OUX_CONTRACT_ADMIN_*` input. Written against `main` at `e2cf34a2` (WP2.4c merged; lint baseline 298).
 Branch: `feat/oux-wp3.8-campaign-families` off `main`. Draft PR into `main`. Migration package: the promotion gate of
 `PROGRESS.md:18` applies.
 
@@ -1054,6 +1054,8 @@ _(empty until Stage 1)_
 ## 9. Approval, verification output, review
 
 ### 9.1 Questions for the operator (answer by label; "as recommended" is a complete answer)
+
+**Answered 2026-09-17 by the operator: "agree with all recommendations, proceed".** In force: **FQ-a-a** (include the 15 FQ-a readers), **RD-a** (member-scoped delete policy), **FQ-c allow**, **FQ-d/e/f leave**, **FQ-g-a** (simulation + schema rehearsal; no data run sheet rehearsal), **TRG-a**, **CA supply at Stage 2**, **HT delete afterwards**. Plan status: **approved; implementing Stage 1.**
 
 | # | Question | Recommendation |
 |---|---|---|

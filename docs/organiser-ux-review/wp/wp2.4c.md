@@ -808,7 +808,7 @@ per step, the WP2.4 setup section reused for the flag):
 2. **Sub-unit-only group is not primary.** Open the Group control. *Expected: Shift is **not** listed; the groups
    listed are the same as before plus nothing; no card "Unassigned in Shift" exists anywhere.*
    *(Operator checklist note, 2026-09-17: a sector campaign whose vessels are nested under Employer units — campaign 64 —
-   likewise shows no Worksite group in the selector; expected under SG-a, not a bug; `PROGRESS.md` incidental findings
+   likewise shows no Work area group (the vessels' group there) in the selector; expected under SG-a, not a bug; `PROGRESS.md` incidental findings
    2026-09-17, plan §5.5 addendum.)*
 3. **Parent area → child.** Drag a worker from A's own area onto Day. *Expected: the tile moves into Day; open the
    worker's sheet → Units tab lists "Worksite › A" **and** "Shift › Day".*

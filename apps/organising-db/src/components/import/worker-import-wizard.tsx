@@ -14,6 +14,8 @@ import { matchEmployerCandidates } from "@/lib/utils/employer-match";
 import type { EmployerCandidate } from "@/lib/utils/employer-match";
 import type { ParsedWorkerRow, ParsedWorkerGroup } from "@/app/api/worker-import/parse/route";
 import { parseMembershipStatus } from "@/lib/workers/worker-import-membership";
+import { fetchInChunks } from "@/lib/supabase/chunk-in-filter";
+import { loadCampaignProtectedWorkerIds } from "@/lib/workers/campaign-protected-fields";
 import type {
   WorkerImportAssessmentColumn,
   WorkerImportRow,
@@ -204,6 +206,8 @@ interface DedupMatch {
   existingWorksiteName: string | null;
   matchedOn: "reference_id" | "email" | "phone";
   action: "update" | "skip" | "create";
+  /** Member of a live campaign — employer / worksite / job title are protected on update. */
+  inCampaign: boolean;
 }
 
 interface UnionMembershipTypeRow {
@@ -534,12 +538,15 @@ export function WorkerImportWizard({
   const [createEmployerError, setCreateEmployerError] = useState<string | null>(null);
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [dedupMatches, setDedupMatches] = useState<DedupMatch[]>([]);
+  const [dedupError, setDedupError] = useState<string | null>(null);
+  const [protectCampaignWorkers, setProtectCampaignWorkers] = useState(true);
   const [occupationResolutions, setOccupationResolutions] = useState<OccupationResolution[]>([]);
   const [occupationSearch, setOccupationSearch] = useState<Record<string, string>>({});
   const [result, setResult] = useState<{
     created: number;
     updated: number;
     skipped: number;
+    protectedUpdates: number;
     errors: string[];
     rowResults: WorkerImportRowResult[];
   } | null>(null);
@@ -1076,6 +1083,8 @@ export function WorkerImportWizard({
     setEmployerSearch("");
     setEmployerResolutions([]);
     setEmployerMatchSearch({});
+    setDedupError(null);
+    setProtectCampaignWorkers(true);
     setCreateEmployerFor(null);
     setNewEmployerName("");
     setIsCreatingEmployer(false);
@@ -1703,6 +1712,7 @@ export function WorkerImportWizard({
 
   async function proceedToDedupCheck() {
     setIsLoading(true);
+    setDedupError(null);
     setStep("dedup_check");
 
     const refIds = reviewRows
@@ -1718,6 +1728,16 @@ export function WorkerImportWizard({
     const matches: DedupMatch[] = [];
     const worksiteSelect = "worker_id, first_name, last_name, email, phone, reference_id, worksite:worksites(worksite_name)";
 
+    type ExistingWorker = {
+      worker_id: number;
+      first_name: string;
+      last_name: string;
+      email: string | null;
+      phone: string | null;
+      reference_id: string | null;
+      worksite: unknown;
+    };
+
     function extractWorksite(raw: unknown): string | null {
       const worksiteRaw = raw as unknown;
       const ws = Array.isArray(worksiteRaw)
@@ -1726,95 +1746,107 @@ export function WorkerImportWizard({
       return ws?.worksite_name ?? null;
     }
 
-    // 1. Reference ID (primary — highest confidence, exact unique key)
-    if (refIds.length > 0) {
-      const { data: refMatches } = await supabase
-        .from("workers")
-        .select(worksiteSelect)
-        .in("reference_id", refIds);
-
-      for (const existing of refMatches ?? []) {
-        const row = reviewRows.find(
-          (r) => (r.overrideReferenceId ?? r.referenceId) === existing.reference_id
-        );
-        if (row) {
-          matches.push({
-            rowIndex: row.rowIndex,
-            existingWorkerId: existing.worker_id,
-            existingFirstName: existing.first_name,
-            existingLastName: existing.last_name,
-            existingEmail: existing.email,
-            existingPhone: existing.phone,
-            existingWorksiteName: extractWorksite(existing.worksite),
-            matchedOn: "reference_id",
-            action: "update",
-          });
-        }
-      }
+    function pushMatch(
+      row: ReviewRow,
+      existing: ExistingWorker,
+      matchedOn: DedupMatch["matchedOn"]
+    ) {
+      matches.push({
+        rowIndex: row.rowIndex,
+        existingWorkerId: existing.worker_id,
+        existingFirstName: existing.first_name,
+        existingLastName: existing.last_name,
+        existingEmail: existing.email,
+        existingPhone: existing.phone,
+        existingWorksiteName: extractWorksite(existing.worksite),
+        matchedOn,
+        action: "update",
+        inCampaign: false,
+      });
     }
 
-    // 2. Email (for rows not already matched by reference_id)
-    if (emails.length > 0) {
-      const matchedRowIndices = new Set(matches.map((m) => m.rowIndex));
-      const { data: emailMatches } = await supabase
-        .from("workers")
-        .select(worksiteSelect)
-        .in("email", emails);
-
-      for (const existing of emailMatches ?? []) {
-        const row = reviewRows.find(
-          (r) =>
-            !matchedRowIndices.has(r.rowIndex) &&
-            (r.overrideEmail ?? r.email) === existing.email
+    // Lookups are chunked and error-checked: one unbounded `.in()` on a
+    // several-thousand-row file would exceed the URL limit or be capped by
+    // PostgREST max-rows, and a swallowed error would turn every row into a
+    // create.
+    try {
+      // 1. Reference ID (primary — highest confidence, exact unique key)
+      if (refIds.length > 0) {
+        const refMatches = await fetchInChunks<string, ExistingWorker>(refIds, (chunk) =>
+          supabase.from("workers").select(worksiteSelect).in("reference_id", chunk)
         );
-        if (row) {
-          matches.push({
-            rowIndex: row.rowIndex,
-            existingWorkerId: existing.worker_id,
-            existingFirstName: existing.first_name,
-            existingLastName: existing.last_name,
-            existingEmail: existing.email,
-            existingPhone: existing.phone,
-            existingWorksiteName: extractWorksite(existing.worksite),
-            matchedOn: "email",
-            action: "update",
-          });
+        for (const existing of refMatches) {
+          const row = reviewRows.find(
+            (r) => (r.overrideReferenceId ?? r.referenceId) === existing.reference_id
+          );
+          if (row) pushMatch(row, existing, "reference_id");
         }
       }
-    }
 
-    // 3. Phone (for rows not yet matched)
-    if (phones.length > 0) {
-      const matchedRowIndices = new Set(matches.map((m) => m.rowIndex));
-      const { data: phoneMatches } = await supabase
-        .from("workers")
-        .select(worksiteSelect)
-        .in("phone", phones);
-
-      for (const existing of phoneMatches ?? []) {
-        const row = reviewRows.find(
-          (r) =>
-            !matchedRowIndices.has(r.rowIndex) &&
-            (r.overridePhone ?? r.phone) === existing.phone
+      // 2. Email (for rows not already matched by reference_id). Compared
+      //    case-insensitively; both spellings are sent so the DB filter hits
+      //    whichever casing the existing record was saved with.
+      if (emails.length > 0) {
+        const matchedRowIndices = new Set(matches.map((m) => m.rowIndex));
+        const emailVariants = [...new Set(emails.flatMap((e) => [e, e.toLowerCase()]))];
+        const emailMatches = await fetchInChunks<string, ExistingWorker>(emailVariants, (chunk) =>
+          supabase.from("workers").select(worksiteSelect).in("email", chunk)
         );
-        if (row) {
-          matches.push({
-            rowIndex: row.rowIndex,
-            existingWorkerId: existing.worker_id,
-            existingFirstName: existing.first_name,
-            existingLastName: existing.last_name,
-            existingEmail: existing.email,
-            existingPhone: existing.phone,
-            existingWorksiteName: extractWorksite(existing.worksite),
-            matchedOn: "phone",
-            action: "update",
-          });
+        for (const existing of emailMatches) {
+          const existingEmail = existing.email?.toLowerCase();
+          if (!existingEmail) continue;
+          const row = reviewRows.find(
+            (r) =>
+              !matchedRowIndices.has(r.rowIndex) &&
+              (r.overrideEmail ?? r.email)?.toLowerCase() === existingEmail
+          );
+          if (row) {
+            matchedRowIndices.add(row.rowIndex);
+            pushMatch(row, existing, "email");
+          }
         }
       }
-    }
 
-    setDedupMatches(matches);
-    setIsLoading(false);
+      // 3. Phone (for rows not yet matched)
+      if (phones.length > 0) {
+        const matchedRowIndices = new Set(matches.map((m) => m.rowIndex));
+        const phoneMatches = await fetchInChunks<string, ExistingWorker>(phones, (chunk) =>
+          supabase.from("workers").select(worksiteSelect).in("phone", chunk)
+        );
+        for (const existing of phoneMatches) {
+          const row = reviewRows.find(
+            (r) =>
+              !matchedRowIndices.has(r.rowIndex) &&
+              (r.overridePhone ?? r.phone) === existing.phone
+          );
+          if (row) {
+            matchedRowIndices.add(row.rowIndex);
+            pushMatch(row, existing, "phone");
+          }
+        }
+      }
+
+      // 4. Campaign membership — so the review can show which matches will
+      //    keep their employer / worksite / job title.
+      const protectedIds = await loadCampaignProtectedWorkerIds(
+        supabase,
+        matches.map((m) => m.existingWorkerId)
+      );
+      for (const match of matches) {
+        match.inCampaign = protectedIds.has(match.existingWorkerId);
+      }
+
+      setDedupMatches(matches);
+    } catch (error) {
+      setDedupMatches([]);
+      setDedupError(
+        `Could not check for existing workers: ${
+          error instanceof Error ? error.message : String(error)
+        }. Nothing has been imported — go back and try again.`
+      );
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   function updateDedupAction(rowIndex: number, action: DedupMatch["action"]) {
@@ -1889,7 +1921,13 @@ export function WorkerImportWizard({
       const res = await fetchApi("/api/worker-import/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName, campaignId: numericCampaignId, assessmentColumns, rows }),
+        body: JSON.stringify({
+          fileName,
+          campaignId: numericCampaignId,
+          assessmentColumns,
+          rows,
+          protectCampaignWorkers,
+        }),
         timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
       });
       const json = await res.json();
@@ -1897,7 +1935,8 @@ export function WorkerImportWizard({
         created: json.created ?? 0,
         updated: json.updated ?? 0,
         skipped: json.skipped ?? 0,
-        errors: json.errors ?? [],
+        protectedUpdates: json.protectedUpdates ?? 0,
+        errors: json.errors ?? (json.error ? [String(json.error)] : []),
         rowResults: json.rowResults ?? [],
       });
       setStep("done");
@@ -1906,6 +1945,7 @@ export function WorkerImportWizard({
         created: 0,
         updated: 0,
         skipped: 0,
+        protectedUpdates: 0,
         errors: [e instanceof Error ? e.message : "Unknown error"],
         rowResults: [],
       });
@@ -2268,7 +2308,7 @@ export function WorkerImportWizard({
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="__ignore__" className="text-xs text-muted-foreground">
-                                    — Ignore (leave blank)
+                                    — Ignore (leave unchanged)
                                   </SelectItem>
                                   {targetField === "membership_status"
                                     ? unionMembershipTypes.map((t) => (
@@ -4184,6 +4224,25 @@ export function WorkerImportWizard({
 
     const rowMap = new Map(reviewRows.map((r) => [r.rowIndex, r]));
 
+    if (dedupError) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 text-destructive">
+            <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+            <p className="text-sm">{dedupError}</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStep("row_review")}>
+              <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+            <Button onClick={proceedToDedupCheck}>Retry check</Button>
+          </DialogFooter>
+        </div>
+      );
+    }
+
+    const inCampaignCount = dedupMatches.filter((m) => m.inCampaign).length;
+
     if (dedupMatches.length === 0) {
       return (
         <div className="space-y-4">
@@ -4214,6 +4273,17 @@ export function WorkerImportWizard({
           {dedupMatches.length} potential duplicate
           {dedupMatches.length !== 1 ? "s" : ""} found. Choose how to handle each match.
         </p>
+        {inCampaignCount > 0 && (
+          <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/40 text-xs">
+            <Users className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+            <p className="text-muted-foreground">
+              <span className="font-medium text-foreground">{inCampaignCount}</span> of these
+              workers {inCampaignCount === 1 ? "is" : "are"} in a live campaign. On update,
+              their employer, worksite and job title are kept from the campaign; membership
+              status and contact details are taken from the file.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
           {dedupMatches.map((match) => {
@@ -4231,6 +4301,11 @@ export function WorkerImportWizard({
                     </span>
                     {match.matchedOn === "reference_id" && (
                       <Badge variant="default" className="ml-2 text-[10px] px-1.5 h-4">Primary key</Badge>
+                    )}
+                    {match.inCampaign && (
+                      <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 h-4 gap-1">
+                        <Users className="h-3 w-3" /> In campaign
+                      </Badge>
                     )}
                   </div>
                 </div>
@@ -4314,11 +4389,15 @@ export function WorkerImportWizard({
     let toUpdate = 0;
     let toSkip = 0;
 
+    let protectedUpdateCount = 0;
+
     for (const row of reviewRows) {
       const dedup = dedupMap.get(row.rowIndex);
       if (!dedup) { toCreate++; continue; }
-      if (dedup.action === "update") toUpdate++;
-      else if (dedup.action === "skip") toSkip++;
+      if (dedup.action === "update") {
+        toUpdate++;
+        if (dedup.inCampaign) protectedUpdateCount++;
+      } else if (dedup.action === "skip") toSkip++;
       else toCreate++;
     }
 
@@ -4402,6 +4481,42 @@ export function WorkerImportWizard({
           </div>
         )}
 
+        {toUpdate > 0 && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="protect-campaign-workers"
+                checked={protectCampaignWorkers}
+                onCheckedChange={(v) => setProtectCampaignWorkers(v === true)}
+                className="mt-0.5"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="protect-campaign-workers" className="text-sm font-medium cursor-pointer">
+                  Keep employer, worksite and job title for workers in campaigns
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {protectedUpdateCount > 0 ? (
+                    <>
+                      <span className="font-medium text-foreground">{protectedUpdateCount}</span> of
+                      the {toUpdate} updates {protectedUpdateCount === 1 ? "is" : "are"} for
+                      workers in a live campaign.{" "}
+                    </>
+                  ) : null}
+                  Campaign records are more current for those fields; the file still sets
+                  membership status, contact details and any other mapped columns. Updates
+                  never clear a field the file does not have a value for.
+                </p>
+                {!protectCampaignWorkers && protectedUpdateCount > 0 && (
+                  <p className="text-xs text-amber-700 flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Protection off: campaign
+                    workers&apos; employer, worksite and job title will be overwritten by the file.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <p className="text-xs text-muted-foreground">
           This action will be logged to Import History.
         </p>
@@ -4446,6 +4561,9 @@ export function WorkerImportWizard({
             <p className="text-xs text-muted-foreground">
               {result.created} created · {result.updated} updated · {result.skipped}{" "}
               skipped
+              {result.protectedUpdates > 0
+                ? ` · ${result.protectedUpdates} kept campaign employer/worksite/job title`
+                : ""}
             </p>
           </div>
         </div>
@@ -4468,6 +4586,7 @@ export function WorkerImportWizard({
               <p key={row.rowIndex} className="text-xs text-muted-foreground">
                 Row {row.rowIndex + 1}: {row.status}
                 {row.workerId ? ` (#${row.workerId})` : ""}
+                {row.protectedFields?.length ? " — campaign fields kept" : ""}
               </p>
             ))}
             {result.rowResults.length > 20 && (

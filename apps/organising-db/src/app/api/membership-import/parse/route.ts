@@ -1,50 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { toLocal } from "@/lib/phone/normalise-phone";
+import {
+  MEMBERSHIP_IMPORT_EXPECTED_HEADERS as EXPECTED_HEADERS,
+  MEMBERSHIP_IMPORT_TYPES,
+  isMembershipImportType,
+  type MembershipImportType,
+} from "@/lib/import/membership-import-types";
 
 // ─── Import type definitions ──────────────────────────────────────────────────
 
-export type MembershipImportType = "new_joins" | "resignations" | "recommencing";
-
-/** Expected column headers for each import type (lowercase, trimmed, for matching) */
-const EXPECTED_HEADERS: Record<MembershipImportType, string[]> = {
-  new_joins: [
-    "reference id",
-    "first name",
-    "last name",
-    "employer",
-    "employee worksite",
-    "job title",
-    "email",
-    "phone",
-    "member joining date",
-    "re joined date",
-  ],
-  resignations: [
-    "reference id",
-    "first name",
-    "last name",
-    "company name",
-    "employee worksite",
-    "joining date",
-    "resignation date",
-    "resignation reason",
-    "email",
-    "phone",
-  ],
-  recommencing: [
-    "reference id",
-    "first name",
-    "last name",
-    "employer",
-    "employee worksite",
-    "job title",
-    "membership type",
-    "phone",
-    "email",
-    "date",
-  ],
-};
+export type { MembershipImportType };
 
 export interface ParsedMembershipRow {
   rowIndex: number;
@@ -67,7 +33,7 @@ export interface ParsedMembershipRow {
   resignationDate: string | null;
   /** Resignation reason (resignations only) */
   resignationReason: string | null;
-  /** Raw membership type text (recommencing only) */
+  /** Raw membership type / account status text (recommencing and status_sync) */
   membershipTypeRaw: string | null;
   /** Raw shift label from file (any import type), if a matching column was found */
   shiftRaw: string | null;
@@ -147,6 +113,8 @@ function buildRow(
   let employerRaw: string | null = null;
   if (importType === "resignations") {
     employerRaw = str(raw["company name"] ?? raw["companyname"]) || null;
+  } else if (importType === "status_sync") {
+    employerRaw = str(raw["company name"] ?? raw["companyname"] ?? raw["employer"]) || null;
   } else {
     employerRaw = str(raw["employer"]) || null;
   }
@@ -196,6 +164,17 @@ function buildRow(
     rejoinDate = parseDate(raw["date"]);
     membershipTypeRaw = str(raw["membership type"] ?? raw["membershiptype"]) || null;
     if (!rejoinDate) warnings.push("Missing re-commence date");
+  } else if (importType === "status_sync") {
+    membershipTypeRaw =
+      str(
+        raw["member account status"] ??
+          raw["memberaccountstatus"] ??
+          raw["account status"] ??
+          raw["membership status"] ??
+          raw["status"]
+      ) || null;
+    if (!membershipTypeRaw) warnings.push("Missing member account status");
+    if (!refId) warnings.push("Missing reference ID — will match on email / phone only");
   }
 
   return {
@@ -225,11 +204,15 @@ function buildRow(
 export async function POST(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const importType = searchParams.get("type") as MembershipImportType | null;
+    const importTypeParam = searchParams.get("type");
+    const importType = isMembershipImportType(importTypeParam) ? importTypeParam : null;
 
     if (!importType || !EXPECTED_HEADERS[importType]) {
       return NextResponse.json(
-        { success: false, error: "Missing or invalid ?type= param (new_joins | resignations | recommencing)" },
+        {
+          success: false,
+          error: `Missing or invalid ?type= param (${MEMBERSHIP_IMPORT_TYPES.join(" | ")})`,
+        },
         { status: 400 }
       );
     }

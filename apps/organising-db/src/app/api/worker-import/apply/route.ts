@@ -9,6 +9,13 @@ import {
   stampEmployerWorksiteFromOu,
   syncWorkersToMatchingCampaigns,
 } from "@/lib/workers/sync-campaign-universe";
+import {
+  describeProtectedFields,
+  loadCampaignProtectedWorkerIds,
+  stripCampaignProtectedFields,
+  type CampaignProtectedWorkerField,
+} from "@/lib/workers/campaign-protected-fields";
+import { buildWorkerImportUpdatePatch } from "@/lib/workers/worker-import-update-patch";
 
 export interface WorkerImportAssessmentColumn {
   columnHeader: string;
@@ -76,6 +83,13 @@ export interface WorkerImportApplyRequest {
   campaignId?: number | null;
   assessmentColumns?: WorkerImportAssessmentColumn[];
   rows: WorkerImportRow[];
+  /**
+   * When true (the default), an `update` row whose existing worker is a
+   * member of a live campaign keeps its employer, worksite and job title —
+   * campaign data is more current than a membership export for those
+   * fields. Pass false to let the file overwrite them.
+   */
+  protectCampaignWorkers?: boolean;
 }
 
 export interface WorkerImportRowResult {
@@ -84,6 +98,8 @@ export interface WorkerImportRowResult {
   workerId: number | null;
   status: "created" | "updated" | "skipped" | "error";
   errors: string[];
+  /** Fields the import carried but left alone because the worker is in a campaign. */
+  protectedFields?: CampaignProtectedWorkerField[];
 }
 
 export interface WorkerImportApplyResponse {
@@ -91,6 +107,8 @@ export interface WorkerImportApplyResponse {
   created: number;
   updated: number;
   skipped: number;
+  /** Updated rows where at least one field was kept from the campaign. */
+  protectedUpdates: number;
   errors: string[];
   rowResults: WorkerImportRowResult[];
 }
@@ -317,7 +335,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { fileName, rows, campaignId, assessmentColumns = [] } = body;
+  const {
+    fileName,
+    rows,
+    campaignId,
+    assessmentColumns = [],
+    protectCampaignWorkers = true,
+  } = body;
   if (!rows || !Array.isArray(rows)) {
     return NextResponse.json({ success: false, error: "rows array is required" }, { status: 400 });
   }
@@ -325,8 +349,28 @@ export async function POST(request: NextRequest) {
   let created = 0;
   let updated = 0;
   let skipped = 0;
+  let protectedUpdates = 0;
   const errors: string[] = [];
   const rowResults: WorkerImportRowResult[] = [];
+
+  let protectedWorkerIds = new Set<number>();
+  if (protectCampaignWorkers) {
+    const updateTargets = rows
+      .filter((r) => r.action === "update" && r.existingWorkerId != null)
+      .map((r) => r.existingWorkerId as number);
+    try {
+      protectedWorkerIds = await loadCampaignProtectedWorkerIds(supabase, updateTargets);
+    } catch (error) {
+      // Refuse to run rather than silently overwrite campaign data.
+      return NextResponse.json(
+        {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        { status: 500 }
+      );
+    }
+  }
 
   const { data: unionTypes, error: unionTypesError } = await supabase
     .from("union_membership_types")
@@ -400,6 +444,7 @@ export async function POST(request: NextRequest) {
         created,
         updated,
         skipped,
+        protectedUpdates,
         errors,
         rowResults,
       } satisfies WorkerImportApplyResponse,
@@ -432,8 +477,15 @@ export async function POST(request: NextRequest) {
       row.unionMembershipTypeKey === "resigned_member" ||
       (resignedMembershipId != null && unionMembershipTypeId === resignedMembershipId);
 
+    const isProtectedUpdate =
+      row.action === "update" &&
+      row.existingWorkerId != null &&
+      protectedWorkerIds.has(row.existingWorkerId);
+
     let canonicalOccupationId = row.canonicalOccupationId ?? null;
-    if (!canonicalOccupationId && row.createOccupationName?.trim()) {
+    // A protected worker keeps its job title, so do not create an occupation
+    // that would exist only to be discarded.
+    if (!canonicalOccupationId && row.createOccupationName?.trim() && !isProtectedUpdate) {
       try {
         canonicalOccupationId = await ensureOccupation(supabase, row.createOccupationName);
       } catch (error) {
@@ -513,8 +565,18 @@ export async function POST(request: NextRequest) {
     };
 
     let workerId: number | null = null;
+    let protectedFields: CampaignProtectedWorkerField[] = [];
 
     if (row.action === "update" && row.existingWorkerId) {
+      // Updates write only the fields the file carries a value for; an
+      // unmapped column must not clear what organisers have recorded.
+      const { patch: selectivePatch } = buildWorkerImportUpdatePatch(workerData, {
+        membershipResolved: unionMembershipTypeId != null,
+      });
+      const stripped = stripCampaignProtectedFields(selectivePatch, isProtectedUpdate);
+      const updatePatch: Record<string, unknown> = stripped.patch;
+      protectedFields = stripped.protectedFields;
+
       // Apply rejoin_date recency guard: only advance if incoming date is more recent
       if (row.rejoinDate) {
         const { data: existing } = await supabase
@@ -524,13 +586,13 @@ export async function POST(request: NextRequest) {
           .single();
         const existingRejoin = existing?.rejoin_date as string | null;
         if (!existingRejoin || row.rejoinDate > existingRejoin) {
-          workerData.rejoin_date = row.rejoinDate;
+          updatePatch.rejoin_date = row.rejoinDate;
         }
       }
 
       const { error } = await supabase
         .from("workers")
-        .update(workerData)
+        .update(updatePatch)
         .eq("worker_id", row.existingWorkerId)
         .select("worker_id")
         .single();
@@ -539,6 +601,7 @@ export async function POST(request: NextRequest) {
         rowErrors.push(`Failed to update ${row.firstName} ${row.lastName} — ${error.message}`);
       } else {
         updated++;
+        if (protectedFields.length > 0) protectedUpdates++;
         workerId = row.existingWorkerId;
       }
     } else if (row.action === "create") {
@@ -567,7 +630,11 @@ export async function POST(request: NextRequest) {
 
     if (workerId) {
       try {
-        const additionalOccupationIds = [...(row.additionalOccupationIds ?? [])];
+        // Job title is protected as a whole: no alias for the file's raw
+        // title and no secondary occupations on a campaign worker.
+        const additionalOccupationIds = isProtectedUpdate
+          ? []
+          : [...(row.additionalOccupationIds ?? [])];
         const specialisationIds = [...(row.specialisationIds ?? [])];
 
         for (const name of row.createSpecialisationNames ?? []) {
@@ -576,7 +643,9 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        await maybeInsertOccupationAlias(supabase, canonicalOccupationId, row.rawOccupation, user.id);
+        if (!isProtectedUpdate) {
+          await maybeInsertOccupationAlias(supabase, canonicalOccupationId, row.rawOccupation, user.id);
+        }
         await syncWorkerExtras(supabase, workerId, additionalOccupationIds, specialisationIds);
         await maybeAddWorkerToCampaign(supabase, campaignId, workerId);
         await maybeAssignWorkerToOu(supabase, campaignId, workerId, row.ouId);
@@ -589,8 +658,12 @@ export async function POST(request: NextRequest) {
         }
         await recordAssessmentEvents(supabase, workerId, row, activityIdByColumn, user.id);
         syncedWorkerIds.push(workerId);
-        if (row.employerId) importedEmployerIds.push(row.employerId);
-        if (row.worksiteId) importedWorksiteIds.push(row.worksiteId);
+        // A protected worker's employer/worksite were not written, so they
+        // must not widen the campaign universe either.
+        if (!isProtectedUpdate) {
+          if (row.employerId) importedEmployerIds.push(row.employerId);
+          if (row.worksiteId) importedWorksiteIds.push(row.worksiteId);
+        }
       } catch (error) {
         rowErrors.push(structureErrorMessage(error, String(error)));
       }
@@ -605,6 +678,7 @@ export async function POST(request: NextRequest) {
       workerId,
       status: rowErrors.length > 0 ? "error" : row.action === "update" ? "updated" : "created",
       errors: rowErrors,
+      ...(protectedFields.length > 0 ? { protectedFields } : {}),
     });
   }
 
@@ -634,13 +708,25 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const protectedNote =
+    protectedUpdates > 0
+      ? `${protectedUpdates} campaign worker${protectedUpdates === 1 ? "" : "s"}: ${describeProtectedFields([
+          "employer_id",
+          "worksite_id",
+          "canonical_occupation_id",
+        ])}`
+      : null;
+
   // Log to import_logs
   await supabase.from("import_logs").insert({
     file_name: fileName,
     import_type: "workers_wizard",
     records_created: created,
     records_updated: updated,
-    errors: errors.length > 0 ? errors.join("\n") : null,
+    errors:
+      errors.length > 0 || protectedNote
+        ? [...(protectedNote ? [protectedNote] : []), ...errors].join("\n")
+        : null,
     imported_by: user.id,
   });
 
@@ -649,6 +735,7 @@ export async function POST(request: NextRequest) {
     created,
     updated,
     skipped,
+    protectedUpdates,
     errors,
     rowResults,
   } satisfies WorkerImportApplyResponse);

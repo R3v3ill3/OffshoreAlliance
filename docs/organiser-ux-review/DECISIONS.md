@@ -75,6 +75,8 @@ Raised by the operator from campaign 64 (`PROGRESS.md` programme backlog, 2026-0
 
 **Answers.** _(recorded here by the orchestrator when the operator answers)_
 
+- **2026-09-17 — operator task 3 (input to WP3.8's data run sheet, not a decision label):** campaign 64 assessments 88 "AN kickoff form", 89 "Sector zoom interest", 90 "Will ask others to join", 91 "has visa story" and 92 "visa witness" are sector-wide (`family`); 93 "kiwi crew" and 95 "pia outreach aug 31" are company-specific (`campaign`). Operator task 1 done the same day: the Total Marine Technology campaign exists on production with its two vessel units. Decisions 11 and 12 themselves remain **Open**.
+
 ## WP2.1 package decisions and amendments
 
 Recorded from the operator's WP2.1 approvals:

@@ -230,6 +230,26 @@ DECLARE
   v_parent public.campaigns%ROWTYPE;
   v_parent_changed boolean := TG_OP = 'INSERT' OR NEW.parent_campaign_id IS DISTINCT FROM OLD.parent_campaign_id;
 BEGIN
+  -- Concurrency (wp3.8.md §7 R10, §8.3 D16). The structural checks below read
+  -- OTHER rows under READ COMMITTED with no lock: two concurrent transactions
+  -- (UPDATE A SET parent = B while UPDATE B SET parent = C; or INSERT C2 with
+  -- parent = C while UPDATE C SET parent = P) would each pass its checks and
+  -- both commit, leaving a two-level chain — the FK's FOR KEY SHARE on the
+  -- parent row does not serialise a non-key column update. Transaction-scoped
+  -- advisory locks on this campaign and, when a parent is set, on the parent,
+  -- always in ascending id order (least, then greatest) so two writers cannot
+  -- deadlock, serialise every write of the family columns that touches either
+  -- id. Taken on clearing too (cheap, and keeps the rule uniform). Deliberately
+  -- NOT SELECT … FOR UPDATE / FOR NO KEY UPDATE on the parent row: under RLS
+  -- the wp16_campaigns_update USING clause applies to a locking clause, so a
+  -- child-only writer would get no row and skip the parent checks.
+  PERFORM pg_advisory_xact_lock(hashtext('wp38_campaign_family'),
+                                least(NEW.campaign_id, coalesce(NEW.parent_campaign_id, NEW.campaign_id)));
+  IF NEW.parent_campaign_id IS NOT NULL AND NEW.parent_campaign_id <> NEW.campaign_id THEN
+    PERFORM pg_advisory_xact_lock(hashtext('wp38_campaign_family'),
+                                  greatest(NEW.campaign_id, NEW.parent_campaign_id));
+  END IF;
+
   -- A parent (a campaign with children) can never become an episode or the standing campaign.
   IF (NEW.is_sms_episode OR NEW.is_standing)
      AND EXISTS (SELECT 1 FROM public.campaigns c WHERE c.parent_campaign_id = NEW.campaign_id) THEN
@@ -277,7 +297,8 @@ COMMENT ON FUNCTION public.campaigns_enforce_one_level() IS
   'WP3.8 (wp3.8.md §3.1 item 5): one level of campaign families. Refuses self, a grandparent (a campaign with children choosing a parent), '
   'a grandchild (a parent that has a parent), an SMS episode / the standing campaign / an archived container on either side, a parent '
   'flipped to episode or standing while it has children, and (SET-a, when auth.uid() is set) a parent the caller cannot write to (42501). '
-  'Clearing the parent is always allowed.';
+  'Clearing the parent is always allowed. Serialises concurrent family writes with pg_advisory_xact_lock(hashtext(''wp38_campaign_family''), id) '
+  'on the campaign and the parent in ascending id order (wp3.8.md §7 R10).';
 
 CREATE TRIGGER trg_campaigns_enforce_one_level
   BEFORE INSERT OR UPDATE OF parent_campaign_id, is_sms_episode, is_standing ON public.campaigns
@@ -390,8 +411,17 @@ COMMENT ON VIEW "public"."campaign_worker_rating_summary" IS
 -- 8. vw_sms_chat_session_report (wp3.8.md §3.3; §2 C6)
 --    Baseline 20260908050000:16498–16542 verbatim except the one predicate
 --    marked "WP3.8" in the assessments_recorded subquery. No security_invoker
---    (as today); the helper is SECURITY INVOKER and runs as the view's owner
---    inside it, exactly as the tables do.
+--    (as today). A function referenced by a view executes as the CALLING role:
+--    EXECUTE on the helper and, since it is SECURITY INVOKER, its table reads
+--    are checked as the caller, not as the view's owner (only the view's own
+--    table access runs as the owner). For authenticated and service_role that
+--    is EXECUTE (granted below) plus the USING (true) select policies on both
+--    tables, so the report's numbers are unchanged. For anon — which holds the
+--    baseline's blanket GRANT ALL on this view (20260908050000:32995) — the
+--    view now fails with "permission denied for function
+--    campaign_family_activity_ids"; no reader uses anon (the sms-reporting and
+--    reports routes read through the session server client). Recorded in
+--    wp3.8.md §7 R11 / §8.3 D5.
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE VIEW "public"."vw_sms_chat_session_report" AS

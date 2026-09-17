@@ -982,7 +982,7 @@ production output exists (operator paste), which is the post-data evidence.
 
 | Stage | Ends in this verifiable state | Needs the operator |
 |---|---|---|
-| **1** | Migration, `90`, `10`, `91`, `00`, `01`, README written; `families.ts` + `campaign-parent.ts` + unit tests green; contract suite written (compiles under `tsc`); `pnpm validate:migrations` green; lint/test/build green. Fresh Fable **static** review of the SQL (the WP2.2 Stage 1 practice). | FQ-a … FQ-g and TRG-a answered in §9.1 (they shape Stage 1's files). |
+| **1** ✅ `f3888ef` + fix round 1 | Migration, `90`, `10`, `91`, `00`, `01`, README written; `families.ts` + `campaign-parent.ts` + unit tests green; contract suite written (compiles under `tsc`); `pnpm validate:migrations` green; lint/test/build green. Fresh Fable **static** review of the SQL (the WP2.2 Stage 1 practice). | FQ-a … FQ-g and TRG-a answered in §9.1 (they shape Stage 1's files). |
 | **2** | Migration on normal dev with its ledger row; `01` identical before/after; `pg_get_viewdef` pasted; contract run 1 pasted (0 skipped). Realistic-data rehearsal (§0 step 4) pasted with the four checksum points and the measurement. | Approval of the exact dev file and of the realistic-set run sheet. |
 | **3** | Reader switch rows 1–10 (+ 11–25 under FQ-a), UI of §3.7/§3.8, telemetry; jsdom tests green; contract run 2 pasted; preview deployed. Fresh Fable review (database-touching package). | — |
 | **4** | Operator hand test (§5.4) passed with screenshots; measurement re-run; whole-PR review; ledger row; PR marked ready. Production run sheet prepared (§0 step 6). | Hand test; then the production sequence (operator only): migration → merge → `10`. |
@@ -1026,6 +1026,21 @@ Commits: one per stage (CLAUDE.md: one commit per completed unit of work; the or
 - **R9 — a family activity of a non-assessment kind.** The CHECK allows `family` on any `activity_kind`; only the UI
   restricts the toggle to assessments. A SQL-set `family` on a `woc_meeting` row would appear in a child's participation
   selector (A2 lists all kinds). Accepted; the run sheet flags assessments only.
+- **R10 — concurrent family writes (Stage 1 fix round 1, advisory A1).** The trigger's structural checks read other
+  rows under READ COMMITTED; without a lock, `UPDATE A SET parent = B` concurrent with `UPDATE B SET parent = C` (or
+  `INSERT C2 (parent = C)` concurrent with `UPDATE C SET parent = P`) could both commit and leave a two-level chain —
+  the FK's `FOR KEY SHARE` does not serialise a non-key column update. **Closed by the lock:** the trigger takes
+  `pg_advisory_xact_lock(hashtext('wp38_campaign_family'), id)` on the campaign and, when a parent is set, on the
+  parent, in ascending id order, before its first check (§8.3 D16). A row lock on the parent was rejected because
+  under RLS `wp16_campaigns_update`'s USING clause applies to `FOR UPDATE`/`FOR NO KEY UPDATE`, so a child-only
+  writer would see no parent row and skip the parent checks. A contract test cannot prove this; the residual is closed
+  by the lock, not by a test.
+- **R11 — `anon` on `vw_sms_chat_session_report` (recorded behaviour, advisory A2).** A function referenced by a view
+  executes as the calling role, not as the view's owner. `anon` holds the baseline's blanket `GRANT ALL` on the view
+  (`:32995`) but no EXECUTE on `campaign_family_activity_ids()`, so an anon read of the view now fails with
+  "permission denied for function"; no reader uses anon (`api/campaigns/[id]/sms-reporting`, `api/reports/sms` read
+  through the session server client). For `authenticated` / `service_role` the helper's table reads hit the
+  `USING (true)` select policies, so the report's numbers are identical. Accepted; `90` restores the baseline view.
 
 **Stop conditions** (implementer stops and reports; no workaround)
 
@@ -1053,17 +1068,18 @@ Commits: one per stage (CLAUDE.md: one commit per completed unit of work; the or
 | D2 | `loadCampaignParent(client, …)` accepts `CampaignParentClient = { from(table: string): unknown }` and narrows to the exported `CampaignParentQueryChain` inside, instead of a structural `from…select…eq…maybeSingle` shape. | Matching the PostgREST generic builder chain structurally makes `tsc` recurse (TS2589) for both `SupabaseClient` and `SupabaseClient<any>`; with the `unknown` return both app clients are accepted without a cast (type-level check in `campaign-parent.test.ts`), the way `StructureRpcClient` keeps to `rpc`. Additive exports beyond §3.5's list: `FAMILY_SCOPE`, `FAMILY_ERROR_MESSAGES`, `CAMPAIGN_PARENT_SELECT`, `CAMPAIGN_PARENT_QUERY_KEY`, `NO_PARENT`, `parseCampaignParent`, `CampaignParent`, `CampaignParentQueryResult`. | §3.5 |
 | D3 | `familyActivityFilter(cid, cid)` (a parent equal to the campaign) returns the plain owned clause, `isFamilyActivity` is false for it, and a blank string parent counts as no parent. | The trigger never allows a self-parent; the plain clause is the safe answer and keeps the interpolated string minimal. §4.1 already requires "never when `campaignId === parentId`" for `isFamilyActivity`. | §3.5 |
 | D4 | Migration preconditions also assert: `vw_sms_chat_session_report` exists and carries the baseline predicate `a.campaign_id = o.campaign_id`; the policy `wp38_car_delete_family`, the two indexes and `campaigns_enforce_one_level()` are absent; `can_write_to_campaign(integer)` and `get_user_role()` exist. Post-assertions also pin the FK name `campaigns_parent_campaign_id_fkey` with `ON DELETE SET NULL`, the presence of the RD-a policy and of the unchanged owner delete policy, `STABLE` on the helper, and both views' rewritten text; the helper probe uses the campaign with the most activities (skipped on an empty database). | The second view is overwritten too, so it gets the same "is it the baseline's" stop; the FK name is what the loader embeds through (§3.5 says the post-assertion pins it). | §3.1 items 1, 9 |
-| D5 | The `campaign_family_self` raise carries a DETAIL; `COMMENT ON FUNCTION` on the trigger function; `COMMENT ON VIEW` on `campaign_worker_rating_summary` (the baseline had none — `90` sets it back to `NULL`) and one WP3.8 sentence added to the baseline comment of `vw_sms_chat_session_report` (`90` restores the baseline comment verbatim). | Documentation only; the reviewer reading `pg_get_viewdef`/`\d+` sees why the view differs from the baseline. | §3.1 items 5, 7, 8 |
+| D5 | The `campaign_family_self` raise carries a DETAIL; `COMMENT ON FUNCTION` on the trigger function; `COMMENT ON VIEW` on `campaign_worker_rating_summary` (the baseline had none — `90` sets it back to `NULL`) and one WP3.8 sentence added to the baseline comment of `vw_sms_chat_session_report` (`90` restores the baseline comment verbatim). **Fix round 1 (A2):** the migration's section-8 comment no longer claims the helper "runs as the view's owner" — a function referenced by a view executes as the calling role; consequence recorded: `anon` (blanket `GRANT ALL` on the view, baseline `:32995`, no EXECUTE on the helper) now gets "permission denied for function" on that view; no reader uses anon; `authenticated`/`service_role` results unchanged (§7 R11). | Documentation only; the reviewer reading `pg_get_viewdef`/`\d+` sees why the view differs from the baseline. | §3.1 items 5, 7, 8; §7 R11 |
 | D6 | The migration ends with a labelled SELECT (WP2.2b style) — the §0.2 columns minus `ledger_row` plus `policy_present`. | A migration cannot see its own ledger row; the operator still appends §0.2 as written after the ledger insert. | §0.2 |
 | D7 | `90` drops the policy first (it references both new columns), captures and re-asserts the summary view's whole-view checksum (equal, since no family rows exist by precondition) and the survival of the owner delete policy. | Stronger than "counts unchanged": proves the restored view is the baseline's output byte for byte. | §3.1 Rollback |
 | D8 | `91` writes its own log rows (script `91_rollback_campaign64_family`) **and** stamps `rolled_back_at` on the `10_campaign64_family` rows. | The WP0.4 rollback convention (`01_rollback.sql`), so a forward → rollback → forward cycle stays auditable. | §3.2 |
-| D9 | `10` also captures the ratings checksum over 61/62/64/69 and asserts it unchanged; the campaign log rows carry `updated_at` before/after; the file is not idempotent (a second run stops at the preconditions, as intended). | Ratings must never move (RAT-a); `updated_at` is the metadata churn §2 C17 expects and the rollback's reference. | §3.2 |
-| D10 | Contract suite: `OUX_CONTRACT_FOREIGN_CAMPAIGN_ID` is accepted but not required (the SET-a target P2 is a fresh admin-created campaign the foreign user cannot write to); the three accounts must be distinct and their roles are asserted; the fixture sanity test asserts the foreign user's writable set is exactly {C}; the RAT-a test also records w3's rating (admin) as the setup for RD-a and VIEW-a, VIEW-a runs **before** the RD-a delete (file order), and the RD-a test additionally proves the owner path unchanged on O; the standing row is flipped back inside its test as well as in `afterAll`; the suite refuses to start when `parent_campaign_id` is unreadable (migration absent) rather than failing fourteen times. | Test-order dependencies made explicit; nothing skipped. | §4.2, §5.2 |
+| D9 | `10` also captures the ratings checksum over 61/62/64/69 and asserts it unchanged; the campaign log rows carry `updated_at` before/after; the file is not idempotent (a second run stops at the preconditions, as intended); 64's precondition also requires `archived_at IS NULL` (the trigger refuses an archived parent, so the STOP is readable rather than a trigger error). **Fix round 1 (A3):** every precondition and post-assertion in `10` and `91` is scoped to this run's rows — "no child of 64 yet / no family row on 64 yet" before, "exactly 3 children of 64 (61, 62, 69) and exactly 5 family rows on 64 (88–92)" after, `91` the mirror — instead of global "zero parents / zero family rows anywhere" and "exactly 3 / 5 globally"; the "no other row changed" check is a checksum of the four campaign rows minus `parent_campaign_id`/`updated_at`, of 64's activities minus `scope`, and of the four campaigns' ratings, replacing the four global table counts (memberships and ratings elsewhere may legitimately move on a live database). The unused `parent_campaign_id` column captured in `_wp38_10_children` is dropped. The 61/62/69 "no parent, no children" preconditions are kept. | Production step (e) runs after the deploy is live; an organiser setting "Part of" in the new Basics sheet between the merge and (e) must not stop `10` (advisory A3). The README tells the operator to run `10` straight after the deploy all the same. | §3.2, §0.1 step 6 |
+| D10 | Contract suite: `OUX_CONTRACT_FOREIGN_CAMPAIGN_ID` is accepted but not required (the SET-a target P2 is a fresh admin-created campaign the foreign user cannot write to); the three accounts must be distinct and their roles are asserted; the fixture sanity test asserts the foreign user's writable set is exactly {C}; the RAT-a test also records w3's rating (admin) as the setup for RD-a and VIEW-a, VIEW-a runs **before** the RD-a delete (file order), and the RD-a test additionally proves the owner path unchanged on O; the standing row is flipped back inside its test as well as in `afterAll`, and `afterAll` also flips `is_sms_episode` back to false on every fixture row before `delete_campaign` (an episode with no live action deletes anyway; nothing fixture-shaped survives); the suite refuses to start when `parent_campaign_id` is unreadable (migration absent) rather than failing fourteen times. | Test-order dependencies made explicit; nothing skipped. | §4.2, §5.2 |
 | D11 | Contract suite has a fifteenth case: `familyActivityFilter(C, P)` through PostgREST `.or()` returns exactly `campaign_family_activity_ids(C)`. | Proves the pure module's clause against the real database once, so the Stage 3 reader switch rests on a tested string. | §4.2 |
 | D12 | Later-migration check (recorded in the migration header): no migration after the baseline redefines `campaign_worker_rating_summary`, `vw_sms_chat_session_report`, any `campaign_activity_ratings` policy or any `campaigns` trigger; WP1.6 rewrote the `campaigns` policies only. | Nothing to change; recorded so the reviewer need not repeat the grep. | §3.1 |
 | D13 | `00_family_measurement.sql` adds a `compared` CTE so the `changed` predicate is written once (the plan's `(…changed…)` elision); the optional second statement through the live view is not added. | The file must not reference the helper (it runs before the migration exists). | §5.3 |
 | D14 | `oux-wp3.8/README.md` gains, beyond the table rows, a row for the migration itself, the guard paragraph and the three run-order sections. | The WP2.2 README shape the operator already follows. | §0 |
 | D15 | `useCampaignParent` keys `["campaign-parent", 0]` and is disabled for an unusable id instead of `Number(campaignId)` (`NaN`). | A `NaN` key never matches an invalidation; callers can still spread the key. | §3.5 |
+| D16 | **Fix round 1 (A1).** `campaigns_enforce_one_level()` begins with `PERFORM pg_advisory_xact_lock(hashtext('wp38_campaign_family'), id)` on `NEW.campaign_id` and, when `NEW.parent_campaign_id` is set (and differs), on the parent — `least()` first, then `greatest()` — before its first structural check. The lock is taken on clearing too (only the campaign's own id then): cheap, and every write of the family columns serialises on the ids it touches. | The §3.1 text's three EXISTS/SELECT checks read other rows under READ COMMITTED with no lock; two concurrent transactions could each pass and both commit a two-level chain, and the FK's `FOR KEY SHARE` does not serialise a non-key column update. Ascending id order rules out deadlock between two writers. `SELECT … FOR UPDATE` / `FOR NO KEY UPDATE` on the parent row was rejected: under RLS the `wp16_campaigns_update` USING clause applies to a locking clause, so a child-only writer would get no row and skip the parent checks. A contract test cannot prove concurrency; the residual is recorded as closed by the lock (§7 R10). | §3.1 item 5; §7 R10 |
 
 ---
 
@@ -1093,8 +1109,30 @@ refinement (`isFamilyActivity` takes `parentId`) is recorded in §3.5.
 ### 9.2 Evidence (the verifier pastes raw output; one block per acceptance item)
 
 **Item 1 — migration on dev; validate/lint/test/build; realistic-data rehearsal with checksums.**
-_(dev apply output; ledger row; `01` before/after on dev; `pnpm validate:migrations`; lint total; test count; build
-exit; realistic set: ledger catch-up, `01` ×4, `90` output, `EXPLAIN` per R4)_
+
+*Stage 1 (no database), Sonnet verifier 2026-09-17 on the Stage 1 tree (committed as `f3888ef`):*
+
+```
+pnpm validate:migrations      → Validated 14 Supabase migrations with unique 14-digit versions.   exit 0
+tsc --noEmit                  → (no output)                                                        exit 0
+pnpm lint                     → ✖ 298 problems (146 errors, 152 warnings)   = main baseline 298    exit 1 (baseline)
+eslint <five new TS files>    → (no output)                                                        exit 0
+pnpm test                     → Test Files 1 failed | 120 passed (121); Tests 1 failed | 1746 passed (1747); 106.89s
+                                 failed: wall-chart/__tests__/wall-chart.render-cost.test.tsx
+                                 "renders 305 members across 161 units within budget" — expected 10254.9 to be less than 6000
+                                 (pre-existing wall-clock budget; untouched file; same failure recorded for WP2.4c, PROGRESS.md row 2.4c)
+vitest run families + campaign-parent → Test Files 2 passed (2); Tests 34 passed (34)               exit 0
+vitest list -c vitest.contract.config.ts --filesOnly → campaign-families.contract.test.ts, structure-api.contract.test.ts
+pnpm build                    → ƒ (Dynamic) server-rendered on demand                               exit 0
+grep BEGIN;/COMMIT; in the migration → one comment line only (:14)
+grep 'SET LOCAL oux.env' in 10/91/90 → comment lines only (the operator-adds-it note)
+grep production ref in migration/scripts/lib → only the PRODUCTION_HOST refusal constants of the two contract suites
+git diff --stat generated.ts, src/components, src/app, baseline → empty
+```
+
+*Fix round 1 (advisories A1–A4), implementer 2026-09-17:* `validate:migrations` 14 / exit 0; `tsc` exit 0; the two unit files 34 passed; eslint on the five TS files exit 0.
+
+_(Stage 2: dev apply output; ledger row; `01` before/after on dev; realistic set: `01` ×4, `90` output, `EXPLAIN` per R4)_
 
 **Item 2 — contract tests on dev (run 1 and run 2).**
 _(passed / failed / skipped; the VIEW-a and one-level cases named)_
@@ -1110,7 +1148,15 @@ _(§5.4 steps with pass/fail and screenshot paths)_
 
 ### 9.3 Reviewer findings and resolution
 
-_(empty)_
+**Stage 1 static review (fresh Fable, 2026-09-17, on `f3888ef`): APPROVE WITH ADVISORIES — no blocking finding.** The reviewer diffed both view texts against the baseline (three hunks / one hunk, column list and `security_invoker` kept; `90` restores byte-identically), confirmed the migration applies cleanly on baseline + later migrations and refuses a second apply, walked every trigger arm, the helper's grants, RD-a's boundary, `90`'s order and STOP, `10`/`91`, `01`/`00`, `families.ts` and the fifteen contract cases against §4.2.
+
+| # | Finding | Resolution |
+|---|---|---|
+| A1 (advisory, strong) | One-level trigger: the structural checks read other rows under READ COMMITTED with no lock; two concurrent writers could commit a two-level chain (the FK's `FOR KEY SHARE` does not serialise a non-key update). | **Fixed in fix round 1:** `pg_advisory_xact_lock(hashtext('wp38_campaign_family'), id)` on the campaign and the parent in ascending order before the first check; row locks on the parent rejected (RLS USING applies to locking clauses). §7 R10, §8.3 D16. |
+| A2 (advisory) | Migration comment wrongly said the helper runs as the view's owner; `anon` (blanket GRANT on `vw_sms_chat_session_report`) now gets "permission denied for function" on that view; no reader uses anon. | **Fixed:** comment reworded; recorded as §7 R11 / §8.3 D5. |
+| A3 (advisory) | `10`/`91` asserted global zero/3/5 counts, so a "Part of" set by an organiser between the deploy and step (e) would stop the run. | **Fixed:** assertions scoped to children of 64 (= 61/62/69) and family rows on 64 (= 88–92); "no other row changed" now compares checksums of the affected rows; README tells the operator to run `10` straight after the deploy. §8.3 D9. |
+| A4 (advisory) | §8.3 gaps (D10 `is_sms_episode` unflag; D9 `archived_at` precondition; unused captured column). | **Fixed** (D9, D10 extended; column dropped). |
+| A5 (advisory, Stage 3 watch) | `campaign-parent.ts` imports the browser `createClient` factory into a module routes will import (D1); no top-level `window` access found, but a first for this app. | **Carried to Stage 3:** one route smoke call after `pnpm build` (Stage 3 acceptance). |
 
 ---
 

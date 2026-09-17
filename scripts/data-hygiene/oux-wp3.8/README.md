@@ -51,4 +51,7 @@ after-forward-1) → `00_family_measurement.sql`. The clone marker is present, s
 
 `01` A → `BEGIN; SET LOCAL oux.env = 'production'; <migration>; <ledger row>; COMMIT;` + the §0.2 SELECT →
 `01` B → merge the PR (types regenerate) → after the deploy is live: `10` with `SET LOCAL oux.env = 'production';`
+(run `10` **straight after** the deploy, before organisers reach the new Basics sheet: its checks are scoped to
+campaign 64's children and activities, so a family made elsewhere in the meantime does not stop it, but the
+campaign-64 family should be the first one on production)
 after `BEGIN;` → its appended SELECT shows `children = 3`, `family = 5` (otherwise `91` and report) → `01` B.

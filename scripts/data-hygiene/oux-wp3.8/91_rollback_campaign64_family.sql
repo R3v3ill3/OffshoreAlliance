@@ -54,18 +54,20 @@ BEGIN
     RAISE EXCEPTION '91 STOP: public._oux_hygiene_log is missing (oux-wp0.4/00_create_hygiene_log.sql)';
   END IF;
 
-  SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id IS NOT NULL;
+  -- Scoped to this run's rows (wp3.8.md §8.3 D9): exactly the children and
+  -- family rows 10 made on 64; families made elsewhere are left alone.
+  SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id = 64;
   IF v_count <> 3 THEN
-    RAISE EXCEPTION '91 STOP: % campaign(s) have a parent (expected exactly 3: 61, 62, 69 → 64)', v_count;
+    RAISE EXCEPTION '91 STOP: campaign 64 has % child campaign(s) (expected exactly 3: 61, 62, 69)', v_count;
   END IF;
   SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id = 64 AND campaign_id IN (61, 62, 69);
   IF v_count <> 3 THEN
     RAISE EXCEPTION '91 STOP: the children of 64 are not exactly 61, 62, 69';
   END IF;
 
-  SELECT count(*) INTO v_count FROM public.campaign_activities WHERE scope = 'family';
+  SELECT count(*) INTO v_count FROM public.campaign_activities WHERE campaign_id = 64 AND scope = 'family';
   IF v_count <> 5 THEN
-    RAISE EXCEPTION '91 STOP: % activity row(s) are scope = family (expected exactly 5: 88–92 of 64)', v_count;
+    RAISE EXCEPTION '91 STOP: % activity row(s) of campaign 64 are scope = family (expected exactly 5: 88–92)', v_count;
   END IF;
   SELECT count(*) INTO v_count
   FROM public.campaign_activities
@@ -76,12 +78,18 @@ BEGIN
 END;
 $preconditions$;
 
+-- Before-state of this run's rows only (as in 10): no global table counts,
+-- which may legitimately move on a live database while this runs.
 CREATE TEMP TABLE _wp38_91_before ON COMMIT DROP AS
 SELECT
-  (SELECT count(*) FROM public.campaigns)                  AS campaigns,
-  (SELECT count(*) FROM public.campaign_activities)        AS activities,
-  (SELECT count(*) FROM public.campaign_activity_ratings)  AS ratings,
-  (SELECT count(*) FROM public.campaign_worker_membership) AS memberships,
+  (SELECT md5(string_agg((to_jsonb(c) - 'parent_campaign_id' - 'updated_at')::text, '|' ORDER BY c.campaign_id))
+     FROM public.campaigns c WHERE c.campaign_id IN (61, 62, 64, 69)) AS campaigns_md5,
+  (SELECT md5(string_agg((to_jsonb(a) - 'scope')::text, '|' ORDER BY a.activity_id))
+     FROM public.campaign_activities a WHERE a.campaign_id = 64) AS activities_64_md5,
+  (SELECT md5(string_agg(r::text, '|' ORDER BY r.rating_id))
+     FROM public.campaign_activity_ratings r
+     JOIN public.campaign_activities a ON a.activity_id = r.activity_id
+    WHERE a.campaign_id IN (61, 62, 64, 69)) AS ratings_md5,
   (SELECT count(*) FROM public._oux_hygiene_log
      WHERE script = '10_campaign64_family' AND rolled_back_at IS NULL) AS forward_log_pending;
 
@@ -150,38 +158,47 @@ DECLARE
 BEGIN
   SELECT * INTO v_before FROM _wp38_91_before;
 
-  SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id IS NOT NULL;
+  SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id = 64;
   IF v_count <> 0 THEN
-    RAISE EXCEPTION '91 post-check failed: % campaign(s) still have a parent', v_count;
+    RAISE EXCEPTION '91 post-check failed: campaign 64 still has % child campaign(s)', v_count;
   END IF;
-  SELECT count(*) INTO v_count FROM public.campaign_activities WHERE scope = 'family';
+  SELECT count(*) INTO v_count FROM public.campaign_activities WHERE campaign_id = 64 AND scope = 'family';
   IF v_count <> 0 THEN
-    RAISE EXCEPTION '91 post-check failed: % activity row(s) are still scope = family', v_count;
+    RAISE EXCEPTION '91 post-check failed: % activity row(s) of campaign 64 are still scope = family', v_count;
   END IF;
   IF v_logged <> 8 THEN
     RAISE EXCEPTION '91 post-check failed: logged % rows (expected 8)', v_logged;
   END IF;
-  IF (SELECT count(*) FROM public.campaigns) <> v_before.campaigns
-     OR (SELECT count(*) FROM public.campaign_activities) <> v_before.activities
-     OR (SELECT count(*) FROM public.campaign_activity_ratings) <> v_before.ratings
-     OR (SELECT count(*) FROM public.campaign_worker_membership) <> v_before.memberships
+  IF (SELECT md5(string_agg((to_jsonb(c) - 'parent_campaign_id' - 'updated_at')::text, '|' ORDER BY c.campaign_id))
+        FROM public.campaigns c WHERE c.campaign_id IN (61, 62, 64, 69)) IS DISTINCT FROM v_before.campaigns_md5
   THEN
-    RAISE EXCEPTION '91 post-check failed: campaign, activity, rating or membership counts changed';
+    RAISE EXCEPTION '91 post-check failed: a column other than parent_campaign_id/updated_at changed on 61/62/64/69';
+  END IF;
+  IF (SELECT md5(string_agg((to_jsonb(a) - 'scope')::text, '|' ORDER BY a.activity_id))
+        FROM public.campaign_activities a WHERE a.campaign_id = 64) IS DISTINCT FROM v_before.activities_64_md5
+  THEN
+    RAISE EXCEPTION '91 post-check failed: a column other than scope changed on campaign 64''s activities, or an activity row came or went';
+  END IF;
+  IF (SELECT md5(string_agg(r::text, '|' ORDER BY r.rating_id))
+        FROM public.campaign_activity_ratings r
+        JOIN public.campaign_activities a ON a.activity_id = r.activity_id
+       WHERE a.campaign_id IN (61, 62, 64, 69)) IS DISTINCT FROM v_before.ratings_md5
+  THEN
+    RAISE EXCEPTION '91 post-check failed: a rating row changed';
   END IF;
 END;
 $postconditions$;
 
 SELECT
-  (SELECT count(*) FROM public.campaigns WHERE parent_campaign_id IS NOT NULL) AS children_after,
-  (SELECT count(*) FROM public.campaign_activities WHERE scope = 'family')     AS family_after,
-  (SELECT count(*) FROM _wp38_91_log_ids)                                      AS rows_logged,
-  b.forward_log_pending                                                        AS forward_rows_pending_before,
+  (SELECT count(*) FROM public.campaigns WHERE parent_campaign_id = 64)                          AS children_of_64_after,
+  (SELECT count(*) FROM public.campaign_activities WHERE campaign_id = 64 AND scope = 'family') AS family_on_64_after,
+  (SELECT count(*) FROM _wp38_91_log_ids)                                                       AS rows_logged,
+  b.forward_log_pending                                                                         AS forward_rows_pending_before,
   (SELECT count(*) FROM public._oux_hygiene_log
-     WHERE script = '10_campaign64_family' AND rolled_back_at IS NULL)          AS forward_rows_pending_after,
-  b.campaigns   AS campaigns_unchanged,
-  b.activities  AS activities_unchanged,
-  b.ratings     AS ratings_unchanged,
-  b.memberships AS memberships_unchanged
+     WHERE script = '10_campaign64_family' AND rolled_back_at IS NULL)                           AS forward_rows_pending_after,
+  b.campaigns_md5     AS campaigns_md5_unchanged,
+  b.activities_64_md5 AS activities_64_md5_unchanged,
+  b.ratings_md5       AS ratings_md5_unchanged
 FROM _wp38_91_before AS b;
 
 COMMIT;

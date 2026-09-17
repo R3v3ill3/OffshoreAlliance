@@ -14,6 +14,10 @@
 -- Runs as postgres, so the trigger's SET-a arm (auth.uid() IS NULL) is skipped
 -- and its structural arms (one level, kinds) still fire. updated_at advances on
 -- 61/62/69 through trg_campaigns_updated_at (expected metadata churn).
+-- Every precondition and post-assertion is scoped to this run's rows (the
+-- children of 64, 64's activities); families organisers may have made
+-- elsewhere through the Basics sheet since the deploy neither stop nor
+-- enter this run. Run it straight after the deploy all the same (README).
 --
 -- A production operator must add SET LOCAL oux.env = 'production'; immediately
 -- after BEGIN in this same submission. The committed file omits that line and
@@ -105,24 +109,33 @@ BEGIN
     RAISE EXCEPTION '10 STOP: expected activities 93 and 95 on campaign 64 as scope = campaign, found %', v_count;
   END IF;
 
-  -- Nothing anywhere is a family yet (this is the first family on the database).
-  SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id IS NOT NULL;
+  -- Scoped to this run's rows (wp3.8.md §8.3 D9): 64 has no children yet and
+  -- none of its activities is family yet. Families made elsewhere by
+  -- organisers through the Basics sheet after the deploy are not this run's
+  -- business and must not stop it.
+  SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id = 64;
   IF v_count <> 0 THEN
-    RAISE EXCEPTION '10 STOP: % campaign(s) already have a parent', v_count;
+    RAISE EXCEPTION '10 STOP: campaign 64 already has % child campaign(s)', v_count;
   END IF;
-  SELECT count(*) INTO v_count FROM public.campaign_activities WHERE scope = 'family';
+  SELECT count(*) INTO v_count FROM public.campaign_activities WHERE campaign_id = 64 AND scope = 'family';
   IF v_count <> 0 THEN
-    RAISE EXCEPTION '10 STOP: % activity row(s) are already scope = family', v_count;
+    RAISE EXCEPTION '10 STOP: % activity row(s) of campaign 64 are already scope = family', v_count;
   END IF;
 END;
 $preconditions$;
 
+-- Before-state of this run's rows only (wp3.8.md §8.3 D9): the four campaign
+-- rows minus the two columns this run changes (parent_campaign_id and, through
+-- trg_campaigns_updated_at, updated_at), campaign 64's activities minus scope,
+-- and every rating on the four campaigns' activities. Global table counts are
+-- not asserted: on production this runs after the deploy, so memberships and
+-- ratings elsewhere may legitimately move while it runs.
 CREATE TEMP TABLE _wp38_10_before ON COMMIT DROP AS
 SELECT
-  (SELECT count(*) FROM public.campaigns)                  AS campaigns,
-  (SELECT count(*) FROM public.campaign_activities)        AS activities,
-  (SELECT count(*) FROM public.campaign_activity_ratings)  AS ratings,
-  (SELECT count(*) FROM public.campaign_worker_membership) AS memberships,
+  (SELECT md5(string_agg((to_jsonb(c) - 'parent_campaign_id' - 'updated_at')::text, '|' ORDER BY c.campaign_id))
+     FROM public.campaigns c WHERE c.campaign_id IN (61, 62, 64, 69)) AS campaigns_md5,
+  (SELECT md5(string_agg((to_jsonb(a) - 'scope')::text, '|' ORDER BY a.activity_id))
+     FROM public.campaign_activities a WHERE a.campaign_id = 64) AS activities_64_md5,
   (SELECT count(*) FROM public.campaign_activities WHERE campaign_id = 61) AS own_61,
   (SELECT count(*) FROM public.campaign_activities WHERE campaign_id = 62) AS own_62,
   (SELECT count(*) FROM public.campaign_activities WHERE campaign_id = 69) AS own_69,
@@ -134,7 +147,7 @@ SELECT
 
 -- updated_at of the three children, captured for the log (before_row) and for the rollback.
 CREATE TEMP TABLE _wp38_10_children ON COMMIT DROP AS
-SELECT campaign_id, parent_campaign_id, updated_at
+SELECT campaign_id, updated_at
 FROM public.campaigns
 WHERE campaign_id IN (61, 62, 69);
 
@@ -200,20 +213,21 @@ DECLARE
 BEGIN
   SELECT * INTO v_before FROM _wp38_10_before;
 
-  -- Exactly three children, all of 64.
-  SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id IS NOT NULL;
+  -- Exactly three children of 64, and they are 61, 62, 69 (scoped: other
+  -- families on the database are not this run's).
+  SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id = 64;
   IF v_count <> 3 THEN
-    RAISE EXCEPTION '10 post-check failed: % campaign(s) have a parent (expected 3)', v_count;
+    RAISE EXCEPTION '10 post-check failed: campaign 64 has % child campaign(s) (expected 3)', v_count;
   END IF;
   SELECT count(*) INTO v_count FROM public.campaigns WHERE parent_campaign_id = 64 AND campaign_id IN (61, 62, 69);
   IF v_count <> 3 THEN
     RAISE EXCEPTION '10 post-check failed: % of 61/62/69 have parent 64 (expected 3)', v_count;
   END IF;
 
-  -- Exactly five family rows, all owned by 64, exactly 88–92.
-  SELECT count(*) INTO v_count FROM public.campaign_activities WHERE scope = 'family';
+  -- Exactly five family rows on 64, exactly 88–92.
+  SELECT count(*) INTO v_count FROM public.campaign_activities WHERE campaign_id = 64 AND scope = 'family';
   IF v_count <> 5 THEN
-    RAISE EXCEPTION '10 post-check failed: % activity row(s) are scope = family (expected 5)', v_count;
+    RAISE EXCEPTION '10 post-check failed: % activity row(s) of campaign 64 are scope = family (expected 5)', v_count;
   END IF;
   SELECT count(*) INTO v_count
   FROM public.campaign_activities
@@ -245,13 +259,18 @@ BEGIN
     RAISE EXCEPTION '10 post-check failed: campaign_family_activity_ids() counts for 62/69/64 are not own + 5 / own + 5 / own';
   END IF;
 
-  -- No other row changed.
-  IF (SELECT count(*) FROM public.campaigns) <> v_before.campaigns
-     OR (SELECT count(*) FROM public.campaign_activities) <> v_before.activities
-     OR (SELECT count(*) FROM public.campaign_activity_ratings) <> v_before.ratings
-     OR (SELECT count(*) FROM public.campaign_worker_membership) <> v_before.memberships
+  -- Nothing else on this run's rows changed: the four campaign rows apart from
+  -- parent_campaign_id / updated_at, 64's activities apart from scope, and
+  -- every rating on the four campaigns' activities.
+  IF (SELECT md5(string_agg((to_jsonb(c) - 'parent_campaign_id' - 'updated_at')::text, '|' ORDER BY c.campaign_id))
+        FROM public.campaigns c WHERE c.campaign_id IN (61, 62, 64, 69)) IS DISTINCT FROM v_before.campaigns_md5
   THEN
-    RAISE EXCEPTION '10 post-check failed: campaign, activity, rating or membership counts changed';
+    RAISE EXCEPTION '10 post-check failed: a column other than parent_campaign_id/updated_at changed on 61/62/64/69';
+  END IF;
+  IF (SELECT md5(string_agg((to_jsonb(a) - 'scope')::text, '|' ORDER BY a.activity_id))
+        FROM public.campaign_activities a WHERE a.campaign_id = 64) IS DISTINCT FROM v_before.activities_64_md5
+  THEN
+    RAISE EXCEPTION '10 post-check failed: a column other than scope changed on campaign 64''s activities, or an activity row came or went';
   END IF;
   IF (SELECT md5(string_agg(r::text, '|' ORDER BY r.rating_id))
         FROM public.campaign_activity_ratings r
@@ -267,8 +286,8 @@ END;
 $postconditions$;
 
 SELECT
-  (SELECT count(*) FROM public.campaigns WHERE parent_campaign_id = 64)      AS children,
-  (SELECT count(*) FROM public.campaign_activities WHERE scope = 'family')  AS family,
+  (SELECT count(*) FROM public.campaigns WHERE parent_campaign_id = 64)                          AS children,
+  (SELECT count(*) FROM public.campaign_activities WHERE campaign_id = 64 AND scope = 'family') AS family,
   (SELECT count(*) FROM _wp38_10_log_ids)                                   AS rows_logged,
   b.own_61, b.own_62, b.own_69, b.own_64,
   (SELECT count(*) FROM public.campaign_family_activity_ids(61)) AS visible_61,

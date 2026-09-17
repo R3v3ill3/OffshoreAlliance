@@ -2594,10 +2594,13 @@ function MembershipImportTab() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Monthly Membership Import</h2>
+            <h2 className="text-xl font-semibold">Membership Import</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Import the three monthly membership files: New Joins, Resignations, and Recommencing Members.
-              Each file is matched against existing workers by Reference ID, then email/phone.
+              Import the three monthly membership files (New Joins, Resignations, Recommencing
+              Members) or a full member list to refresh membership status. Choose the file type
+              after clicking Start Import. Each file is matched against existing workers by
+              Reference ID, then email/phone. Workers in a live campaign keep their campaign
+              employer, worksite and job title.
             </p>
           </div>
           <Button onClick={() => setWizardOpen(true)}>
@@ -2606,7 +2609,7 @@ function MembershipImportTab() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
             {
               title: "New Joins",
@@ -2619,6 +2622,10 @@ function MembershipImportTab() {
             {
               title: "Recommencing Members",
               desc: "Re-activates resigned members, updating the rejoin date (only if more recent than the existing date).",
+            },
+            {
+              title: "Full Member List (status sync)",
+              desc: "Updates membership status and contact details on every matched member from a full export with Member Account Status; creates members not yet in the database.",
             },
           ].map((card) => (
             <div key={card.title} className="rounded-lg border p-4 space-y-2">

@@ -17,6 +17,13 @@ import {
 } from "@/lib/workers/campaign-protected-fields";
 import { buildWorkerImportUpdatePatch } from "@/lib/workers/worker-import-update-patch";
 
+/**
+ * Rows are written one at a time with several follow-up writes each; the
+ * wizard sends them in batches, but give a slow batch room rather than the
+ * platform default.
+ */
+export const maxDuration = 300;
+
 export interface WorkerImportAssessmentColumn {
   columnHeader: string;
   activityId: number | null;

@@ -12,6 +12,12 @@ import {
 } from "@/lib/workers/campaign-protected-fields";
 import type { ParsedMembershipRow } from "../parse/route";
 
+/**
+ * Rows are written one at a time; the wizard sends them in batches of a few
+ * hundred, but give a slow batch room rather than the platform default.
+ */
+export const maxDuration = 300;
+
 interface ApplyRow extends ParsedMembershipRow {
   resolvedEmployerId: number | null;
   resolvedWorksiteId: number | null;
@@ -39,6 +45,11 @@ interface ApplyRequest {
    * current source for those, the membership system for status.
    */
   protectCampaignWorkers?: boolean;
+  /** Original upload name, for Import History. */
+  fileName?: string;
+  /** 1-based batch position when the wizard splits a large file. */
+  batchIndex?: number;
+  batchCount?: number;
 }
 
 export interface MembershipImportApplyResponse {
@@ -79,7 +90,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { rows, createMissingDimensionOptions, protectCampaignWorkers = true } = body;
+  const {
+    rows,
+    createMissingDimensionOptions,
+    protectCampaignWorkers = true,
+    fileName,
+    batchIndex,
+    batchCount,
+  } = body;
   if (!rows || !Array.isArray(rows)) {
     return NextResponse.json({ success: false, error: "rows array is required" }, { status: 400 });
   }
@@ -421,9 +439,14 @@ export async function POST(request: NextRequest) {
         ])}`
       : null;
 
+  const batchSuffix =
+    batchIndex != null && batchCount != null && batchCount > 1
+      ? ` (batch ${batchIndex}/${batchCount})`
+      : "";
+
   // Log to import_logs
   await supabase.from("import_logs").insert({
-    file_name: `membership_${importType}`,
+    file_name: `${fileName?.trim() || `membership_${importType}`}${batchSuffix}`,
     import_type: `membership_${importType}`,
     records_created: created,
     records_updated: updated,

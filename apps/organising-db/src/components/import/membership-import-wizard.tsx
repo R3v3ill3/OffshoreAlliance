@@ -8,7 +8,7 @@ import {
   API_FETCH_TIMEOUT_UPLOAD_MS,
 } from "@/lib/api/fetch-api";
 import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
-import { fetchInChunks } from "@/lib/supabase/chunk-in-filter";
+import { chunkArray, fetchInChunks } from "@/lib/supabase/chunk-in-filter";
 import { loadCampaignProtectedWorkerIds } from "@/lib/workers/campaign-protected-fields";
 import { parseMembershipStatus } from "@/lib/workers/worker-import-membership";
 import {
@@ -224,6 +224,13 @@ function scoreOccupation(query: string, occupations: Occupation[]) {
     .slice(0, 3);
 }
 
+/**
+ * Rows per apply request. The server writes rows sequentially (one update
+ * or insert each, plus the occasional lookup), so this keeps every request
+ * comfortably inside the 120 s client timeout even on a slow connection.
+ */
+const APPLY_BATCH_SIZE = 200;
+
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
 const ALL_STEPS: { id: WizardStep; label: string }[] = [
@@ -276,6 +283,12 @@ export function MembershipImportWizard({
   const [dedupRows, setDedupRows] = useState<DedupRow[]>([]);
   const [dedupError, setDedupError] = useState<string | null>(null);
   const [protectCampaignWorkers, setProtectCampaignWorkers] = useState(true);
+  const [applyProgress, setApplyProgress] = useState<{
+    done: number;
+    total: number;
+    rowsDone: number;
+    rowsTotal: number;
+  } | null>(null);
 
   // ── Result ───────────────────────────────────────────────────────────────
   const [result, setResult] = useState<{
@@ -403,6 +416,7 @@ export function MembershipImportWizard({
     setDedupRows([]);
     setDedupError(null);
     setProtectCampaignWorkers(true);
+    setApplyProgress(null);
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -745,66 +759,110 @@ export function MembershipImportWizard({
     const mtMap = new Map(membershipTypeResolutions.map((r) => [r.rawValue, r.resolvedId]));
     const dedupMap = new Map(dedupRows.map((d) => [d.rowIndex, d]));
 
+    const setupErrors: string[] = [];
+
+    // Names are unique on employers / worksites / occupations. "Create new"
+    // for a name that already exists (typically an inactive record the
+    // matching step did not list) returns 409; reuse that record instead of
+    // silently leaving the workers without one.
+    async function insertOrReuse(
+      table: "employers" | "worksites" | "occupations",
+      idColumn: string,
+      nameColumn: string,
+      name: string,
+      insertRow: Record<string, unknown>
+    ): Promise<number | null> {
+      const { data, error } = await supabase
+        .from(table)
+        .insert(insertRow)
+        .select(idColumn)
+        .single();
+      if (!error && data) return Number((data as unknown as Record<string, unknown>)[idColumn]);
+      if (error && error.code === "23505") {
+        const { data: existing, error: lookupError } = await supabase
+          .from(table)
+          .select(idColumn)
+          .ilike(nameColumn, name)
+          .limit(1)
+          .maybeSingle();
+        if (!lookupError && existing) {
+          return Number((existing as unknown as Record<string, unknown>)[idColumn]);
+        }
+        setupErrors.push(
+          `${table}: "${name}" already exists but could not be looked up${
+            lookupError ? ` — ${lookupError.message}` : ""
+          }`
+        );
+        return null;
+      }
+      setupErrors.push(`${table}: failed to create "${name}" — ${error?.message ?? "unknown error"}`);
+      return null;
+    }
+
     // Create new employers first
     const newEmployers = employerResolutions.filter((r) => r.createNew && r.newEmployerName.trim());
     for (const res of newEmployers) {
-      const { data } = await supabase
-        .from("employers")
-        .insert({
-          employer_name: res.newEmployerName.trim(),
-          trading_name: res.newTradingName.trim() || null,
-          employer_category: res.newCategory || null,
-          is_active: true,
-        })
-        .select("employer_id, employer_name")
-        .single();
-      if (data) {
-        empMap.set(res.rawValue, data.employer_id);
-      }
+      const name = res.newEmployerName.trim();
+      const id = await insertOrReuse("employers", "employer_id", "employer_name", name, {
+        employer_name: name,
+        trading_name: res.newTradingName.trim() || null,
+        employer_category: res.newCategory || null,
+        is_active: true,
+      });
+      if (id != null) empMap.set(res.rawValue, id);
     }
 
     // Create new worksites
     const newWorksites = worksiteResolutions.filter((r) => r.createNew && r.newWorksiteName.trim());
     for (const res of newWorksites) {
-      const { data } = await supabase
-        .from("worksites")
-        .insert({
-          worksite_name: res.newWorksiteName.trim(),
-          worksite_type: res.newWorksiteType || "Other",
-          is_active: true,
-          is_offshore: false,
-        })
-        .select("worksite_id, worksite_name")
-        .single();
-      if (data) {
-        wsMap.set(res.rawValue, data.worksite_id);
-      }
+      const name = res.newWorksiteName.trim();
+      const id = await insertOrReuse("worksites", "worksite_id", "worksite_name", name, {
+        worksite_name: name,
+        worksite_type: res.newWorksiteType || "Other",
+        is_active: true,
+        is_offshore: false,
+      });
+      if (id != null) wsMap.set(res.rawValue, id);
     }
 
     // Handle "create new occupations" — create them first before bulk apply
     const newOccupations = occupationResolutions.filter((r) => r.createNew && !r.resolvedOccupationId);
     for (const res of newOccupations) {
-      const { data } = await supabase
-        .from("occupations")
-        .insert({
-          canonical_name: res.newCanonicalName.trim(),
-          occupation_group_id: res.newGroupId || null,
-        })
-        .select("occupation_id")
-        .single();
-      if (data) {
-        // Register raw value as an alias
-        if (res.rawValue.toLowerCase() !== res.newCanonicalName.toLowerCase()) {
-          const { error: aliasErr } = await supabase.from("occupation_aliases").insert({
-            occupation_id: data.occupation_id,
-            alias_name: res.rawValue,
-            source: "import",
-          });
-          // Unique index is on (occupation_id, lower(trim(alias_name))); duplicates are safe to skip.
-          if (aliasErr && aliasErr.code !== "23505") throw aliasErr;
+      const name = res.newCanonicalName.trim();
+      const id = await insertOrReuse("occupations", "occupation_id", "canonical_name", name, {
+        canonical_name: name,
+        occupation_group_id: res.newGroupId || null,
+      });
+      if (id == null) continue;
+      // Register raw value as an alias
+      if (res.rawValue.toLowerCase() !== name.toLowerCase()) {
+        const { error: aliasErr } = await supabase.from("occupation_aliases").insert({
+          occupation_id: id,
+          alias_name: res.rawValue,
+          source: "import",
+        });
+        // Unique index is on (occupation_id, lower(trim(alias_name))); duplicates are safe to skip.
+        if (aliasErr && aliasErr.code !== "23505") {
+          setupErrors.push(`occupation alias "${res.rawValue}": ${aliasErr.message}`);
         }
-        occMap.set(res.rawValue, data.occupation_id);
       }
+      occMap.set(res.rawValue, id);
+    }
+
+    if (setupErrors.length > 0) {
+      setResult({
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        protectedUpdates: 0,
+        errors: [
+          "Import not started — fix these before applying (no worker rows were written):",
+          ...setupErrors,
+        ],
+      });
+      setStep("done");
+      setIsLoading(false);
+      return;
     }
 
     const applyRows: ApplyRow[] = rows.map((row) => {
@@ -820,34 +878,72 @@ export function MembershipImportWizard({
       };
     });
 
+    // Rows go to the server in batches: one request for a several-thousand
+    // row file outruns the client timeout, and a timed-out request reports
+    // nothing even though the server may have kept writing. Each batch is
+    // small enough to finish well inside the limit, and totals accumulate
+    // as batches complete so a failure part-way is reported truthfully.
+    const batches = chunkArray(
+      applyRows.filter((r) => r.dedupAction !== "skip"),
+      APPLY_BATCH_SIZE
+    );
+    const skippedUpFront = applyRows.length - batches.reduce((n, b) => n + b.length, 0);
+    const totals = { created: 0, updated: 0, skipped: skippedUpFront, protectedUpdates: 0 };
+    const errors: string[] = [];
+    setApplyProgress({ done: 0, total: batches.length, rowsDone: 0, rowsTotal: applyRows.length });
+
     try {
-      const res = await fetchApi(`/api/membership-import/apply?type=${importType}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rows: applyRows,
-          createMissingDimensionOptions,
-          protectCampaignWorkers,
-        }),
-        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
-      });
-      const json = await res.json();
-      setResult({
-        created: json.created ?? 0,
-        updated: json.updated ?? 0,
-        skipped: json.skipped ?? 0,
-        protectedUpdates: json.protectedUpdates ?? 0,
-        errors: json.errors ?? (json.error ? [String(json.error)] : []),
-      });
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        try {
+          const res = await fetchApi(`/api/membership-import/apply?type=${importType}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              rows: batch,
+              createMissingDimensionOptions,
+              protectCampaignWorkers,
+              fileName,
+              batchIndex: i + 1,
+              batchCount: batches.length,
+            }),
+            timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+          });
+          const json = await res.json();
+          if (!res.ok || json.success === false) {
+            errors.push(
+              `Batch ${i + 1}/${batches.length} failed: ${json.error ?? `HTTP ${res.status}`}`
+            );
+            break;
+          }
+          totals.created += json.created ?? 0;
+          totals.updated += json.updated ?? 0;
+          totals.skipped += json.skipped ?? 0;
+          totals.protectedUpdates += json.protectedUpdates ?? 0;
+          errors.push(...(json.errors ?? []));
+        } catch (e) {
+          const isAbort = e instanceof DOMException && e.name === "AbortError";
+          errors.push(
+            isAbort
+              ? `Batch ${i + 1}/${batches.length} timed out after ${
+                  API_FETCH_TIMEOUT_UPLOAD_MS / 1000
+                }s. Earlier batches were applied; check Import History before re-running (re-running is safe — matched rows update in place).`
+              : `Batch ${i + 1}/${batches.length}: ${e instanceof Error ? e.message : "Unknown error"}`
+          );
+          break;
+        }
+        setApplyProgress({
+          done: i + 1,
+          total: batches.length,
+          rowsDone: skippedUpFront + batches.slice(0, i + 1).reduce((n, b) => n + b.length, 0),
+          rowsTotal: applyRows.length,
+        });
+      }
+      setResult({ ...totals, errors });
       setStep("done");
       if (onComplete) onComplete();
-    } catch (e) {
-      setResult({
-        created: 0, updated: 0, skipped: 0, protectedUpdates: 0,
-        errors: [e instanceof Error ? e.message : "Unknown error"],
-      });
-      setStep("done");
     } finally {
+      setApplyProgress(null);
       setIsLoading(false);
     }
   }
@@ -2049,7 +2145,12 @@ export function MembershipImportWizard({
           </Button>
           <Button onClick={applyImport} disabled={isLoading}>
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Import {createCount + updateCount} records
+            {applyProgress
+              ? `Importing… ${applyProgress.rowsDone}/${applyProgress.rowsTotal} rows (batch ${Math.min(
+                  applyProgress.done + 1,
+                  applyProgress.total
+                )} of ${applyProgress.total})`
+              : `Import ${createCount + updateCount} records`}
           </Button>
         </DialogFooter>
       </div>

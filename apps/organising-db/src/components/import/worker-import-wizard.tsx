@@ -14,7 +14,7 @@ import { matchEmployerCandidates } from "@/lib/utils/employer-match";
 import type { EmployerCandidate } from "@/lib/utils/employer-match";
 import type { ParsedWorkerRow, ParsedWorkerGroup } from "@/app/api/worker-import/parse/route";
 import { parseMembershipStatus } from "@/lib/workers/worker-import-membership";
-import { fetchInChunks } from "@/lib/supabase/chunk-in-filter";
+import { chunkArray, fetchInChunks } from "@/lib/supabase/chunk-in-filter";
 import { loadCampaignProtectedWorkerIds } from "@/lib/workers/campaign-protected-fields";
 import type {
   WorkerImportAssessmentColumn,
@@ -288,6 +288,13 @@ interface Employer {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+/**
+ * Rows per apply request. Each row costs several sequential writes on the
+ * server, so this keeps every request comfortably inside the 120 s client
+ * timeout.
+ */
+const APPLY_BATCH_SIZE = 150;
+
 const ALL_STEPS: { id: WizardStep; label: string }[] = [
   { id: "upload", label: "Upload" },
   { id: "column_mapping", label: "Map Columns" },
@@ -540,6 +547,12 @@ export function WorkerImportWizard({
   const [dedupMatches, setDedupMatches] = useState<DedupMatch[]>([]);
   const [dedupError, setDedupError] = useState<string | null>(null);
   const [protectCampaignWorkers, setProtectCampaignWorkers] = useState(true);
+  const [applyProgress, setApplyProgress] = useState<{
+    done: number;
+    total: number;
+    rowsDone: number;
+    rowsTotal: number;
+  } | null>(null);
   const [occupationResolutions, setOccupationResolutions] = useState<OccupationResolution[]>([]);
   const [occupationSearch, setOccupationSearch] = useState<Record<string, string>>({});
   const [result, setResult] = useState<{
@@ -1085,6 +1098,7 @@ export function WorkerImportWizard({
     setEmployerMatchSearch({});
     setDedupError(null);
     setProtectCampaignWorkers(true);
+    setApplyProgress(null);
     setCreateEmployerFor(null);
     setNewEmployerName("");
     setIsCreatingEmployer(false);
@@ -1577,7 +1591,7 @@ export function WorkerImportWizard({
           const parsedMembership = parseMembershipStatus(rawMembership);
 
           // Resolve membership status from value mapping
-          let unionMembershipTypeKey: ReviewRow["unionMembershipTypeKey"] =
+          const unionMembershipTypeKey: ReviewRow["unionMembershipTypeKey"] =
             parsedMembership.membershipKey;
           let overrideUnionMembershipTypeId: number | null | undefined = undefined;
           if (membershipCol) {
@@ -1917,40 +1931,71 @@ export function WorkerImportWizard({
       isBinary: column.isBinary,
     }));
 
+    // Rows go to the server in batches: one request for a several-thousand
+    // row file outruns the client timeout, and a timed-out request reports
+    // nothing even though the server may have kept writing. The route's
+    // per-import follow-ups (campaign universe links, universe sync) are
+    // idempotent upserts, so running them once per batch is safe.
+    const batches = chunkArray(rows, APPLY_BATCH_SIZE);
+    const totals = {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      protectedUpdates: 0,
+      errors: [] as string[],
+      rowResults: [] as WorkerImportRowResult[],
+    };
+    setApplyProgress({ done: 0, total: batches.length, rowsDone: 0, rowsTotal: rows.length });
+
     try {
-      const res = await fetchApi("/api/worker-import/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName,
-          campaignId: numericCampaignId,
-          assessmentColumns,
-          rows,
-          protectCampaignWorkers,
-        }),
-        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
-      });
-      const json = await res.json();
-      setResult({
-        created: json.created ?? 0,
-        updated: json.updated ?? 0,
-        skipped: json.skipped ?? 0,
-        protectedUpdates: json.protectedUpdates ?? 0,
-        errors: json.errors ?? (json.error ? [String(json.error)] : []),
-        rowResults: json.rowResults ?? [],
-      });
-      setStep("done");
-    } catch (e) {
-      setResult({
-        created: 0,
-        updated: 0,
-        skipped: 0,
-        protectedUpdates: 0,
-        errors: [e instanceof Error ? e.message : "Unknown error"],
-        rowResults: [],
-      });
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        try {
+          const res = await fetchApi("/api/worker-import/apply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fileName: batches.length > 1 ? `${fileName} (batch ${i + 1}/${batches.length})` : fileName,
+              campaignId: numericCampaignId,
+              assessmentColumns,
+              rows: batch,
+              protectCampaignWorkers,
+            }),
+            timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+          });
+          const json = await res.json();
+          totals.created += json.created ?? 0;
+          totals.updated += json.updated ?? 0;
+          totals.skipped += json.skipped ?? 0;
+          totals.protectedUpdates += json.protectedUpdates ?? 0;
+          totals.errors.push(...(json.errors ?? (json.error ? [String(json.error)] : [])));
+          totals.rowResults.push(...(json.rowResults ?? []));
+          if (!res.ok && !json.rowResults) {
+            totals.errors.push(`Batch ${i + 1}/${batches.length} failed (HTTP ${res.status}); stopped.`);
+            break;
+          }
+        } catch (e) {
+          const isAbort = e instanceof DOMException && e.name === "AbortError";
+          totals.errors.push(
+            isAbort
+              ? `Batch ${i + 1}/${batches.length} timed out after ${
+                  API_FETCH_TIMEOUT_UPLOAD_MS / 1000
+                }s. Earlier batches were applied; check Import History before re-running (re-running is safe — matched rows update in place).`
+              : `Batch ${i + 1}/${batches.length}: ${e instanceof Error ? e.message : "Unknown error"}`
+          );
+          break;
+        }
+        setApplyProgress({
+          done: i + 1,
+          total: batches.length,
+          rowsDone: batches.slice(0, i + 1).reduce((n, b) => n + b.length, 0),
+          rowsTotal: rows.length,
+        });
+      }
+      setResult(totals);
       setStep("done");
     } finally {
+      setApplyProgress(null);
       setIsLoading(false);
     }
   }
@@ -4528,7 +4573,13 @@ export function WorkerImportWizard({
           <Button onClick={applyImport} disabled={isLoading}>
             {isLoading ? (
               <>
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Applying…
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                {applyProgress
+                  ? `Applying… ${applyProgress.rowsDone}/${applyProgress.rowsTotal} rows (batch ${Math.min(
+                      applyProgress.done + 1,
+                      applyProgress.total
+                    )} of ${applyProgress.total})`
+                  : "Applying…"}
               </>
             ) : (
               <>Apply Import <ArrowRight className="h-4 w-4 ml-1" /></>

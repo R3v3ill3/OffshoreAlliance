@@ -1132,7 +1132,22 @@ git diff --stat generated.ts, src/components, src/app, baseline → empty
 
 *Fix round 1 (advisories A1–A4), implementer 2026-09-17:* `validate:migrations` 14 / exit 0; `tsc` exit 0; the two unit files 34 passed; eslint on the five TS files exit 0.
 
-_(Stage 2: dev apply output; ledger row; `01` before/after on dev; realistic set: `01` ×4, `90` output, `EXPLAIN` per R4)_
+*Stage 2 baselines (read-only, orchestrator, 2026-09-17, before any mutation; `01` variant A plus whole-table counts):*
+
+```
+normal dev dpnnmkhabysfdogllsyh:   campaigns 61/62/64 absent (activities_n 0, summary_rows 0, md5s NULL);
+                                   all_activities 5, all_ratings 54, all_campaigns 5,
+                                   whole_summary_md5 e483c02f0a11d32d57190fd9e7e34955,
+                                   ledger tail 20260914090000, 20260914090100 (WP2.2a/b present)
+realistic yqjkuobcawvigsfpgrcm:    activities_md5 8a477f781ad6799b03f5ed2f650bdd27, ratings_md5 e4e8fa5cbc1cbf5f1cb6e460420bff87,
+                                   summary_md5 9ccbaa63abe95f41265a84ddfb22d62c, activities_n 8, summary_rows 388,
+                                   all_activities 43, all_ratings 494, all_campaigns 22,
+                                   whole_summary_md5 d42abdb414100cfd5038dc311af8b823, _oux_env_marker rows 1
+```
+
+Because dev has no campaign 61/62/64, the dev before/after comparison uses `whole_summary_md5` and the three whole-table counts; the 61/62/64 checksums are the realistic set's evidence.
+
+_(Stage 2 to paste: dev apply output; ledger row; `01` after on dev; `pg_get_viewdef`; realistic set: `01` ×4, `90` output, `EXPLAIN` per R4)_
 
 **Item 2 — contract tests on dev (run 1 and run 2).**
 _(passed / failed / skipped; the VIEW-a and one-level cases named)_

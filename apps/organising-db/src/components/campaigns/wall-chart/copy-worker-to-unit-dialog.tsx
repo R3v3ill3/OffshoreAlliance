@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { indexUnitsById, nestingParentOf } from "@/lib/campaign/groups/derive-group-tree";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
 import { useMoveWorkersMutation } from "./move-worker-mutation";
 import {
@@ -130,7 +131,36 @@ export function MoveOrCopyWorkersDialog({
     const groupName = o.group_id != null ? groupNameById.get(o.group_id) : undefined;
     return groupName ? `${groupName} › ${ouDisplayName(o)}` : ouDisplayName(o);
   };
+  /**
+   * WP2.4c (wp2.4c.md §3.10, AP-a): a NESTED target is offered only once the
+   * worker is in its root. `placements.move` places the parent with `skip`, so
+   * copying onto a shift under KGP while the worker sits on Barrow would leave
+   * Barrow in place and manufacture the NC-a orphan shape the chart hides.
+   * Only under `groups` (the v2 callers); the legacy path passes none.
+   */
+  const ouById = useMemo(() => indexUnitsById(ous), [ous]);
+  const nestedLock = useMemo(() => {
+    const m = new Map<number, string>();
+    if (!groups) return m;
+    const held = new Set(excludeOuIds);
+    for (const o of ous) {
+      const parentId = nestingParentOf(o, ouById);
+      if (parentId == null) continue;
+      const parent = ouById.get(parentId);
+      if (!parent || parent.group_id == null) continue;
+      if (held.has(parent.ou_id)) continue;
+      // A worker with no row in the root's group is fine: the RPC's
+      // `keepInParent` creates it. One on ANOTHER unit of that group is not.
+      const elsewhere = ous.some(
+        (u) => u.group_id === parent.group_id && u.ou_id !== parent.ou_id && held.has(u.ou_id)
+      );
+      if (elsewhere) m.set(o.ou_id, `Move to ${ouDisplayName(parent)} first`);
+    }
+    return m;
+  }, [groups, ous, ouById, excludeOuIds]);
   const isLocked = (o: WallChartOU) => o.group_id != null && lockedGroupIds.has(o.group_id);
+  const lockSentence = (o: WallChartOU): string | null =>
+    isLocked(o) ? ALREADY_IN_GROUP_MESSAGE : (nestedLock.get(o.ou_id) ?? null);
   const anyLocked = groups ? available.some(isLocked) : false;
 
   const moveMutation = useMoveWorkersMutation(campaignId);
@@ -244,12 +274,15 @@ export function MoveOrCopyWorkersDialog({
                 {mode === "move" && (
                   <SelectItem value="__unassigned__">Unassigned (remove from all units)</SelectItem>
                 )}
-                {available.map((o) => (
-                  <SelectItem key={o.ou_id} value={String(o.ou_id)} disabled={isLocked(o)}>
-                    {targetLabel(o)}
-                    {isLocked(o) ? ` — ${ALREADY_IN_GROUP_MESSAGE}` : ""}
-                  </SelectItem>
-                ))}
+                {available.map((o) => {
+                  const locked = lockSentence(o);
+                  return (
+                    <SelectItem key={o.ou_id} value={String(o.ou_id)} disabled={locked !== null}>
+                      {targetLabel(o)}
+                      {locked ? ` — ${locked}` : ""}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           )}

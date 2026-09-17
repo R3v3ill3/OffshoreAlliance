@@ -262,23 +262,35 @@ divergence.
 **`scripts/data-hygiene/oux-wp2.4c/00_nesting_shape.sql`** (read-only; no `SET LOCAL`, no writes; safe on any project):
 per campaign, (a) sub-unit-only groups (`campaign_groups` with ≥ 1 unit, every unit having a `parent_ou_id` whose parent
 is not a container, carries a `group_id`, and is in another group); (b) `child_only_placements` — placements on a
-plain-parent child whose worker has no placement on the parent; (c) `orphan_child_placements` — placements on a
-plain-parent child whose worker's placement in the parent's group is on a *different* unit; (d) `paired_placements`.
+**nested** sub-unit (a plain-parent child **whose group differs from its parent's**, which under NE-a as narrowed by
+ruling 1 is what "sub-unit" means) whose worker has no placement in the parent's group; (c)
+`orphan_child_placements` — the same, where the worker's placement in the parent's group is on a *different* unit;
+(d) `paired_placements`. Queries (b)–(e) count **campaign members only** (they join `campaign_worker_membership`, as
+the view and the derivation do) and report **workers** as well as placements, because one worker can hold sub-unit
+placements under two parents and so fall in two classes at once; the worker counts are what NP-b would repair (D9).
+The cross-group condition is the definition of the shape, not a filter on it: a same-group
+parent can never hold the worker beside the child (C-a / WP2.2b), so the pair cannot exist there (D2, D6). (e) repeats
+(b)–(d) per parent group and (f) counts the nesting edges and the facet links per campaign.
 The §4.1 equivalence test transcribes (b) and (c) into the fixture generator so the test and the query name the same
 sets. The agent may run it on normal dev (read is free; confirmation requested at §9.1 item 5); the operator runs it on
 production and pastes the four counts for campaign 42 into §9.2, which also settles whether NP-b is wanted.
 
 ### 3.3 What is a nesting edge (NE)
 
-- **NE-a (recommended).** Unit C is *nested under* unit P iff `C.parent_ou_id = P.ou_id`, P exists in the campaign's
-  units, **P is not a group container** (`is_group_container` false) and **P carries a `group_id`**. A link to a
+- **NE-a (recommended; narrowed by ruling 1, §11.9).** Unit C is *nested under* unit P iff `C.parent_ou_id = P.ou_id`,
+  P exists in the campaign's units, **P is not a group container** (`is_group_container` false), **P carries a
+  `group_id`** and **that group differs from C's**. The last condition is ruling 1: a child in its parent's own group
+  (the same-kind Split child, C-k) can never carry the parent + child pair the nested model is built on, because the
+  one-unit-per-group index (WP2.2b) forbids a worker holding both rows; `DECISIONS.md:14`'s "Split creates sibling
+  units in the same group" is unamended, and the operator's requirement is cross-group nesting (a shift under a
+  worksite). Such a child is therefore an ordinary **root card of its own group, beside its parent**. A link to a
   container (the `ou_group_id = parent_ou_id` membership shape; the Employer container → worksite link) is a facet
   link and never nests: the Employer group keeps showing EDI Downer as one ordinary card holding its materialised
   placements (`wp/wp2.4.md` §3.3 "Containers under v2", unchanged), and the Worksite group keeps every worksite as a
   root — which is what the operator uses as the primary grouping. Under NE-a the deepest rendered tree is **two
   levels** (unit → sub-unit): the depth trigger permits a third level only under a container, and the container edge
   is not rendered as nesting. Both D45 shapes nest (`ou_group_id NULL` and the legacy `ou_group_id = parent_ou_id`
-  under a plain parent), because the test is on the parent, not on the child's `ou_group_id`.
+  under a plain parent), because the test is on the parent and the two groups, not on the child's `ou_group_id`.
 - **NE-b.** Every `parent_ou_id` link nests, containers included. The Employer view would render the whole campaign as
   one three-level tree under EDI Downer and — fatally — the Worksite group would be classified sub-unit-only (every
   worksite has a parent in the Employer group) and vanish from the selector. Rejected; contradicts decision 5's facet
@@ -322,8 +334,10 @@ export type GroupTree<U extends TreeUnitLike = TreeUnitLike> = {
   subtreeByRoot: Map<number, number[]>;
   /** worker → their actual placement on a unit of G, when any (= deriveGroupView().placementByWorker). */
   placementByWorker: Map<number, number>;
-  /** worker → child node they hold under their root, when any (the row the RPC re-points; absent for a root-only worker). */
+  /** worker → the child node whose card DRAWS the tile (the first in `childrenByRoot` card order when they hold two; absent for a root-only worker). */
   childPlacementByWorker: Map<number, number>;
+  /** worker → EVERY child node they hold in this tree, in card order (D7): what a drop out of the subtree must clear. */
+  childPlacementsByWorker: Map<number, number[]>;
   /** Members with no placement on any node of G's tree — "Unassigned in G". */
   unassignedWorkerIds: number[];
   /** Divergence from the view (§3.2, §4.1): child-only workers → inferred root. */
@@ -336,10 +350,12 @@ export function deriveGroupTree<U extends TreeUnitLike>(members, ous: readonly U
 
 Semantics, stated once so §4.1 can pin them:
 
-- `roots(G)` = units of G with `nestingParentOf(...) === null`. A same-kind child of a root (legacy split with the
-  source's own type; C-k) is a child, not a root. `foreignNested(G)` = units of G nested under a unit of another group;
+- `roots(G)` = units of G with `nestingParentOf(...) === null`. A same-kind child of a unit of G (legacy split with
+  the source's own type; C-k) has no nesting parent under ruling 1 (§3.3) and is therefore a **root**, rendered beside
+  its parent; its members count under it, never in its parent's roll-up. `foreignNested(G)` = units of G nested under a unit of another group;
   in G's own view they render flat after the roots, labelled "<Parent> › <Unit>", so every placement in G is on screen
   exactly once (the mixed case: a Shift group with one standalone root and shifts under worksites).
+- Every child node is a unit of another group (§3.3), so a member's row in G is never itself a child node.
 - For member w: let `p` = w's placement on a unit of G (if any), `c` = w's placement on a child node whose root is R
   (if any). Then: `c` present and (`p` absent or `p === R`) → `nodeByWorker = c`, `rootByWorker = R`, and if `p` is
   absent, `childOnlyByWorker = R` (NP-a). Else `p` present → `nodeByWorker = rootByWorker = p`; a `c` under a root
@@ -349,9 +365,14 @@ Semantics, stated once so §4.1 can pin them:
   lists it ("Shift › Night", unchanged), and the next drag normalises it (§3.7 NS-a; C-b displaces it when the worker
   is dropped on any shift). **NC-b:** draw the worker under the orphan child too, with the ◫ "also in" marker. Rejected:
   a worker twice in one group's view contradicts the one-unit-per-group reading the band is built on.
+- A worker may legitimately hold **two children of one root in two groups** (a shift and a crew under one worksite;
+  §3.7 row 9). The tile is drawn on the first of them in `childrenByRoot` **card order** — never in placement-row
+  order, since the placements query is unordered — they are counted once in the roll-up, and every held child row is
+  reported in `childPlacementsByWorker` so the planner clears them all (D7).
 - `subtreeByRoot(R)` = the union of `workersByNode(R)` and every child's list; the root card's header count,
   placeholders (`estimate − |subtree|`) and summary metrics use it (B5). Children's metrics use their own list.
-- `unassignedWorkerIds(G)` = members with no node. A worker in a nested shift is therefore **not** Unassigned in
+- `unassignedWorkerIds(G)` = members with no node; every rendered root has a `subtreeByRoot` entry, the flat
+  `foreignNested` cards included (D9). A worker in a nested shift is therefore **not** Unassigned in
   Worksite, and — since they hold a grouped placement — **not** in Not in any group (`notInAnyGroup` unchanged).
 - Depth-two children of a container root (container → unit → sub-unit) are *not* in the Employer view's tree (the
   container edge is not nesting), so a container card never nests anything (NE-a).
@@ -360,12 +381,15 @@ Semantics, stated once so §4.1 can pin them:
 Equivalence with `campaign_group_membership`, re-stated for the nested case (the §4.1 test): for every member and
 group, `view.ou_id` (= `placementByWorker`) is unchanged; `rootByWorker` equals `view.ou_id` for every member **except**
 the members of `childOnlyByWorker`, for whom the view says `NULL` and the tree says the inferred root — and that set is
-exactly (b) of `00_nesting_shape.sql`. When the pair holds for every child placement, the two are equal.
+exactly (b) of `00_nesting_shape.sql`. **That is the only divergence class** (ruling 1, §11.9: the first Stage-1 round
+found a second one — a member whose row in G is a C-k child of another unit of G — and the ruling removed it at the
+source by making such a child a root, so the view and the tree both name that unit). When the pair holds for every
+child placement, the two are equal.
 
 ### 3.5 Primary groups, the selector, the resolver and Not in any group (SG)
 
-`isPrimaryGroup(G)`: G has no units, or at least one unit of G is a root (no nesting parent, or a nesting parent in G
-itself). A group with units, every one of which is nested under a unit of another group, is **sub-unit-only** and not
+`isPrimaryGroup(G)`: G has no units, or at least one unit of G is a root (no nesting parent — under ruling 1 a nesting
+parent is never in G, so the original "or a nesting parent in G itself" clause is subsumed: a C-k child is a root). A group with units, every one of which is nested under a unit of another group, is **sub-unit-only** and not
 primary (B2). Campaign 42's Shift group and the `small` fixture's Shift group (ou 13 under 12) are sub-unit-only.
 
 - **SG-a (recommended).** The Group selector lists `primaryGroups(groups, ous)` then "Not in any group". The resolver
@@ -439,16 +463,16 @@ Per worker w, with `R(w)` = `rootByWorker`, `p(w)` = `placementByWorker` (the ac
 | root U (its own area) | node U | noop |
 | root U | Unassigned in G | `move(null → U)` |
 | root U | another root W (no child) | `move(W → U)` |
-| root U | child C under U (c = C) | `move(null → U)` **only if** p absent (child-only); then `unassign within G'(C)` |
+| root U | child C under U (c = C) | `move(null → U)` **only if** p absent (child-only); then `unassign within G'(C)` — and within the group of **every** child of U the worker holds, since the root's own area is "members in none of its children" (D8) |
 | root U | child C under W ≠ U | `move(W or null → U)`; `unassign within G'(C)` (NS-a) |
 | child C' under U, group G'' | node C' | noop |
 | child C' under U | U's area (p = U) | `move(c'' or null → C', keepInParent)` where `c''` = w's G'' row if any (an orphan elsewhere is re-pointed, C-l) |
 | child C' under U | sibling C under U, same group | `move(C → C')` |
-| child C' under U | sibling C under U, another group | `move(w's G'' row or null → C', keepInParent)`; C stays (one unit per group each) |
+| child C' under U | sibling C under U, another group | `move(w's G'' row or null → C', keepInParent)`; C stays (one unit per group each). The worker then holds two children of U: the tile is drawn on the first in card order, and both rows are carried in `childPlacementsByWorker`, so a later drop out of U's subtree clears both (D7) |
 | child C' under U | root W or W's child, W ≠ U | `move(W or null → U)`; `move(w's G'' row or null → C', keepInParent)`; `unassign within G'(C)` for a child C under W in a group other than G'' (NS-a) |
 | child C' under U | Unassigned in G | `move(null → U)`; `move(null → C', keepInParent)` |
 | Unassigned in G | node anywhere in the tree | `unassign within G` (only if p present); `unassign within G'(c)` (only if c present) |
-| a same-group child C' of U (C-k) | any | as the root rows above with `move(p → C')`: the RPC re-points the G row; the parent is in the same group so nothing is written for it (`:2726–2731`) |
+| a same-group child C' of U (C-k) — a **root** under ruling 1, not a nested card | any | exactly the root rows above, with `move(p → C')`: the RPC re-points the G row and writes nothing for a parent in the same group (`:2726–2731`); a worker arriving from another root's subtree still loses the child placement they held there (NS-a) |
 | foreign-nested flat card | any | as a root without children |
 
 Rules the table encodes, each pinned by a §4.1 case: **adds before removes** (a failure part-way never leaves the
@@ -475,6 +499,9 @@ multi-select drop is a handful of calls, not one per worker.
   one-transaction "move within subtree" RPC — a migration and the promotion gate; recorded for WP2.8 if the partial
   case is ever seen in practice. **NX-c:** refuse cross-parent drags (only within one root) — the case the operator
   tests most (a worker from a small worksite onto the big worksite's shift) would need two drags. Rejected.
+- **Stage-2 note (A-7):** `useMoveWorkersMutation` sums `{inserted, deleted, skipped}` across the steps, so a
+  one-worker three-step drop returns `inserted: 3`. Nothing reads them today (`use-wall-chart-actions-v2.ts:74–92`
+  reads only the error); any Stage-2 "N workers moved" copy must count workers itself, not use these totals.
 - WP2.5's DG-c ("two writes, no transaction") was rejected for a *cell* drop; the difference here is that every step is
   independently meaningful and ordered adds-first, and the alternative is no nesting at all.
 - **"Remove from <Group>"** (selection bar) = the Unassigned row of the table for the selected workers (unassign
@@ -666,20 +693,21 @@ already say it (§3.13).
 - `lib/campaign/groups/__tests__/derive-group-tree.test.ts` — fixture **`CAMPAIGN_42_SHAPE`** (exported from the test's
   own `fixtures.ts` and reused by §4.3 through the harness): an Employer container E (`is_group_container`, `group_id`
   Employer, holds materialised placements), worksites W1–W4 (`parent_ou_id = ou_group_id = E`, Worksite), shifts S1, S2
-  under W1 (`parent_ou_id = W1`, `ou_group_id NULL`, Shift), a same-kind child W1b under W2 (`worksite`, Worksite —
-  the C-k shape), a legacy custom container L (`group_id NULL`) with one custom member; members: paired (W1 + S1),
+  under W1 (`parent_ou_id = W1`, `ou_group_id NULL`, Shift), a same-kind child W1b under W2 (`worksite`, Worksite — the C-k shape,
+  which ruling 1 renders as a **root beside W2**, with one member of its own), a legacy custom container L
+  (`group_id NULL`) with one custom member; members: paired (W1 + S1),
   paired (W1 + S2), root-only in W1, child-only (S2, no worksite), orphan (W2 + S1), W3-only, W4-only, E-only,
-  Unassigned everywhere, L-only, a non-member on S1. Cases: NE-a edges (E → W* is not nesting; W1 → S1 is; W2 → W1b is);
+  Unassigned everywhere, L-only, a non-member on S1. Cases: NE-a edges (E → W* is not nesting; W1 → S1 is; **W2 → W1b is not**, ruling 1);
   `primaryGroups` = [Employer, Worksite] (Shift excluded; a group with zero units is primary; the mixed case with a
   standalone shift root makes Shift primary and lists the nested shifts as `foreignNested`); the Worksite tree's roots,
   `childrenByRoot`, `nodeByWorker`, `rootByWorker`, `workersByNode`, `subtreeByRoot` (W1's roll-up = paired ×2 + root-only
-  + child-only; W2's = W2-own + W1b), `unassignedWorkerIds` (Unassigned-everywhere, E-only, L-only; **not** child-only);
+  + child-only; W2's = W2-own only, W1b's own members counting under W1b — the ruling-1 case), `unassignedWorkerIds` (Unassigned-everywhere, E-only, L-only; **not** child-only);
   `childOnlyByWorker` = {child-only → W1}; `orphanChildByWorker` = {orphan → S1} and the orphan renders under W2 only
   (NC-a); the Employer tree has no children under E (NE-a); `notInAnyGroup` unchanged; a container root never nests;
   member order kept, non-members ignored, duplicates collapsed; **equivalence**: the flat `deriveGroupView` equals the
-  transcribed view (unchanged cases), and `rootByWorker` equals the view except on `childOnlyByWorker`, which equals the
-  transcription of `00_nesting_shape.sql` (b) over the fixture; (c) equals `orphanChildByWorker`; with the child-only and
-  orphan rows removed, equality is exact.
+  transcribed view (unchanged cases), and `rootByWorker` equals the view except on `childOnlyByWorker` **and on nothing
+  else**, and that set equals the transcription of `00_nesting_shape.sql` (b) over the fixture; (c) equals
+  `orphanChildByWorker`; with the child-only and orphan rows removed, equality is exact.
 - `plan-nested-drop.test.ts` — every row of the §3.7 table with the exact step list and order (adds before removes;
   `fromOuId` always a held row; `keepInParent: true` on every child target; per-(kind, target, source, group) merging of
   a multi-select; noop rows; a target outside the tree; `"none"`; a flat group (no children) yields the same calls as
@@ -952,7 +980,34 @@ any existing e2e spec.
 
 | # | Deviation | Why | Plan section affected |
 |---|---|---|---|
-| — | _none yet_ | | |
+| **D1** | A drop that takes a worker out of a root's subtree also unassigns the **NC-a orphan** child placement, not only the rendered child `c` — including the drop on "Unassigned in \<Group\>" — **approved (ruling 2)** | The §3.7 table's row 12 names `c` only, but the bullet under the table states the same operation as "unassign within G, then within **each child group held**". Without it, a worker "removed from Worksite" who held an orphan shift under another worksite would immediately re-appear inside that worksite as a child-only tile (NP-a renders child-only rows), which contradicts B3 ("nothing else changes") and the checklist's step 7 expectation | §3.7 rows 12 and 5; pinned by `plan-nested-drop.test.ts` ("an NC-a orphan is dropped…", "an NC-a orphan is removed with the group's row") |
+| **D2** | `00_nesting_shape.sql` (b), (c) and (d) count **cross-group** sub-unit placements only (the child's `group_id` differs from the parent's) — **approved (ruling 3); under D6 this is no longer a restriction but the definition of a sub-unit** | A same-group parent can never hold the worker beside the child (wp2.2.md C-a), so *every* placement on a same-group child (the C-k split shape) would otherwise be counted as "child-only" and query (b) would no longer name the same set as `childOnlyByWorker` — which §3.2 and §4.1 require it to. With D6 the same-group child does not nest at all, so the counts are of nested sub-units by construction; (a) and (f) were narrowed to match and the comments reworded | §3.2 (b)/(c)/(d); the transcription in `derive-group-tree.test.ts` |
+| **D3** | A refused step **rejects** with `MoveStepError` (exported from `move-worker-mutation.ts`), whose `message` is the §3.13 sentence "Step n of m failed: … The chart shows what was saved."; the toast itself stays in the caller's existing `onError` → `structureErrorMessage` path (Stage 2's actions hook) | §4.1 asks the mutation to "reject with the step index and the structure sentence", and `move-worker-mutation.ts` imports no UI today (`sonner` is the composition layer's). `structureErrorMessage` passes a non-`StructureApiError` message through unchanged, so the sentence is what is toasted, byte-for-byte | §3.7 NX-a, §3.13, §4.1 |
+| **D4** | `foreignNested` is "a unit of G that is neither a root nor a child of a root of G"; `subtreeByRoot` carries entries for roots only, as §3.4 states, so a flat foreign-nested card's roll-up is its own `workersByNode` list. (Under D6 a child of a root is never a unit of G, so this now *equals* §3.4's "nested under a unit of another group" and the superset is purely defensive) | Defensive: a chain inside G whose middle unit is not a root of G would otherwise leave a unit — and its placements — off screen, breaking "every placement in G is on screen exactly once" | §3.4 `foreignNested`, `subtreeByRoot` |
+| **D5** | `resolveGroupSelection`'s `?ou=` step, **when `primaryIds` is passed**, climbs `parent_ou_id` to the nearest ancestor carrying a primary group instead of importing the NE-a edge test; and step 4 ("first group") picks the first **primary** group | Identical result for every NE-a shape (the first ancestor with a primary group is the unit's root), and it keeps `resolve-group-selection.ts` free of an import cycle with `derive-group-tree.ts`, which imports `orderGroups` from it. Step 4 must agree with the selector, or the default view would be one the Group control cannot offer. Without `primaryIds` the WP2.4 behaviour is byte-for-byte (a case pins it) | §3.5 SG-a |
+| **D6** | **NE-a narrowed (operator/orchestrator ruling 1, fix round 1):** a `parent_ou_id` link nests only when the parent's group **differs** from the child's. A same-kind Split child (C-k) is a **root of its own group beside its parent**, not a nested card, and its members are not rolled up into the parent | The first Stage-1 round reported a second divergence class between `rootByWorker` and `campaign_group_membership` (stop condition 4): for a member whose row in G is a C-k child of another unit of G, the view said the child and the tree said the parent. The ruling removes the class at the source, on four grounds: (a) WP2.2b's unique `(worker_id, group_id)` index means a worker can never hold both the parent and a same-group child, so such a child can never carry the parent + child pair the whole nested model is built on; (b) the operator's requirement is cross-group nesting (shifts under a worksite) and says nothing about splits; (c) `DECISIONS.md:14`'s clause "Split creates sibling units in the same group" was never amended; (d) §3.4's equivalence clause stays exactly as WP2.4 stated it (child-only rows and nothing else), so WP2.5/WP2.6 inherit the simple wording. SP-a is unaffected: Split on a root that produces a same-group child still works and now yields a sibling card | §3.2, §3.3 NE-a, §3.4 (roots, the equivalence clause), §3.5 `isPrimaryGroup`, §3.7 row 13, §4.1 |
+| **D7** | **`GroupTree` gains `childPlacementsByWorker: Map<number, number[]>`** — every child-node row a worker holds in the tree, in card order — and the drawn child (`childPlacementByWorker`) is now chosen by `childrenByRoot` **card order**, not by placement-row order. `planNestedDrop` reads the list | Review finding **B-1 (blocking)**: a root may hold children in two groups (§3.7 row 9 creates the shape on purpose — a shift and a crew under one worksite). The derivation kept only the first held child and reported only a child under a *different* root, so the planner never saw the second: the other card undercounted, which card drew the tile depended on the order `fetchOuAssignments` happened to return rows in (it issues no `ORDER BY` and pages with `.range()`), and a drop out of the subtree left the second child row behind — which the derivation then read as child-only and drew the worker back **inside the worksite they had just been removed from**, the exact regression D1/ruling 2 exists to prevent (checklist step 7). Pinned by two derivation cases (drawn once, counted once, order-independent) and three planner cases, one of which re-derives the chart from the rows the steps leave behind | §3.4 (`GroupTree`, the "two children of one root" rule), §3.7 row 9, §4.1 |
+| **D8** | §3.7 **row 4** is implemented wider than its letter: a drop on a root's own area unassigns **every** child group the worker holds under that root, not only `G'(C)` | B1: the parent's own area holds the members who are "in none of its children", so a worker dropped there must leave all of them. The table names one child because it was written before the two-children case (D7). Review A-6 asked for it to be recorded here rather than only in §11 | §3.7 row 4 |
+| **D9** | Three review advisories taken in the same round: **A-1** `MoveStepError` copies the refusal's `status` / `code` (and the auth-js lock sentinels) so `useAuthAwareMutation`'s token-refresh retry still fires on the steps path — re-issuing a plan is safe, a completed `move` re-issues as `skipped` and an `unassign` is idempotent; **A-2** `subtreeByRoot` is seeded for `foreignNested` cards too, so the Stage-2 band cannot read `undefined` on a card §3.6 renders "as a root without children"; **A-3** `nestingParentOf` also requires the **child** to carry a `group_id`, so a legacy `group_id NULL` container under a plain unit can never become a nested card that no drop can land on | Each is one to three lines and each closes a real hole: no retry, a silent `undefined`, an undroppable card | §3.4, §3.7 NX-a, §3.6 |
+| **D10** | `00_nesting_shape.sql` (b)–(e) join `campaign_worker_membership` and report **workers** as well as placements | Review A-4 / A-5: the view and `deriveGroupTree` both count members only, so without the join the SQL's (b) was not the same set as `childOnlyByWorker` that §3.2 and §4.1 claim it is; and with D7's shape a worker contributes one row per nested placement, so the operator needs worker counts to size NP-b | §3.2, §9.2 |
+| **D11** | `MoveStepError`'s message drops the "Step n of m failed: … The chart shows what was saved." wrapper when the plan has **exactly one step**, and is then the bare structure sentence | Every drop in a FLAT group plans exactly one step, and Stage 2 routes every drop through `planNestedDrop` (D18). Without this, WP2.4's "a refused move surfaces the structure API's sentence" became "Step 1 of 1 failed: …", which is noise (nothing was left half done) and a copy regression on the group views that have no nesting at all. Stage 1's cases pin `2 of 3` and `1 of 2` only, so the multi-step sentence §3.13 specifies is unchanged; the one-step case gains a case of its own in the Stage-2 suite by way of the unchanged WP2.4 assertion | §3.13, §3.7 NX-a; an additive change to the Stage-1 file `move-worker-mutation.ts` |
+| **D12** | The `?ou=` focus effect (`use-wall-chart-group-view.ts`) looks for the card on a **bounded retry** (20 tries, 150 ms apart) instead of once | §4.3 asks `?ou=<Day>` to open on Worksite **and highlight Day**. The effect's single DOM read runs before the placements query settles, so at that moment the band is still the loading placeholder or a set of empty units and the lookup misses — for a ROOT as much as for a nested card, i.e. WP2.4's `?ou=` highlight never fired in the harness at all. The loop stops on the first hit, after 20 tries or on unmount; when the card is already there, behaviour is byte-for-byte WP2.4's (one 150 ms delay, one highlight, cleared after 2.5 s) | §3.6 "Search / focus", §4.3 |
+| **D13** | `__tests__/harness/characterize.ts`'s header rule matches `\bnamed\b` **or** `\bin unit\b` | The roll-up sentence (§3.13) replaces "N named" on a root with children, so without this the characterisation recorded `"header": null` for exactly the cards this package adds. No legacy card renders the second wording, and the legacy golden master is unchanged (`git diff` shows no legacy snapshot) | §4.3; the harness is not in §7's file list |
+| **D14** | The Units manager is given a **projection** of the tree — each root with `parent_ou_id: null`, each nested child with its real parent — and `flat` is dropped; the manager's `onDeleteUnit` row is mapped back to the real unit by `ou_id` | §3.9 asks the manager to render "its existing parent → children rows", but `wall-chart-unit-manager.tsx` is in §7's **not modified** list and its top-level rule is `parent_ou_id == null`: every worksite of campaign 42 carries the container link, so unprojected rows would leave the manager with no top-level unit at all. The projection is exactly the NE-a reading (a facet link is not nesting) and keeps the manager untouched; the reorder still emits "roots with children following" (`:80–99`), and the delete dialog still receives the real row, whose `parent_ou_id` drives `ou-reassignment-targets.ts` | §3.9 |
+| **D15** | The root's roll-up sentence counts the **derived** lists (`subtreeByRoot`, `workersByNode`), not the filtered ones; the count button's `aria-label` is "Select all in \<Root\> (\<n\> in unit · \<m\> not yet in a sub-unit)" | §3.6 names `subtreeByRoot`, and the placeholders and summary metrics beside it already read unfiltered lists; §4.6 step 8 requires the parent to keep counting a sub-unit's worker when a Filter empties that sub-unit's card. The `aria-label` carries both numbers (§3.12) because it overrides the visible text for a screen reader | §3.6, §3.12, §3.13, §4.6 step 8 |
+| **D16** | `campaign-unit-card.tsx` gains `countLabel?` beside the planned `subUnitsLabel?` | §3.6 asks the header count to read one string in place of "N named", which is the card's own text. Additive and default-preserving: absent → "N named", so the legacy DOM is byte-for-byte unchanged | §7 (the file is listed, the second prop is not), §3.13 |
+| **D17** | "N empty units hidden" counts a root whose **whole subtree** is empty once (its children are empty by construction and are not rendered either), plus every empty child of a rendered root | §3.6 says the count "counts both" without saying how the two levels combine; counting a dropped root's children as well would say "3 empty units hidden" where the organiser sees one card disappear | §3.6 "Show empty units" |
+| **D18** | The v2 chart routes **every** drop, "Move to unit…" and tile dialog through `planNestedDrop`, including the Not-in-any-group view; `plan-drop.ts` is no longer imported by the chart (the file and its cases are untouched under NV-a) | §3.7 defines the nested planner as "a superset of `planDrop` … with a group whose units have no children this planner emits exactly the calls `planDrop` + `useMoveWorkersMutation` issue today", and the Stage-1 superset case proves it. Keeping two planners behind a branch would mean a flat group's drop never exercised the code every nested drop uses | §3.7; `plan-drop.ts` unchanged (§5 grep) |
+| **D19** | "Remove from \<Group\>" keeps issuing `placements.unassign` (one call per group: the selected group, then each sub-unit group the selection holds a row in) rather than going through the mutation's `steps` | §3.7's bullet defines the operation, not the RPC; WP2.4 shipped it on `structure_placements_unassign` and its case pins that payload. The D1 second call is added in the same shape, so the suite reads as one list of unassigns | §3.7 bullet, D1 |
+| **D20** | The Stage-2 nesting suite asserts that Split… opens the unchanged dialog on a root and is absent on a nested card; it does not drive the split wizard to its Review step | §4.3 asks for "the switch on and the payload carries `p_keep_in_source: true`", which is `split-unit-dialog.tsx`'s own behaviour on a different-kind child — unchanged by this package and already pinned by its own suite (wp2.2.md D33/D39), and reached in the product by the operator's checklist step 1 (HT-a). The chart's part — that the item exists on a root and not on a child — is what this package decides | §4.3, §8.1 B4 |
+| **D21** | The Units manager's reorder sends **only the selected Group's own units** (the manager's list is filtered before `units.reorder`); a nested child keeps its own `display_order` | Review A-6, fix round 1. `structure_unit_reorder` sets `display_order` from the array position, and the projected tree's ids include each root's nested children — units of ANOTHER group — so passing them renumbered that group behind the organiser's back and §3.9's "other groups untouched, `wp/wp2.4.md` §3.12" was no longer true. Children keep their own order, which is what decides the order of the nested cards inside a root, so the manager's "children follow their parent" behaviour is unaffected on screen | §3.9, `wp/wp2.4.md` §3.12 |
+| **D22** | `campaign-unit-card.tsx` gains a third additive prop, `title?`, and the count button's accessible name on a root with children reads "Select all in \<Root\>**'s own area** (\<n\> in unit · \<m\> not yet in a sub-unit)" | Review A-2 and A-5, fix round 1. §3.6/§3.13 title a flat foreign-nested card "\<Parent\> › \<Unit\>", which the card computes from `ou` alone, and a pseudo-unit's `fallbackTitle` cannot be used without losing `ou`'s drop target, type chip and estimate. A-5: the button selects the card's OWN visible tiles while D15's numbers are the unfiltered roll-up, so the name says which it acts on before it carries §3.12's two numbers. Both default-preserving: absent → `ouDisplayName(ou)` and "Select all in \<Unit\>" | §3.6, §3.12, §3.13, D15, D16 |
+| **D23** | Stage 3: the e2e fixture picks a root the **depth trigger** allows a sub-unit under — top-level, or a child of a group container (`cou_enforce_hierarchy_invariants`, `baseline_schema.sql`) — preferring an `ou_type: "worksite"` unit, and creates one under `NESTED_PREFIX` only when the campaign has none | §4.5 says "pick a worksite root A (create one through `createUnits` if the campaign has none)" without saying which units can hold a sub-unit. Campaign 1's worksites sit under an Employer **container**, which the trigger permits (container → unit → sub-unit); a worksite under a plain unit would be refused by the database, and a container itself carries no group. The rule is the trigger's, restated | §4.5 |
+| **D24** | Stage 3 adds **eleven** helper functions to `tests/e2e/groups-v2/helpers.ts` (plus three types and one name prefix), not the two §4.5 names: `createNestedUnits` and `removeUnit` as planned, plus `unitTreeOf`, `nestsUnder`, `isSubUnitOnlyGroup`, `findOrCreateNestedFixture`, `tileOn` / `expectTileOn`, `cardHeading`, `recordPlacementMoves` and `expectSheetUnits` | A nested card's DOM sits **inside** its root's card, so WP2.4's `tileIn` / `cardById` (which scope by the card element) cannot tell "in A's own area" from "in Day inside A" — the distinction every §3.7 row turns on. `tileOn` uses the tile's own `data-worker-id` + `data-ou-id` pair (`worker-tile.tsx:338–340`), `cardHeading` gives the root's own area an unambiguous drop point above the nested cards (D32's "one card acts on the drop"), `recordPlacementMoves` is what lets the spec assert the **ordered** payloads NX-a specifies rather than one response at a time, and `expectSheetUnits` is the second oracle §4.5 asks for. The WP2.4 spec and its helpers are otherwise untouched | §4.5 |
+| **D25** | The drag chain of §4.5 has one extra drop: after "Night → A's own area" the spec drags the worker **back into Day** before the drop on "Unassigned in \<Group\>" (asserting the same single step as the first drag) | §4.5 lists the four drops as one chain, but row 4 leaves the worker in the root's own area — with no child row left, the last drop would exercise the one-step flat case, not the D1 case ("unassign within G, then within the child group held") the step exists to prove | §4.5 |
+| **D26** | The nesting fixture is named `NESTED_PREFIX = "WP2.4 e2e nested "` — inside WP2.4's `UNIT_PREFIX` — and its sub-units are removed in `afterAll` through `structure_unit_delete` (`removeUnit`), with the prefix sweep kept as the backstop; the root is deleted only when the spec created it | The prefix nests inside WP2.4's so **either** suite's `deleteUnitsByNamePrefix(UNIT_PREFIX)` sweep clears a leftover of the other, whichever runs next. The product RPC is used for the sub-units because it is the call the card's Delete… makes and it removes their placements with them; the campaign's own worksite is never deleted | §4.5 |
+| **D27** | The SG-a assertion in spec 1 is **conditional**: it runs when no other unit of the derived sub-unit group is a root on campaign 1 (`isSubUnitOnlyGroup`), and otherwise records a test annotation saying why it was not asserted | SG-a is a statement about a group *every* unit of which nests. If dev ever gains a top-level Shift unit, the group is legitimately primary and the selector is right to offer it; asserting unconditionally would fail on correct behaviour. The fixture's own two children always satisfy the rule, so on today's dev data the assertion runs | §3.5 SG-a, §4.5 |
+| **D28** | `wp/wp2.4c-acceptance-checklist.md` is written as steps **0–14** rather than §4.6's 0–12: §4.6 step 1 becomes steps 1–3 (build the shape, then what the Group control and card A now say), its step 10 becomes step 12, and two steps are added — "Assign people… on a sub-unit" (AP-a, which §4.6 does not walk) and a clean-up step of its own | §4.6 is a sketch for the implementer; the operator works only in a browser and needs one action per numbered line with one expected sentence (`wp/wp2.4-acceptance-checklist.md`'s shape). Nothing in §4.6 is dropped: every one of its expectations appears, in the same order, under a step number | §4.6 |
 
 ### 8.4 Stop conditions (implementer stops and reports; no workaround)
 
@@ -1043,3 +1098,830 @@ checklist verbatim (`IMPLEMENTATION_ORCHESTRATION_PROMPT.md:88–97`), this plan
   SP-a (no Split on nested cards), AP-a, HT-a (the operator creates the campaign-42 shape on dev through Split from the
   card menu, then tests). States the amendments WP2.5, WP2.6, WP2.7 and WP2.4b must adopt (§3.17). No migration, no RPC
   change, no new query; three stages; the legacy chart untouched.
+
+---
+
+## 11. Stage 1 evidence (implementer)
+
+Stage 1 of §6.1: the pure library only. Branch `feat/oux-wp2.4c-nested-units` at `29f93a6c` (`main` with WP2.4
+merged). No database of any kind was touched: no connector call, no `supabase` command, no `.env.local` read, no
+`pnpm dev`, no Playwright. Nothing under `supabase/` or `packages/db-types/` is modified (§11.5), and
+`derive-group-view.ts` / `plan-drop.ts` are byte-for-byte `main`'s (NV-a).
+
+### 11.1 Files
+
+New:
+
+| File | What |
+|---|---|
+| `src/lib/campaign/groups/derive-group-tree.ts` | NE-a (`nestingParentOf`, `childrenByNestingParent`, `indexUnitsById`), SG-a (`isPrimaryGroup`, `primaryGroups`), and `deriveGroupTree` with the §3.4 `GroupTree` exactly as the plan types it (roots, `foreignNested`, `childrenByRoot`, `nodeIds`, `nodeByWorker`, `rootByWorker`, `workersByNode`, `subtreeByRoot`, `placementByWorker`, `childPlacementByWorker`, `unassignedWorkerIds`, `childOnlyByWorker`, `orphanChildByWorker`) |
+| `src/lib/campaign/groups/plan-nested-drop.ts` | `planNestedDrop` → `{ kind: "steps"; steps: MoveStep[]; refs }`, three ordered phases (the selected group's row, the child's row, the removes) — adds before removes, `keepInParent: true` on every move, `fromOuId` always a held row, merging per (kind, target, source, group) |
+| `src/lib/campaign/groups/__tests__/fixtures/campaign-42-shape.ts` | `CAMPAIGN_42_SHAPE`: EDI Downer (container) → KGP / Barrow / Ichthys / Wheatstone, Day + Night under KGP, "Barrow Jetty" (the C-k same-kind child) under Barrow, a legacy custom container, 20 members covering paired / root-only / child-only / orphan / container-only / legacy-only / unassigned, plus a non-member placement. Shared by the pure suites and the `nested` harness size |
+| `src/lib/campaign/groups/__tests__/derive-group-tree.test.ts` | 22 cases: NE-a edges, `primaryGroups` (incl. the zero-unit group and the mixed standalone-shift case), the Worksite tree, roll-ups, NP-a, NC-a, the Employer view, hygiene, and the equivalence block |
+| `src/lib/campaign/groups/__tests__/plan-nested-drop.test.ts` | 21 cases: every row of the §3.7 table with its exact step list and order, the guards, the merging, and the superset-of-`planDrop` property (both planners run over the same cases) |
+| `scripts/data-hygiene/oux-wp2.4c/00_nesting_shape.sql` + `README.md` | Read-only: (a) sub-unit-only groups, (b)/(c)/(d) child-only / orphan / paired sub-unit placements per campaign, (e) the same per parent group, (f) the nesting edges per campaign. Aggregates and group names only |
+
+Modified (additive, default-preserving):
+
+| File | Change |
+|---|---|
+| `src/lib/campaign/groups/resolve-group-selection.ts` | optional `primaryIds` (SG-a) + `parent_ou_id` on the `ous` row type; absent → WP2.4 behaviour unchanged |
+| `src/components/campaigns/wall-chart/move-worker-mutation.ts` | optional `steps` on `MoveWorkerVars`, run in order in place of the refs loop, stopping at the first refusal with the exported `MoveStepError`; stamping / reverse sync / invalidations unchanged and issued once |
+| `src/components/campaigns/wall-chart/__tests__/harness/fixture.ts` | the third size `"nested"` (the campaign-42 rows), `small` and `large` untouched |
+| `src/lib/campaign/groups/__tests__/resolve-group-selection.test.ts` | +5 cases (the WP2.4 cases unchanged) |
+| `src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx` | +4 cases (the WP2.4 cases unchanged) |
+| `docs/organiser-ux-review/wp/wp2.4c.md` | §8.3 D1–D5 and this §11 |
+
+### 11.2 `pnpm exec tsc --noEmit` (from `apps/organising-db`)
+
+```
+$ pnpm exec tsc --noEmit ; echo "tsc exit=$?"
+tsc exit=0
+```
+
+### 11.3 `pnpm vitest run` (whole app, from `apps/organising-db`)
+
+```
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 8839.993783000002 to be less than 6000
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx:97:16
+
+ Test Files  1 failed | 114 passed (115)
+      Tests  1 failed | 1614 passed (1615)
+   Duration  79.31s
+```
+
+1,615 tests (§4.1 requires ≥ 1,563; `main` had 1,563, this stage adds 52: 22 + 21 + 5 + 4). Nothing is skipped,
+quarantined or deleted. The one failure is the pre-existing legacy `wall-chart.render-cost.test.tsx` timing case — the
+only acceptable failure (a sandbox-speed budget assertion on the LEGACY chart, untouched here); the v2 render-cost
+suite passed in the same run (`median 1256ms … legacy budget 6000ms`).
+
+The package's own suites:
+
+```
+$ pnpm exec vitest run src/lib/campaign/groups
+ ✓ src/lib/campaign/groups/__tests__/derive-group-view.test.ts (31 tests) 47ms
+ ✓ src/lib/campaign/groups/__tests__/derive-group-tree.test.ts (22 tests) 29ms
+ ✓ src/lib/campaign/groups/__tests__/plan-nested-drop.test.ts (21 tests) 29ms
+ ✓ src/lib/campaign/groups/__tests__/plan-drop.test.ts (8 tests) 10ms
+ ✓ src/lib/campaign/groups/__tests__/resolve-group-selection.test.ts (14 tests) 8ms
+ ✓ src/lib/campaign/groups/__tests__/wall-chart-prefs.test.ts (11 tests) 18ms
+ Test Files  6 passed (6)
+      Tests  107 passed (107)
+
+$ pnpm exec vitest run src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx
+ ✓ (7 tests) 131ms
+
+$ pnpm exec vitest run src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ ✓ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests) 131ms
+```
+
+### 11.4 Lint
+
+```
+$ pnpm exec eslint <the ten changed files> ; echo "eslint exit=$?"
+eslint exit=0
+
+$ pnpm lint | tail -4
+  159:24  warning  '_ignored' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 295 problems (143 errors, 152 warnings)
+```
+
+295 total, the §5 ceiling and `main`'s exact number (143 errors / 152 warnings); every changed line is clean.
+
+### 11.5 `git diff --stat main` (the boundaries)
+
+```
+$ git diff --stat main -- supabase/ packages/db-types/
+(empty: no migration, no regen)
+
+$ git diff --stat main -- .../wall-chart/hooks .../wall-chart-unit-hierarchy.tsx .../campaign-wall-chart.tsx
+(empty: the legacy chart is untouched)
+
+$ git diff --stat main -- .../groups/derive-group-view.ts .../groups/plan-drop.ts
+(empty: NV-a holds — WP2.5/2.6 may keep citing them by line)
+
+$ git status --short
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/harness/fixture.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/move-worker-mutation.ts
+ M apps/organising-db/src/lib/campaign/groups/__tests__/resolve-group-selection.test.ts
+ M apps/organising-db/src/lib/campaign/groups/resolve-group-selection.ts
+?? apps/organising-db/src/lib/campaign/groups/__tests__/derive-group-tree.test.ts
+?? apps/organising-db/src/lib/campaign/groups/__tests__/fixtures/
+?? apps/organising-db/src/lib/campaign/groups/__tests__/plan-nested-drop.test.ts
+?? apps/organising-db/src/lib/campaign/groups/derive-group-tree.ts
+?? apps/organising-db/src/lib/campaign/groups/plan-nested-drop.ts
+?? scripts/data-hygiene/oux-wp2.4c/
+```
+
+(Nothing is committed: the operator approves each stage commit and push, §9.1 item 4.)
+
+### 11.6 The §5 acceptance greps
+
+```
+$ rg -n "localStorage" .../wall-chart/v2 .../campaign-wall-chart-v2.tsx .../lib/campaign/groups
+apps/organising-db/src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.interaction.test.tsx:610:    expect(window.localStorage.length).toBe(0);
+exit=0
+```
+
+The one hit is WP2.4's own assertion that the v2 chart stores nothing in `localStorage` (unchanged on `main`; the
+grep as written in §5 matches the assertion line itself). No `localStorage` read or write exists in `v2/**`,
+`campaign-wall-chart-v2.tsx` or `lib/campaign/groups/**`, this stage included.
+
+```
+$ rg -n "hierarchyViewByParent|subUnitView|applyToAllScopes|UNASSIGNED_KEY|UnitAssessmentViewControl" .../wall-chart/v2
+exit=1 (pass — XP-a: no per-parent view state)
+
+$ rg -n --pcre2 "\.from\(['\"]campaign_(organising_units|worker_ou)['\"]\)…(insert|update|upsert|delete)\(" apps/organising-db/src --glob '!**/__tests__/**'
+exit=1 (pass — every write still goes through structureApi; the guard test is green above)
+
+$ rg -n "p_keep_in_parent|keepInParent" .../groups/plan-nested-drop.ts
+44:  | { kind: "move"; toOuId: number; fromOuId: number | null; workerIds: number[]; keepInParent: true }
+199:    steps.push({ kind: "move", toOuId: parentMoveTarget!, …, keepInParent: true });
+202:    steps.push({ kind: "move", toOuId: target!, …, keepInParent: true });
+```
+
+`keepInParent` is a `true` literal in the `MoveStep` type, so a step that omits it does not type-check; a case
+asserts it on every move of every planned drop in the fixture.
+
+```
+$ grep -niE "insert|update|delete|truncate|alter|create|drop|set local|begin|commit" scripts/data-hygiene/oux-wp2.4c/00_nesting_shape.sql
+exit=1 (no write keyword = pass)
+```
+
+The file was **not run**: no database access in this stage. §9.1 item 5 (dev, with the operator's confirmation) and
+the operator's production counts belong to Stage 3 / §9.2.
+
+### 11.7 The §3.7 table → the cases that pin it
+
+| §3.7 row | Case in `plan-nested-drop.test.ts` | Steps asserted |
+|---|---|---|
+| root U ← node U | "row 1" | noop |
+| root U ← Unassigned | "row 2" | `move(null → U)` |
+| root U ← another root | "row 3" | `move(W → U)` |
+| root U ← child C under U | "row 4" | paired: `unassign(Shift)`; child-only: `move(null → U)` then `unassign(Shift)`; sibling group: `unassign(Crew)` |
+| root U ← child under W ≠ U | "row 5", "an NC-a orphan is dropped…" | `move(W → U)` then `unassign(Shift)` |
+| child C′ ← node C′ | "row 6" | noop |
+| child C′ ← U's area | "row 7" | `move(null → C′)`; with an orphan in C′'s group, `move(orphan → C′)` (C-l) |
+| child C′ ← sibling, same group | "row 8" | `move(C → C′)` |
+| child C′ ← sibling, another group | "row 9" | `move(null → C′)`; the other child stays |
+| child C′ ← root W or W's child | "row 10" | `move(W → U)`, `move(… → C′)`, `unassign(Crew)` — in that order |
+| child C′ ← Unassigned | "row 11" | `move(null → U)` then `move(null → C′)` |
+| Unassigned ← anywhere | "row 12" (+ D1) | `unassign(G)` and/or `unassign(G′)` |
+| same-group child (C-k) | "row 13" | one `move(p → C′)`; NS-a still drops a shift held under the old root |
+| foreign-nested flat card | "row 14" | as a root without children |
+| guards / merging / superset | last three describes | target outside the tree, `"none"`, empty selection; per-(kind, target, source, group) merging; `planDrop` parity |
+
+### 11.8 Findings and open questions (§8.4)
+
+1. **A second divergence class between `rootByWorker` and the view — the C-k same-group child (stop condition 4,
+   reported not worked around).** §3.4 states the equivalence as "`rootByWorker` equals `view.ou_id` for every member
+   except the members of `childOnlyByWorker`". The §4.1 fixture also contains a **same-kind child of a root in the
+   same group** ("Barrow Jetty" under Barrow, the C-k split shape), and §4.1 asks its roll-up to count in the parent
+   ("W2's = W2-own + W1b"). For a member whose Worksite row **is** that child unit, the view says `Barrow Jetty` and
+   the tree says `Barrow` — a divergence outside the child-only set. It is not a derivation bug: §3.4 itself says "a
+   same-kind child of a root … is a child, not a root", so the tile renders inside Barrow's card and the roll-up
+   counts it there, which is what B1/B5 ask for. The equivalence test pins the complete set
+   (`{child-only, same-group-nested}`) and names the second class. **Question for the orchestrator/operator:** confirm
+   that §3.4 / §4.1 (and the WP2.5 §3.17 amendment, whose `rowTotals` property inherits it) are amended to name this
+   class, rather than the C-k child being treated as a root of its group. Nothing in Stage 2 is blocked either way —
+   the band renders the same cards — but the WP2.5/WP2.6 equivalence wording depends on the answer.
+2. **`00_nesting_shape.sql` counts cross-group children only (D2).** The plan's prose for (b) ("a placement on a
+   plain-parent child whose worker has no placement on the parent") would count every placement on a same-group child
+   as child-only, because the pair is impossible there (C-a). The counts the operator pastes into §9.2 are therefore
+   of the cross-group shape — the one NP-b would repair. Confirm before the production run.
+3. **D1 (the orphan is unassigned with the group's row).** Recorded as a deviation rather than a stop: the table's
+   row 12 and the bullet under it disagree, and the bullet's reading is the one that keeps B3 true. If the operator
+   prefers the literal row-12 reading, one line of the planner and two cases change.
+4. **Not in this stage (as planned):** every `wall-chart/v2/**` file, the band, the cards, the dialogs, the selector,
+   the Units manager, `campaign-unit-card.tsx`, `unit-card-menu.tsx`, `add-campaign-worker-dialog.tsx`,
+   `copy-worker-to-unit-dialog.tsx` and the §4.3 interaction suites are Stage 2; `nesting.spec.ts`, the acceptance
+   checklist and the SQL runs are Stage 3. The `nested` harness size is in place and unused until Stage 2, which is
+   why no interaction test changed here (the `small` fixture is untouched, so the Dan case and the snapshots are
+   still WP2.4's and still green).
+
+### 11.9 Fix round 1 — the coordinator's three rulings (NE-a narrowed)
+
+**Ruling 1 (code change): a child nests only when its group DIFFERS from its parent's.** The Stage-1 finding
+(§11.8 item 1) is resolved by narrowing the edge, not by widening the equivalence clause. Rationale, as ruled:
+(a) WP2.2b's unique `(worker_id, group_id)` index means a worker can never hold both Barrow and Barrow Jetty, so a
+same-group "child" can never carry the parent + child pair the nested model is built on; (b) the operator's
+requirement is cross-group nesting and says nothing about splits; (c) `DECISIONS.md:14`'s "Split creates sibling units
+in the same group" was never amended; (d) the divergence class disappears, so §3.4's equivalence stays as WP2.4 stated
+it and WP2.5/WP2.6 inherit the simple wording. **Ruling 2:** D1 approved (the orphan row goes with the group's row);
+the case stays. **Ruling 3:** D2 approved and, under ruling 1, no longer a restriction but the definition of a
+sub-unit; the SQL and its comments were reworded and query (a) — and (f) — narrowed to match.
+
+Changes:
+
+| File | Change |
+|---|---|
+| `derive-group-tree.ts` | `nestingParentOf` gains `parent.group_id !== (ou.group_id ?? null)` (the container, has-a-group and self-link conditions unchanged); `isPrimaryGroup` simplified to "some unit of G has no nesting parent" (the old "or a nesting parent in G itself" clause is now unreachable and the two readings agree); the dead branch that treated a member's G row as a child node removed, since every child node is a unit of another group; the NE-a, `foreignNested` and `deriveGroupTree` doc comments restated |
+| `plan-nested-drop.ts` | comments only: `targetHoldsGroupRow` is now "a root or a flat card"; the C-k target is an ordinary root. No behaviour change — a same-group child is planned by the root rows, which is what the row-13 cases already asserted |
+| `__tests__/fixtures/campaign-42-shape.ts` | "Barrow Jetty" **kept** and re-documented as a sibling root; worker 211 still on it, so the shape is pinned, not deleted |
+| `derive-group-tree.test.ts` | NE-a split into "a link to a plain parent of ANOTHER group nests" and a new "a link to a parent in the unit's OWN group is a sibling link, not nesting (ruling 1, C-k)"; the odd-rows case gains a same-group pair; roots now `[KGP, Barrow, Ichthys, Wheatstone, Barrow Jetty]` with `childrenByRoot(Barrow) = []`; `subtreeByRoot(Barrow) = [205, 214, 215]` and `subtreeByRoot(Barrow Jetty) = [211]`; a new case "a C-k same-group child is an ordinary root: its members are NOT rolled up into its parent"; the divergence set is back to `{child-only}` with an explicit assertion that the C-k member is not a divergence; the exact-equality case no longer strips C-k rows. 22 → **24 cases** |
+| `plan-nested-drop.test.ts` | row 13 renamed to "a C-k same-group child is an ordinary root (ruling 1)"; its four assertions are unchanged (the planner already routed a same-group target through the root rows) and one is added: dropping the sibling's member on the parent card is a plain root-to-root `move(Barrow Jetty → Barrow)`. 21 cases |
+| `00_nesting_shape.sql` | the header definition restated (a nesting edge now requires differing groups; the counts are of nested sub-units by construction); (a) folds the differing-group test into the edge and drops the now-redundant `HAVING` clause; (b)–(e) comments reworded; (f) gains `facet_links_not_nested` (container parents and same-group parents) so the operator can see what did not nest |
+| `wall-chart/__tests__/harness/fixture.ts` | comment only (the `nested` rows are unchanged) |
+| this plan | §3.2 (b)/(c)/(d), §3.3 NE-a, §3.4 (roots, "every child node is a unit of another group", the equivalence clause), §3.5 `isPrimaryGroup`, §3.7 row 13, §4.1 fixture and cases; §8.3 **D6** with the ruling's rationale, and D1/D2/D4 annotated as approved/subsumed |
+
+Re-verification after the fix round:
+
+```
+$ pnpm exec tsc --noEmit ; echo "tsc exit=$?"
+tsc exit=0
+
+$ pnpm exec vitest run src/lib/campaign/groups .../move-worker-mutation.test.tsx .../no-direct-structure-writes.test.ts
+ ✓ derive-group-view.test.ts (31)   ✓ derive-group-tree.test.ts (24)   ✓ plan-nested-drop.test.ts (21)
+ ✓ resolve-group-selection.test.ts (14)   ✓ wall-chart-prefs.test.ts (11)   ✓ plan-drop.test.ts (8)
+ ✓ no-direct-structure-writes.test.ts (3)   ✓ move-worker-mutation.test.tsx (7)
+ Test Files  8 passed (8)
+      Tests  119 passed (119)
+
+$ pnpm vitest run          # whole app
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > … within budget
+AssertionError: expected 8410.41301 to be less than 6000
+ Test Files  1 failed | 114 passed (115)
+      Tests  1 failed | 1616 passed (1617)
+
+$ pnpm exec eslint <the ten changed files> ; echo "eslint exit=$?"
+eslint exit=0
+
+$ pnpm lint | tail -3
+✖ 295 problems (143 errors, 152 warnings)
+
+$ git diff --stat main -- supabase/ packages/db-types/                      → empty
+$ git diff --stat main -- .../wall-chart/hooks .../wall-chart-unit-hierarchy.tsx .../campaign-wall-chart.tsx → empty
+$ git diff --stat main -- .../derive-group-view.ts .../plan-drop.ts         → empty
+
+$ rg -n "localStorage" .../v2 .../campaign-wall-chart-v2.tsx .../lib/campaign/groups
+.../wall-chart-v2.interaction.test.tsx:610:    expect(window.localStorage.length).toBe(0);   (WP2.4's own assertion)
+$ rg -n "hierarchyViewByParent|subUnitView|applyToAllScopes|UNASSIGNED_KEY|UnitAssessmentViewControl" .../v2 → exit 1
+$ rg -n --pcre2 "…campaign_(organising_units|worker_ou)….(insert|update|upsert|delete)\(" src --glob '!**/__tests__/**' → exit 1
+$ grep -niE "insert|update|delete|truncate|alter|create|drop|set local|begin|commit" scripts/data-hygiene/oux-wp2.4c/00_nesting_shape.sql → exit 1
+```
+
+1,617 tests (+2 on the round: the two new NE-a/root cases; 1,563 on `main`, ≥ 1,563 required), the same single
+pre-existing legacy render-cost timing failure, lint at the 295 ceiling, and the boundaries still empty. **Stop
+condition 4 is cleared: the only divergence between `rootByWorker` and the view is the child-only class.** Nothing is
+committed. No database was touched in this round either.
+
+### 11.10 Fix round 2 — the Stage-1 review (B-1 blocking, A-1…A-8)
+
+Review: `wp24c-stage1-review.md` against `624baca0` — "FIX ROUND NEEDED", one blocking finding and eight
+advisories. All of B-1, A-1…A-6 and A-8 are applied; A-7 is recorded as a Stage-2 note in §3.7. No database, no
+CLI, no Playwright, nothing committed.
+
+**B-1 (blocking) — a root may hold children in two groups and one of them was invisible.** `deriveGroupTree` built
+the full list of a worker's child-node rows and then kept one (`find` over placement-row order), and
+`orphanChildByWorker` only ever reported a child under a *different* root, so the second child of the same root was
+in neither map — and `planNestedDrop` rebuilt its view of the world from exactly those two maps. §3.7 row 9 creates
+this shape on purpose and the planner fixture already had the units (Day/Night in Shift *and* KGP Crew in Crew under
+KGP); no fixture worker held two, which is why the suites were green.
+
+Fix, as the reviewer sketched:
+
+| Change | Where |
+|---|---|
+| `GroupTree` gains `childPlacementsByWorker: Map<number, number[]>` — every child-node row the worker holds, in card order; `childPlacementByWorker` stays "the drawn one" | `derive-group-tree.ts` |
+| The drawn child and the reported orphan are chosen in **`childrenByRoot` card order** (a `cardOrder` index over roots × children), never in placement-row order — `fetchOuAssignments` issues no `ORDER BY` and pages with `.range()` | `derive-group-tree.ts` |
+| `heldChildrenOf` reads the new list, so the existing per-child unassign loop clears every held child row | `plan-nested-drop.ts` |
+| Fixture: the planner's local variant moved into the shared fixture as `campaign42UnitsWithSubUnitGroups()` / `CAMPAIGN_42_SUB_UNIT_PLACEMENTS` / `CAMPAIGN_42_CREW_GROUP_ID`, and worker **220** now holds KGP + KGP Crew + Day — with the Crew row deliberately **before** the Day row, so the card-order rule is actually exercised | `__tests__/fixtures/campaign-42-shape.ts` |
+| Plan: D7 in §8.3; §3.4's `GroupTree` and the "two children of one root" rule; §3.7 row 9 | `wp2.4c.md` |
+
+**Is B-1's reproduction still reproducible? No — and the new cases fail without the fix.** Verified by reverting
+each half in place and re-running (then restoring):
+
+```
+# planner reverted to the two-map heldChildrenOf:
+ × … > a worker holding TWO children of one root loses BOTH when they leave it (review B-1, NS-a)
+ × … > every child row goes, so a removed worker cannot reappear inside the root (review B-1, D1)
+      Tests  2 failed | 21 passed (23)
+
+# derivation reverted (card-order sort removed):
+ × … > a worker holding two children of one root is drawn ONCE and counted once in the roll-up
+ × … > EVERY held child row is reported, not just the drawn one (what the planner clears)
+ × … > which card draws the tile does not depend on the order the placement rows arrive in
+      Tests  3 failed | 27 passed (30)
+
+# with the fix in place: 30 passed (30) and 23 passed (23)
+```
+
+The three consequences, one by one, on the fixed code: **(1) rendering** — worker 220 is drawn on Day and on no
+other card (`cards.length === 1` across the whole view), appears once in `subtreeByRoot(KGP)`, and reversing the
+placement array leaves `nodeByWorker`, `workersByNode(KGP Crew)` and `childPlacementsByWorker` identical;
+**(2) NS-a** — dropping 220 on Barrow now plans `move(KGP → Barrow)`, `unassign(Shift)`, `unassign(Crew)`, and onto
+Barrow Night `move(KGP → Barrow)`, `move(Day → Barrow Night)`, `unassign(Crew)`; **(3) ruling 2 / D1** — dropping
+220 on "Unassigned in Worksite" plans all three unassigns, and a new case re-derives the chart from the rows those
+steps leave behind (`applySteps`, a miniature of the RPC's displace-then-place / group-scoped delete): 220 is in
+`unassignedWorkerIds`, has no `nodeByWorker` entry, is **not** `childOnly`, and appears on no card — checklist step 7.
+
+**Advisories applied**
+
+| # | Change |
+|---|---|
+| A-1 | `MoveStepError` copies the refusal's `status`, `code` and the auth-js lock sentinels; the §3.13 sentence is unchanged. A case asserts `isLikelyAuthError(wrapped) === true` for a 401/`PGRST301` cause and `false` for a structure refusal, so the steps path keeps the token-refresh retry (re-issuing a plan is safe: a completed `move` re-issues as `skipped`, an `unassign` is idempotent) |
+| A-2 | `subtreeByRoot` is seeded for `foreignNested` ids as well, and the per-worker push no longer uses `?.`; the mixed-case test asserts every rendered card (roots + flat) has an entry equal to its `workersByNode` list. Field doc and §3.4 updated |
+| A-3 | `nestingParentOf` also requires the **child** to carry a `group_id`; a case proves a legacy `group_id NULL` container under a plain grouped unit is not a node and its legacy placement is simply Unassigned, instead of an undroppable nested card |
+| A-4 | `00_nesting_shape.sql` (b)–(e) join `campaign_worker_membership` on `(worker_id, campaign_id)`, exactly as `campaign_group_membership` does |
+| A-5 | Those queries now report `workers_in_a_sub_unit` / `paired_workers` / `child_only_workers` / `orphan_workers` beside the placement counts, and the header says a worker with sub-unit placements under two parents can fall in two classes. §3.2 and the README say the same (D10) |
+| A-6 | §3.7 row 4 now states the wider rule in the table itself (D8), not only in §11.7 |
+| A-7 | Recorded in §3.7 as a Stage-2 note: the aggregated `{inserted, deleted, skipped}` totals must not be used for "N workers moved" copy |
+| A-8 | The "four paired placements" comment corrected (three paired; the non-member's row classifies as child-only — now asserted both ways); the resolver's `?ou=` index is first-row-wins, as WP2.4's `find` was; `isPrimaryGroup` takes an optional prebuilt index and `primaryGroups` builds it once, so the selector scan is linear as §3.15 claims |
+
+Re-verification:
+
+```
+$ pnpm exec tsc --noEmit ; echo "tsc exit=$?"          → tsc exit=0
+$ pnpm exec eslint <the ten changed files> ; echo $?    → eslint exit=0
+
+$ pnpm exec vitest run src/lib/campaign/groups .../move-worker-mutation.test.tsx .../no-direct-structure-writes.test.ts
+ ✓ derive-group-view.test.ts (31)   ✓ derive-group-tree.test.ts (30)   ✓ plan-nested-drop.test.ts (23)
+ ✓ resolve-group-selection.test.ts (14)   ✓ wall-chart-prefs.test.ts (11)   ✓ plan-drop.test.ts (8)
+ ✓ no-direct-structure-writes.test.ts (3)   ✓ move-worker-mutation.test.tsx (8)
+ Test Files  8 passed (8)        Tests  128 passed (128)
+
+$ pnpm vitest run          # whole app
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > … within budget
+AssertionError: expected 8652.147851999998 to be less than 6000
+ Test Files  1 failed | 114 passed (115)
+      Tests  1 failed | 1625 passed (1626)
+
+$ pnpm lint | grep problems                            → ✖ 295 problems (143 errors, 152 warnings)
+
+$ git diff --stat main -- supabase/ packages/db-types/                                   → empty
+$ git diff --stat main -- .../wall-chart/hooks .../wall-chart-unit-hierarchy.tsx .../campaign-wall-chart.tsx .../wall-chart/v2 → empty
+$ git diff --stat main -- .../derive-group-view.ts .../plan-drop.ts                      → empty
+$ rg -n "localStorage" .../v2 .../campaign-wall-chart-v2.tsx .../lib/campaign/groups     → only WP2.4's own `expect(window.localStorage.length).toBe(0)`
+$ rg -n "hierarchyViewByParent|subUnitView|applyToAllScopes|UNASSIGNED_KEY|UnitAssessmentViewControl" .../v2 → exit 1
+$ rg -n --pcre2 "…campaign_(organising_units|worker_ou)….(insert|update|upsert|delete)\(" src --glob '!**/__tests__/**' → exit 1
+$ grep -niE "insert|update|delete|truncate|alter|create|drop|set local|begin|commit" scripts/data-hygiene/oux-wp2.4c/00_nesting_shape.sql → exit 1
+```
+
+1,626 tests (+9 on this round: 6 derivation, 2 planner, 1 mutation; ≥ 1,563), the same single pre-existing legacy
+render-cost timing failure, lint at the 295 ceiling, the boundaries still empty and the Stage-2 surface
+(`wall-chart/v2/**`) untouched. Stop conditions: 4 stays cleared (the only divergence is the child-only class), 5
+does not fire (every step is expressible with the existing RPC parameters), and this is fix round 2 — 11 ("a third
+fix round") is not in play.
+
+---
+
+## 12. Stage 2 evidence (implementer)
+
+Stage 2 of §6.1: the v2 chart renders the tree. Branch `feat/oux-wp2.4c-nested-units` at `8752ea61` (Stage 1 plus its
+two fix rounds, reviewed). **No database of any kind was touched**: no connector call, no `supabase` command, no
+`.env.local` read, no `pnpm dev`, no Playwright. Nothing under `supabase/` or `packages/db-types/` is modified, the
+legacy chart and its suites are untouched, and `derive-group-view.ts` / `plan-drop.ts` are still byte-for-byte
+`main`'s (NV-a). Stage 1's library is unchanged except for D11 (one line in `move-worker-mutation.ts`).
+
+### 12.1 Files
+
+New:
+
+| File | What |
+|---|---|
+| `src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.nesting.test.tsx` | 30 cases over the `nested` (campaign-42) fixture: the nested band and the roll-up (B1/B5), NP-a and NC-a on screen, SG-a (the selector, the stored group, `?group=`, `?ou=`), seven rows of the §3.7 table asserted as the RPC payloads in order, the step-2 refusal sentence, Remove from Group (D1), "Move to unit…" targets, the menus and dialogs (SP-a, delete `childOuIds`, merge partners), hidden/empty units, the Units manager and reorder, search, the sheet's Units tab (NC-a visibility) and AP-a on both writers |
+
+Modified (additive, default-preserving):
+
+| File | Change |
+|---|---|
+| `v2/wall-chart-group-band.tsx` | the band renders the **roots** (then the flat foreign-nested cards, then Unassigned); a root with children renders them into `CampaignUnitCard`'s `subUnits` slot captioned "Units in \<Root\>", each child the same `UnitCardV2` with `nested`; the roll-up sentence, the "N sub-units" badge, `canSplit={!nested}`, merge partners from the tree |
+| `v2/use-wall-chart-group-view.ts` | `deriveGroupTree` beside the unchanged flat view; `workersByUnit` is now the per-CARD list, plus `rollupByUnit`, `childrenByRoot`, `shownChildrenByRoot`, `rootUnits`, `nodeIds`, `nodeByWorker`, `rootByWorker`, `tree`; the tile index is `nodeByWorker` (still one card per worker); hidden rules (a root hides its subtree, a child only its own card); "\<Root\> › \<Child\>" in search; focus un-hides both and highlights the card (D12); the rating-hint anchor walks roots then children in DOM order |
+| `v2/use-wall-chart-view-v2.ts` | `visibleByUnit` covers every shown card of the tree; the empty rule tests a root on its whole subtree and a child on its own list; `renderedChildrenByRoot`; `emptyHiddenCount` over both levels (D17); metrics over `rollupByUnit` (B5) |
+| `v2/use-wall-chart-actions-v2.ts` | every drop / "Move to unit…" goes through `planNestedDrop` → the mutation's ordered `steps` (D18); "Remove from \<Group\>" unassigns the group's row and every sub-unit group held (D1/D19); `mergeCandidatesFor`; `handleWorkersAdded` (AP-a) |
+| `v2/use-wall-chart-groups.ts` | `primaryGroups` / `primaryIds` (SG-a), handed to the resolver and to the selector; `trackWallchartGroupSelected.group_count` is the selector's count (§3.12) |
+| `v2/wall-chart-dialogs-v2.tsx` | move targets "\<Root\> › \<Child\>"; delete `childOuIds` = the root's children (D17 of WP2.4 closed) and, for a nested source, its siblings as `allOus`; merge candidates from the tree; `onAdded` → AP-a |
+| `v2/wall-chart-toolbar.tsx` | the selector lists the primary groups; the Units manager is mounted without `flat` over the projected tree (D14) |
+| `v2/move-to-unit-dialog.tsx` | an optional `label` per target |
+| `v2/unit-card-menu.tsx` | `canSplit?` (SP-a) |
+| `v2/group-selector.tsx` | doc only: `groups` is the primary list |
+| `campaign-unit-card.tsx` | `subUnitsLabel?`, `countLabel?` (D16) |
+| `add-campaign-worker-dialog.tsx` | `onAdded?(workerIds)` (AP-a) |
+| `copy-worker-to-unit-dialog.tsx` | the "Move to \<Root\> first" lock under `groups` (AP-a) |
+| `move-worker-mutation.ts` | D11 (the one-step sentence) |
+| `__tests__/harness/characterize.ts` | D13 (the header rule) |
+| `v2/__tests__/wall-chart-v2.interaction.test.tsx` | the cases the nested reading of the `small` fixture changes (below) |
+| `v2/__tests__/wall-chart-v2.control-census.test.tsx` | the nested-card region, and the campaign-42 census |
+| `v2/__tests__/wall-chart-v2.characterization.test.tsx` (+ snapshot) | two snapshots change, a `nested` snapshot is added |
+| `v2/__tests__/wall-chart-v2.render-cost.test.tsx` | a third mount on `nested`, reported |
+| `docs/organiser-ux-review/wp/wp2.4c.md` | §8.3 D11–D22 and this §12 |
+
+Not modified, as §7 requires: every legacy composition file, `wall-chart-unit-manager.tsx`, `split-unit-dialog.tsx`,
+`delete-organising-unit-dialog.tsx`, `ou-reassignment-targets.ts`, `structure-api.ts`, `derive-group-view.ts`,
+`plan-drop.ts`, `derive-group-tree.ts`, `plan-nested-drop.ts`, `resolve-group-selection.ts`, `campaign-wall-chart-v2.tsx`,
+`supabase/**`, `packages/db-types/**`.
+
+### 12.2 `pnpm exec tsc --noEmit` (from `apps/organising-db`)
+
+```
+$ pnpm exec tsc --noEmit ; echo "tsc exit=$?"
+tsc exit=0
+```
+
+### 12.3 `pnpm vitest run` (whole app, from `apps/organising-db`)
+
+```
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 8402.380795000001 to be less than 6000
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx:97:16
+
+ Test Files  1 failed | 115 passed (116)
+      Tests  1 failed | 1657 passed (1658)
+   Duration  79.20s
+```
+
+1,658 tests (§4.1 requires ≥ 1,563; Stage 1 left 1,626, this stage adds 32: 30 nesting cases, 1 census case, 1
+characterisation case). Nothing is skipped, quarantined or deleted. The one failure is the pre-existing legacy
+`wall-chart.render-cost.test.tsx` timing case — the only acceptable failure, on the LEGACY chart, untouched here. The
+v2 render-cost case passed its absolute and relative budgets **in the same run**:
+
+```
+[wp2.4] render-cost legacy: median 6643ms over 3 runs (tiles=250, cards=162; legacy budget 6000ms)
+[wp2.4] render-cost v2 largest group (Worksite): median 2436ms over 3 runs (tiles=305, cards=155)
+[wp2.4] render-cost v2 all-Unassigned (decision 4): median 1172ms over 3 runs (tiles=305, cards=2)
+[wp2.4] render-cost v2 nested (campaign-42 shape, Worksite): median 227ms over 3 runs (tiles=20, cards=9)   ← reported, not asserted (§4.4)
+```
+
+The package's own suites:
+
+```
+$ pnpm exec vitest run src/lib/campaign/groups src/components/campaigns/wall-chart/v2/__tests__ \
+    src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx \
+    src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ ✓ wall-chart-v2.nesting.test.tsx (30)        ✓ wall-chart-v2.interaction.test.tsx (41)
+ ✓ wall-chart-v2.control-census.test.tsx (3)  ✓ wall-chart-v2.characterization.test.tsx (9)
+ ✓ wall-chart-v2.render-cost.test.tsx (1)     ✓ move-worker-mutation.test.tsx (8)
+ ✓ derive-group-tree.test.ts (30)             ✓ plan-nested-drop.test.ts (23)
+ ✓ derive-group-view.test.ts (31)             ✓ plan-drop.test.ts (8)
+ ✓ resolve-group-selection.test.ts (14)       ✓ wall-chart-prefs.test.ts (11)
+ ✓ no-direct-structure-writes.test.ts (3)
+ Test Files  13 passed (13)
+      Tests  212 passed (212)
+```
+
+### 12.4 Lint
+
+```
+$ pnpm exec eslint <the 21 changed source and test files> ; echo "eslint exit=$?"
+eslint exit=0
+
+$ pnpm lint | grep problems
+✖ 295 problems (143 errors, 152 warnings)
+```
+
+295 total — the §5 ceiling and `main`'s exact number, unchanged by this stage; every changed line is clean.
+
+### 12.5 `git diff --stat main` (the boundaries)
+
+```
+$ git diff --stat main -- supabase/ packages/db-types/
+(empty: no migration, no regen)
+
+$ git diff --stat main -- .../wall-chart/hooks .../wall-chart-unit-hierarchy.tsx .../campaign-wall-chart.tsx
+(empty: the legacy chart is untouched)
+
+$ git diff --stat main -- .../groups/derive-group-view.ts .../groups/plan-drop.ts
+(empty: NV-a holds)
+
+$ git diff --stat main -- .../wall-chart/__tests__
+ .../wall-chart/__tests__/harness/characterize.ts   |   6 +-     (D13)
+ .../wall-chart/__tests__/harness/fixture.ts        |  77 +++-   (Stage 1: the `nested` size)
+ .../__tests__/move-worker-mutation.test.tsx        | 118 ++++-  (Stage 1: the `steps` cases)
+(the legacy characterisation snapshots are NOT in this list: the golden master is unchanged)
+```
+
+### 12.6 The §5 acceptance greps
+
+```
+$ rg -n "localStorage" .../v2 .../campaign-wall-chart-v2.tsx .../lib/campaign/groups
+.../wall-chart-v2.interaction.test.tsx:633:    expect(window.localStorage.length).toBe(0);   (WP2.4's own assertion)
+
+$ rg -n "hierarchyViewByParent|subUnitView|applyToAllScopes|UNASSIGNED_KEY|UnitAssessmentViewControl" .../v2
+exit=1 (pass — XP-a: nesting revived no per-parent view state)
+
+$ rg -n --pcre2 "…campaign_(organising_units|worker_ou)….(insert|update|upsert|delete)\(" src --glob '!**/__tests__/**'
+exit=1 (pass — every structure write still goes through `structureApi`; the guard test is green above)
+
+$ rg -n "p_keep_in_parent|keepInParent" .../groups/plan-nested-drop.ts
+44:  | { kind: "move"; …; keepInParent: true }
+203:    steps.push({ kind: "move", toOuId: parentMoveTarget!, …, keepInParent: true });
+206:    steps.push({ kind: "move", toOuId: target!, …, keepInParent: true });
+
+$ grep -niE "insert|update|delete|truncate|alter|create|drop|set local|begin|commit" scripts/data-hygiene/oux-wp2.4c/00_nesting_shape.sql
+exit=1 (no write keyword = pass; the file was NOT run — no database access in this stage)
+```
+
+### 12.7 The census, re-counted with the nested region
+
+`small`, Employer (which now nests South Deck inside Acme South), build list closed: board 4 + selection bar 5 +
+toolbar 12 + charts 2 + print 1 = **24** fixed-page controls, unchanged; **25** with the build list open. Per card,
+root and nested alike: `Rating (5 levels)` and `Unit actions` — 2 controls — plus the count click; the Unassigned card
+still has none. `FORBIDDEN_NAMES` (`View`, `Apply to all units`, `Unit view`, `Show sub-units`, `Expand all`,
+`Collapse all`, `Copy to unit…`) are absent everywhere, on both fixtures. The only name that moved is the Units
+button, which counts the tree: `Units (2)` → `Units (3)` on `small`, `Units (7)` on `nested`.
+
+The campaign-42 table (`[wp2.4 census] nested fixture, Worksite, one worker selected`):
+
+```
+region                                      elements controls countClick
+board (outside the chart card)                     4        4          0   Wall chart | List | Find duplicates | Import participation
+selection bar                                      5        5          0   Move to unit… | Remove from Worksite | Clear ratings… | Link to leader… | Clear
+toolbar (sticky header)                           12       12          0   Group | Show empty units | Colour by | Filter | Badges: none | % | # | Links | Find worker | Add worker | Import Workers | Units (7)
+charts card                                        2        2          0   Worksite (5 units) | Expand assessment distribution
+print                                              1        1          0   Print
+unit card: KGP                                     7        2          1   Select all in KGP (7 in unit · 3 not yet in a sub-unit) | Rating (5 levels) | Unit actions
+unit card: Barrow                                  7        2          1   Select all in Barrow | Rating (5 levels) | Unit actions
+unit card: Ichthys                                 7        2          1   …
+unit card: Wheatstone                              7        2          1   …
+unit card: Barrow Jetty                            7        2          1   …
+nested unit card: Day                              7        2          1   Select all in Day | Rating (5 levels) | Unit actions
+nested unit card: Night                            7        2          1   Select all in Night | Rating (5 levels) | Unit actions
+unassigned card: Unassigned in Worksite            1        0          1   Select all in Unassigned in Worksite
+tile: Alan Ashby                                   4        4          0   tile | quick-rate | phone | email
+```
+
+### 12.8 The §3.7 table → the cases that pin it on the chart
+
+| §3.7 row | Case in `wall-chart-v2.nesting.test.tsx` | RPC calls asserted, in order |
+|---|---|---|
+| root U ← node U | "dropping a worker on the card they are already on is a no-op" | none |
+| root U ← child C under U (paired) | "row 4 — child → the parent's own area" | `move(→ null, within Shift)` |
+| root U ← child C under U (child-only) | "row 4 (child-only) — the parent row is ADDED before the shift row is removed" | `move(null → KGP)`, then `move(→ null, within Shift)` |
+| child C′ ← U's area | "row 7 — the parent's own area → a child" | `move(null → Day, keepInParent)` |
+| child C′ ← sibling, same group | "row 8 — child → sibling child in the same group" | `move(Day → Night)` |
+| child C′ ← root W's area | "row 10 — another root's area → a child under KGP" | `move(Barrow → KGP)`, then `move(null → Day)` |
+| Unassigned ← a nested tile | "row 12 — a nested tile → Unassigned in \<Group\>" | `move(→ null, within Worksite)`, then `move(→ null, within Shift)` |
+| a refusal part-way (NX-a) | "a refusal on the second step names the step and still refetches" | step 1 committed, step 2 refused → "Step 2 of 2 failed: … The chart shows what was saved." |
+| "Remove from \<Group\>" (D1/D19) | "Remove from Worksite on a nested tile issues the group's unassign and the shift's" | `unassign(within Worksite)`, then `unassign(within Shift)` |
+| "Move to unit…" targets | "Move to unit… offers each root's children as \<Root\> › \<Child\>" | `move(null → Night)` |
+
+### 12.9 The `small` fixture's v2 cases that the nested reading changes (§4.3)
+
+`small`'s ou 13 "South Deck" (Shift) is a child of ou 12 "Acme South" (Employer), so under NE-a it nests and the Shift
+group — whose only unit it is — stops being primary. The v2 suites were updated accordingly; **no legacy suite and no
+legacy snapshot changed**.
+
+| Case | Change |
+|---|---|
+| "lists the groups in display order…" | the band is `["Acme North", "Acme South", "South Deck", "Unassigned in Employer"]`; the selector offers Employer, Worksite, Not in any group (SG-a) |
+| "switching groups…" / "a prefs write carries the whole last-read document" | they switched to **Shift**, which no longer exists as a view; they switch to Worksite / Employer instead, and assert the same URL + prefs behaviour |
+| "right-click opens a move-only dialog…" | the targets gain "Acme South › South Deck" |
+| "one Filter applies to every card…" | "1 empty unit hidden" → "2 empty units hidden" (Acme North and the emptied South Deck) |
+| "Show empty units shows a unit emptied by the filter" | the band gains "South Deck" |
+| the four Units-manager / search cases | `Units (2)` → `Units (3)`, `Units (1/2)` → `Units (2/3)`, the popover lists the tree ("Acme North", "Acme South(1)", "South Deck"), the band gains "South Deck" |
+| "Dan is in South Deck under Shift and Unassigned under Employer" | **rewritten** as §4.3 asks: "Dan is nested under Acme South in the Employer view and Shift is not offered" — NP-a draws his child-only row inside Acme South's card, the roll-up counts him there, and there is no Shift view to switch to |
+| the test file's `openUnitActions` helper | scoped to the card's OWN ⋯ menu; a root card now contains its children's menus |
+
+Characterisation: the `default` and `read-only` snapshots gain South Deck as a **level-1** card with Dan on it, Acme
+South's header becomes `"3 in unit · 2 not yet in a sub-unit / 3 est."` with `placeholders: 0`, "Unassigned in
+Employer" drops from `"8 named · 8 unfilled"` to `"7 named · 8 unfilled"`, and the toolbar reads `Units (3)`. The
+`hidden-unit` and `hint-visible` snapshots move the same way; `no-groups`, `not-in-any-group` and the structural
+skeleton are unchanged. A `nested` snapshot is added.
+
+### 12.10 Findings and open questions (§8.4)
+
+1. **No stop condition fired.** In particular: nothing under `supabase/` or `packages/db-types/` (1); no legacy
+   composition file, `derive-group-view.ts` or `plan-drop.ts` was edited (2); no legacy suite or snapshot changed (3);
+   the equivalence set is Stage 1's and is untouched (4); every step of every row of §3.7 is expressible with the
+   existing RPC parameters (5); `00_nesting_shape.sql` was not run, so (6) is still Stage 3's; no new flag reader (7);
+   `wall-chart-dialogs-v2.tsx` is unchanged on `main` since `8752ea61`, so (8) did not arise; lint is at 295 and `tsc`
+   is clean (9); no project was contacted (10); this is Stage 2's first pass (11).
+2. **D11 changes a Stage-1 file.** One line of `move-worker-mutation.ts`: a one-step plan's refusal is the bare
+   structure sentence. It is the price of D18 (one planner for every drop) and it restores WP2.4's exact copy on a flat
+   group. If the reviewer prefers the literal §3.13 sentence on every plan, the line comes out and WP2.4's
+   "a refused move surfaces the structure API's sentence" case is rewritten to expect "Step 1 of 1 failed: …".
+3. **D15 — which numbers the roll-up sentence shows.** §3.6 names `subtreeByRoot` and §4.6 step 8 requires a
+   filtered-out sub-unit's worker to keep counting in the parent, so the sentence reads the derived lists while the
+   tiles read the filtered ones. On a card with an active Filter the header can therefore be larger than the tiles on
+   screen — which is what "roll-up" means here, and what the placeholders and the summary metrics beside it already
+   did. Flagged because it is the one place where a v2 header stops being "what you can see".
+4. **D12 — the `?ou=` highlight never worked.** Fixing it was in scope only because §4.3 asks for it on a nested card;
+   the retry fixes the root case too. The effect is otherwise WP2.4's.
+5. **AP-a's second writer.** The chart's "Assign people…" follow-up is issued for the added workers who hold **no** row
+   in the root's group (§3.10's wording). A worker who already sits on another unit of that group keeps it: displacing
+   it is a move, and the drag rules — not a dialog's success callback — own moves. **Fix round 1, review B-1:** the
+   first pass read the SELECTED group's rows rather than the root's, which on a flat foreign-nested card was the very
+   write this item says must not happen; it now reads the root's group and both directions are pinned (§12.11).
+6. **Not in this stage (as planned):** `tests/e2e/groups-v2/nesting.spec.ts` and its two helpers, the acceptance
+   checklist `wp/wp2.4c-acceptance-checklist.md`, the `00_nesting_shape.sql` runs (dev with the operator's
+   confirmation, production by the operator) and the HT-a checklist are Stage 3; NP-b is still open on the production
+   counts.
+
+### 12.11 Fix round 1 — the Stage-2 review (B-1, B-2 blocking; A-1…A-8)
+
+Review: `wp24c-stage2-review.md` against `a9ce2b9c` — "FIX ROUND NEEDED", two blocking findings and eight
+advisories. All ten are applied. No database, no CLI, no Playwright; nothing committed by the implementer.
+
+**B-1 (blocking) — AP-a tested the wrong group and could move a worker off their worksite.**
+`use-wall-chart-actions-v2.ts` computed `parentGroup` and then filtered on `structure.placementByWorker`, which is
+the worker's row in the **selected** group. The two coincide only while the card is drawn nested. On a
+`foreignNested` card — the mixed case of §3.4, a shift under a worksite seen from the Shift group's own view — the
+selected group is Shift and the root's group is Worksite, so a member already on worksite Barrow passed the filter
+and the chart issued `move(null → KGP, keepInParent)`, whose displace rule (C-b) moved them to KGP: a silent
+structural write out of a dialog's success callback, which §12.10 item 5 says must never happen.
+
+Fix, as the reviewer sketched: the held-set is built from the placement rows filtered by the **parent's** group.
+
+```ts
+const heldInParentGroup = new Set(
+  ouAssignments.filter((a) => groupOf(a.ou_id) === parentGroup).map((a) => a.worker_id)
+);
+const withoutAnyRow = workerIds.filter((id) => !heldInParentGroup.has(id));
+```
+
+Two cases added, both on the flat-card shape: "AP-a on a FLAT foreign-nested card never moves a worker off their
+worksite" (a standalone "Swing" shift makes Shift primary, Day/Night render flat, and the added worker turns out to
+be Cal, already on Barrow → **no** RPC at all) and "…still adds the root row for a worker who holds no worksite"
+(Gita, unplaced → the one `move(null → KGP)`). **Reverted-fix check: the first case fails without the fix**
+(`expected [ [ 'structure_placements_move', null, 10, null ] ] to deeply equal []`).
+
+**B-2 (blocking) — Delete still removed children the dialog never named.**
+`wall-chart-dialogs-v2.tsx` passed the NE-a `childrenByRoot` set while
+`delete-organising-unit-dialog.tsx:121` sends `deleteChildren: true` unconditionally, so
+`structure_unit_delete` removes every `parent_ou_id` child. Two classes went unannounced: a group container's
+members — on campaign 42, Delete… on the "EDI Downer" card in the Employer view took all four worksites, their
+shifts and their placements behind copy that only warns about losing a unit assignment — and a C-k same-group child,
+so deleting "Barrow" silently took "Barrow Jetty" with it.
+
+Fix: announce what the RPC removes, not what the tree nests.
+
+```ts
+return ous.filter((o) => o.parent_ou_id === deleteTargetOu.ou_id).map((o) => o.ou_id);
+```
+
+`hasChildren` then also suppresses the reassignment step, which is right: those placements are deleted with the
+units. Two cases added: the container card reads "is a group with 4 sub-units" / "Delete group + 4 sub-units", and
+Delete… on Barrow reads "is a group with 1 sub-unit". **Both fail without the fix** (the dialog takes the ordinary
+branch, so `openDialog()` has no such text and no such button). D17 of WP2.4 is now closed in full, and §12.1's
+claim is true as written.
+
+**Advisories applied**
+
+| # | Change |
+|---|---|
+| A-1 | `focusWorker` un-hides the root and the nested card in **one** write, through a new `unhideUnits(ids)` on the group-view hook. Two `toggleHidden` calls could not work: both recompute from the `hiddenOuIds` prop, which does not change between two synchronous calls, and `setWallChart` merges patches — so the second overwrote the first and the root stayed hidden, leaving the highlight on a card nobody rendered. A case over `hiddenOuIds: [KGP, DAY]` pins it and **fails without the fix** |
+| A-2 | A flat `foreignNested` card is titled "\<Parent\> › \<Unit\>" — in the band (a new additive `title` prop on `CampaignUnitCard`, D22), in "Move to unit…" (`label`) and in the Find-worker item. A nested card keeps its own name with the root in the "Units in \<Root\>" caption, and a root is `ouDisplayName` as before. Pinned by the mixed-case case's `unitTitles` (`["KGP › Day", "KGP › Night", "Unassigned in Shift"]`) |
+| A-3 | `canSplit` is `!nested && nestingParentOf(ou, ouById) == null`, so a flat foreign-nested card offers no Split… either — the depth trigger refuses a grandchild under a plain parent there just as it does on a nested card, which is SP-a's own rationale |
+| A-4 | The split dialog's member list is the unit's own rows in the group again (`placementByWorker`), not the tree's per-card list. Stage 2 had re-pointed `workersByUnit` to the card, so splitting a root into crews could no longer place the workers who sit on Day or Night — although they hold the root's row and `structure_unit_split` moves exactly that row. The delete dialog is unaffected (a unit with children takes the `hasChildren` branch, which has no reassignment step) |
+| A-5 | The count button's accessible name says what it selects before it carries the two numbers: "Select all in KGP**'s own area** (7 in unit · 3 not yet in a sub-unit)" (D22). D15 itself is unchanged, as the reviewer confirmed |
+| A-6 | The Units manager's reorder is filtered to the selected Group's own units, so a nested child's group is never renumbered (D21). The case now pins `p_ou_ids: [BARROW, KGP, 12, 13, 14]` |
+| A-7 | The leftover `console.log("OPTIONS", …)` is removed from the nesting suite |
+| A-8 | The weak `toContain("empty")` case is replaced by a real D17 count: an Activist filter leaves KGP's subtree non-empty through Night while Day and three whole roots empty, and the band reports "**4 empty units hidden**" — three roots counted once each plus the one empty child of a rendered root |
+
+Re-verification after the fix round:
+
+```
+$ pnpm exec tsc --noEmit ; echo "tsc exit=$?"
+tsc exit=0
+
+$ pnpm exec vitest run src/components/campaigns/wall-chart/v2/__tests__ \
+    src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx \
+    src/lib/campaign/groups src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ ✓ wall-chart-v2.nesting.test.tsx (35)        ✓ wall-chart-v2.interaction.test.tsx (41)
+ ✓ wall-chart-v2.control-census.test.tsx (3)  ✓ wall-chart-v2.characterization.test.tsx (9)
+ ✓ wall-chart-v2.render-cost.test.tsx (1)     ✓ move-worker-mutation.test.tsx (8)
+ ✓ derive-group-tree.test.ts (30)             ✓ plan-nested-drop.test.ts (23)
+ ✓ derive-group-view.test.ts (31)             ✓ plan-drop.test.ts (8)
+ ✓ resolve-group-selection.test.ts (14)       ✓ wall-chart-prefs.test.ts (11)
+ ✓ no-direct-structure-writes.test.ts (3)
+ Test Files  13 passed (13)        Tests  217 passed (217)
+
+$ pnpm exec vitest run          # whole app
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > … within budget
+AssertionError: expected 8488.333788000002 to be less than 6000
+ Test Files  1 failed | 115 passed (116)
+      Tests  1 failed | 1662 passed (1663)
+
+$ pnpm exec eslint <the 9 files this round touched> ; echo "eslint exit=$?"
+eslint exit=0
+
+$ pnpm lint | grep problems
+✖ 295 problems (143 errors, 152 warnings)
+
+$ git diff --stat main -- supabase/ packages/db-types/                                   → empty
+$ git diff --stat main -- .../wall-chart/hooks .../wall-chart-unit-hierarchy.tsx .../campaign-wall-chart.tsx → empty
+$ git diff --stat main -- .../derive-group-view.ts .../plan-drop.ts                      → empty
+$ rg -n "localStorage" .../v2 .../campaign-wall-chart-v2.tsx .../lib/campaign/groups     → only WP2.4's own assertion
+$ rg -n "hierarchyViewByParent|subUnitView|applyToAllScopes|UNASSIGNED_KEY|UnitAssessmentViewControl" .../v2 → exit 1
+$ rg -n --pcre2 "…campaign_(organising_units|worker_ou)….(insert|update|upsert|delete)\(" src --glob '!**/__tests__/**' → exit 1
+$ grep -niE "insert|update|delete|…" scripts/data-hygiene/oux-wp2.4c/00_nesting_shape.sql → exit 1 (still not run)
+```
+
+**1,663 tests** (+5 on this round: the two B-1 cases, the two B-2 cases and the A-1 case; A-8 and A-6 tightened
+existing ones), the same single pre-existing legacy render-cost timing failure, lint back at the 295 ceiling — the
+first pass of the A-2 fix reached the card title through `structure.cardTitle` inside a `useMemo`, which
+`react-hooks/preserve-manual-memoization` refused (297); destructuring it with the hook's other values restores 295 —
+and the boundaries still empty. Stop conditions: none fired; this is fix round 1 of Stage 2, so 11 ("a third fix
+round") is not in play.
+
+Five files changed this round: `v2/use-wall-chart-actions-v2.ts` (B-1, A-4), `v2/wall-chart-dialogs-v2.tsx` (B-2,
+A-2), `v2/use-wall-chart-group-view.ts` (A-1, A-2), `v2/wall-chart-group-band.tsx` (A-2, A-3, A-5),
+`v2/wall-chart-toolbar.tsx` (A-6), plus `campaign-unit-card.tsx` (D22's `title?`) and the three test files with
+their snapshot.
+
+---
+
+## 13. Stage 3 evidence (implementer)
+
+Stage 3 of §6.1, the part that needs no database: the e2e spec **written and type-checked, never run** (D80/D81 of
+wp2.2.md — this sandbox cannot host a browser suite), and the operator's hand test. Branch
+`feat/oux-wp2.4c-nested-units` at `7d1f0c34` (Stage 2 plus its review round). **No database of any kind was touched**:
+no connector call, no `supabase` command, no `.env.local` read, no `pnpm dev`, no Playwright run. No source file is
+modified in this stage — only the e2e helpers, the new spec and the documents.
+
+The rest of the §6.1 Stage-3 row stays **open** and belongs to the operator:
+
+- **HT-a** — the checklist below, run by hand on the branch preview; the orchestrator pastes the result into §9.2.
+- **`00_nesting_shape.sql` on dev** — read-only, to be run through the connector with the operator's confirmation
+  (this implementer was instructed to make no database access at all).
+- **The production counts for campaign 42** — the operator's, and they settle NP-b and stop condition 6.
+
+### 13.1 Files
+
+New:
+
+| File | What |
+|---|---|
+| `apps/organising-db/tests/e2e/groups-v2/nesting.spec.ts` | Two tests over the campaign-42 shape, built by the spec itself (a worksite root **A** with `shift` sub-units "Day" and "Night" created through `structure_units_create` with `parent_ou_id`, the shape Split leaves behind). **1.** the tree on screen: Day and Night drawn INSIDE A's card under "Units in \<A\>", the "2 sub-units" badge, the roll-up count button ("Select all in \<A\>'s own area (\<n\> in unit · \<m\> not yet in a sub-unit)"), the worker in A's own area, and SG-a — the Shift group absent from the Group control with no "Unassigned in Shift" card anywhere. **2.** the §3.7 drags, each asserted three ways (the ORDERED `structure_placements_move` payloads, `campaign_group_membership`, and the worker sheet's Units tab): A's own area → Day (one `move(null → Day, keep_in_parent)`); Day → Night (one `move(Day → Night)`); Night → A's own area (one `unassign within Shift`, NS-a); back into Day; Day → "Unassigned in \<Group\>" (unassign within the group, **then** within Shift — D1). `withUserPrefs({ mode: "full", flags: { groups_v2: true } })`, both hint dismissals seeded, the sync route scripted all-zero, the worker's placements restored and the two sub-units deleted in `afterAll` |
+| `docs/organiser-ux-review/wp/wp2.4c-acceptance-checklist.md` | HT-a, steps 0–14 (D28), in the shape of `wp/wp2.4-acceptance-checklist.md`: a blank line for the branch preview address and where on the PR to find it; a **warning box** before anything else that Delete… on a unit card deletes everything underneath it and that the confirmation names the number ("is a group with N sub-units" / "Delete group + N sub-units"), to be read before confirming; then the WP2.4 flag setup, building the campaign-42 shape through ⋯ → Split… with "Keep workers in 'A' too" left **on**, the Shift group's absence from the Group control, the roll-up header and A's own area, the four drags with the sheet's Units tab as the check each time, Remove from Worksite taking the shift with it, the filter roll-up, the Units list and Find worker ("A › Night"), the menus (no Split… on a nested card; the Delete… sentence, cancelled), Assign people… on a sub-unit (AP-a), the legacy chart, and a clean-up that puts every worker back and deletes Day and Night |
+
+Modified:
+
+| File | Change |
+|---|---|
+| `apps/organising-db/tests/e2e/groups-v2/helpers.ts` | Eleven additive helper functions with their types (D24), all below the WP2.4 block, which is byte-for-byte unchanged: `NESTED_PREFIX`, `unitTreeOf`, `createNestedUnits`, `removeUnit`, `nestsUnder`, `isSubUnitOnlyGroup`, `findOrCreateNestedFixture`, `tileOn` / `expectTileOn`, `cardHeading`, `recordPlacementMoves`, `expectSheetUnits` |
+| `docs/organiser-ux-review/PROGRESS.md` | the WP2.4c row → "Stages 1–2 complete, Stage 3 pending the operator", with the figures below and the two open items |
+| `docs/organiser-ux-review/wp/wp2.4c.md` | §8.3 D23–D28 and this §13 |
+
+Not modified: every source file, `tests/e2e/groups-v2/groups-v2.spec.ts` and every other existing spec, anything under
+`supabase/` or `packages/db-types/`.
+
+### 13.2 Verification
+
+```
+$ pnpm exec tsc --noEmit ; echo "tsc exit=$?"        # from apps/organising-db; covers tests/e2e
+tsc exit=0
+
+$ pnpm exec eslint tests/e2e/groups-v2/nesting.spec.ts tests/e2e/groups-v2/helpers.ts ; echo "eslint exit=$?"
+eslint exit=0
+
+$ pnpm lint | grep problems
+✖ 295 problems (143 errors, 152 warnings)          # the §5 ceiling and main's number, unchanged
+
+$ pnpm exec vitest run                              # whole app
+ Test Files  1 failed | 115 passed (116)
+      Tests  1 failed | 1662 passed (1663)
+# the one failure is the pre-existing LEGACY wall-chart.render-cost timing case
+# (8187 ms vs a 6000 ms budget), untouched by this package — as in §12.3 / §12.11.
+
+$ pnpm exec vitest run src/lib/campaign/groups src/components/campaigns/wall-chart/v2/__tests__ \
+    src/components/campaigns/wall-chart/__tests__/move-worker-mutation.test.tsx \
+    src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ Test Files  13 passed (13)        Tests  217 passed (217)
+
+$ git status --short
+ M apps/organising-db/tests/e2e/groups-v2/helpers.ts
+ M docs/organiser-ux-review/PROGRESS.md
+?? apps/organising-db/tests/e2e/groups-v2/nesting.spec.ts
+?? docs/organiser-ux-review/wp/wp2.4c-acceptance-checklist.md
+
+$ git diff --stat main -- supabase/ packages/db-types/ tests/e2e/groups-v2/groups-v2.spec.ts
+(empty: no migration, no regen, no existing spec changed)
+```
+
+1,663 tests, unchanged by this stage (it adds no vitest case: an e2e spec is not collected by vitest). Nothing is
+skipped, quarantined or deleted.
+
+### 13.3 The §4.5 flows → what the spec asserts
+
+| §4.5 flow | Spec | Ordered payloads asserted |
+|---|---|---|
+| The Shift group is absent from the selector; Day/Night nested in A | test 1 | — (the selector's options, the "Units in \<A\>" caption, the badge, the roll-up button, no "Unassigned in Shift") |
+| W from A's area onto Day | test 2 (a) | `move(from null → Day, within null, keep_in_parent true)` |
+| Day → Night | test 2 (b) | `move(from Day → Night, keep_in_parent true)` |
+| Night → A's area | test 2 (c) | `unassign(within Shift)` — the group's row is already A, so nothing is written for it |
+| Day → Unassigned in \<Group\> | test 2 (d) | `unassign(within Group)`, then `unassign(within Shift)` (D1, in that order) |
+| The oracle after each | test 2 | `campaign_group_membership` (Worksite row / Shift row) **and** the sheet's Units tab ("\<Group\> › \<Unit\>" lines, including the ones that must be **absent**) |
+| `afterAll` restores W and removes the two children | both | `restoreWorker`, then `structure_unit_delete` per child, then the `UNIT_PREFIX` sweep |
+
+Existing specs are unaffected: the WP2.4 spec's own units and helpers are untouched, and both suites skip together
+without credentials.
+
+### 13.4 Findings and open questions (§8.4)
+
+No stop condition was met. Two things the operator and the orchestrator should know:
+
+1. **The spec has never been executed.** Everything above is static: TypeScript compiles it and ESLint reads it, but
+   no assertion in `nesting.spec.ts` has ever run against a browser or a database (wp2.2.md D80/D81; the operator
+   declined e2e secrets for WP2.2 and WP2.4). HT-a, not HT-b, is this package's acceptance.
+2. **The checklist creates and deletes two units on dev campaign 1**, and its step 12.4 adds one worker to that
+   campaign (Assign people…). The clean-up step puts every worker back and deletes "Day" and "Night"; the worker
+   added at 12.4 stays a member of campaign 1, which is ordinary dev data and harmless. Nothing in the checklist
+   touches production, and no SQL is run at any point.

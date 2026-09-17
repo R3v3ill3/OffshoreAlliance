@@ -314,3 +314,258 @@ export async function expectTileIn(
   if (visible) await expect(tileIn(page, key, workerId)).toBeVisible({ timeout: 30_000 });
   else await expect(tileIn(page, key, workerId)).toHaveCount(0, { timeout: 30_000 });
 }
+
+// ---------------------------------------------------------------------------
+// WP2.4c (wp2.4c.md §4.5) — nesting within a group. Everything below is
+// additive: the WP2.4 spec above is untouched, and every write is the same
+// product RPC the chart itself calls (`structure_units_create` with
+// `parent_ou_id`, `structure_unit_delete`), as the e2e user under RLS.
+// ---------------------------------------------------------------------------
+
+/**
+ * The nesting fixture's unit names. The prefix STARTS WITH `UNIT_PREFIX`, so
+ * the WP2.4 spec's `deleteUnitsByNamePrefix(UNIT_PREFIX)` sweep removes a
+ * leftover of this spec too, whichever suite runs next.
+ */
+export const NESTED_PREFIX = `${UNIT_PREFIX}nested `;
+
+/** A unit row with the two columns the nesting rules read (`wp2.4c.md` §3.3). */
+export interface UnitTreeRow extends UnitRow {
+  parent_ou_id: number | null;
+  is_group_container: boolean;
+  ou_type: string | null;
+}
+
+export async function unitTreeOf(client: RestClient): Promise<UnitTreeRow[]> {
+  const res = await client.get(
+    `/rest/v1/campaign_organising_units?campaign_id=eq.${CAMPAIGN_ID}` +
+      "&select=ou_id,name,group_id,parent_ou_id,is_group_container,ou_type&order=display_order,name"
+  );
+  ok(res, "reading campaign_organising_units (tree)");
+  return res.body as UnitTreeRow[];
+}
+
+/**
+ * Sub-units of `parentOuId`, created through the product's own create RPC
+ * with `parent_ou_id` — the shape `structure_unit_split` leaves behind
+ * (`wp2.2.md` §3.3; the checklist's step 1 creates it by hand through Split).
+ * The WP2.1 trigger derives each child's group from `ou_type`, so a `shift`
+ * child of a worksite lands in the campaign's Shift group: a NESTING edge
+ * under NE-a (the parent's group differs from the child's).
+ */
+export async function createNestedUnits(
+  client: RestClient,
+  parentOuId: number,
+  names: readonly string[],
+  ouType: string
+): Promise<{ ou_id: number; group_id: number | null; name: string }[]> {
+  const created = await createUnits(
+    client,
+    names.map((name, i) => ({
+      client_ref: `nested-${i}`,
+      name,
+      ou_type: ouType,
+      parent_ou_id: parentOuId,
+      source: "manual",
+    }))
+  );
+  return created.map((u, i) => ({ ou_id: u.ou_id, group_id: u.group_id, name: names[i] }));
+}
+
+/**
+ * `structure_unit_delete` — the RPC the card's Delete… dialog calls. Remaining
+ * placements on the unit are removed by the RPC, so a fixture sub-unit can be
+ * deleted without reassigning first; `deleteChildren` is the dialog's
+ * "Delete group + N sub-units" branch.
+ */
+export async function removeUnit(client: RestClient, ouId: number, deleteChildren: boolean): Promise<void> {
+  const res = await client.post("/rest/v1/rpc/structure_unit_delete", {
+    p_campaign_id: CAMPAIGN_ID,
+    p_ou_id: ouId,
+    p_reassignments: [],
+    p_delete_children: deleteChildren,
+  });
+  ok(res, `structure_unit_delete(${ouId}, deleteChildren=${deleteChildren})`);
+}
+
+/** NE-a: a `parent_ou_id` link nests only when the parent carries a DIFFERENT group. */
+export function nestsUnder(child: UnitTreeRow, byId: Map<number, UnitTreeRow>): UnitTreeRow | null {
+  if (child.parent_ou_id == null || child.group_id == null) return null;
+  const parent = byId.get(child.parent_ou_id);
+  if (!parent || parent.is_group_container || parent.group_id == null) return null;
+  return parent.group_id === child.group_id ? null : parent;
+}
+
+/** SG-a: a group is sub-unit-only when every unit it has nests under a unit of another group. */
+export function isSubUnitOnlyGroup(rows: UnitTreeRow[], groupId: number): boolean {
+  const byId = new Map(rows.map((u) => [u.ou_id, u]));
+  const units = rows.filter((u) => u.group_id === groupId);
+  return units.length > 0 && units.every((u) => nestsUnder(u, byId) !== null);
+}
+
+export interface NestedFixture {
+  /** The primary group the chart is opened on (campaign 42's Worksite). */
+  group: GroupRow;
+  /** Root A of that group: the card the sub-units are drawn inside. */
+  root: UnitTreeRow;
+  /** The sub-units' own group (campaign 42's Shift), derived by the WP2.1 trigger. */
+  childGroup: GroupRow;
+  /** "Day" and "Night", in card order. */
+  day: { ou_id: number; name: string };
+  night: { ou_id: number; name: string };
+  /** True when no other unit of `childGroup` is a root, so SG-a can be asserted. */
+  childGroupIsSubUnitOnly: boolean;
+  worker: Fixture["worker"];
+  originalPlacements: PlacementRow[];
+  /** True when the spec created A itself, so `afterAll` removes it. */
+  createdRoot: boolean;
+}
+
+/**
+ * The campaign-42 shape (§4.6): a root A of a primary group with two `shift`
+ * sub-units under it. A is the campaign's own worksite when it has one that
+ * the depth trigger allows a sub-unit under (top-level, or a child of a group
+ * container — `cou_enforce_hierarchy_invariants`); otherwise the spec creates
+ * one under `NESTED_PREFIX`. Returns null when the shape cannot be made, and
+ * the caller skips rather than asserts against a shape that is not there.
+ */
+export async function findOrCreateNestedFixture(
+  client: RestClient,
+  worker: Fixture["worker"],
+  originalPlacements: PlacementRow[]
+): Promise<NestedFixture | null> {
+  const stamp = Date.now();
+  let rows = await unitTreeOf(client);
+  let byId = new Map(rows.map((u) => [u.ou_id, u]));
+  const canHoldSubUnits = (u: UnitTreeRow) =>
+    u.group_id != null &&
+    !u.is_group_container &&
+    (u.parent_ou_id == null || byId.get(u.parent_ou_id)?.is_group_container === true);
+
+  let createdRoot = false;
+  let root =
+    rows.find((u) => canHoldSubUnits(u) && u.ou_type === "worksite") ?? rows.find(canHoldSubUnits) ?? null;
+  if (!root) {
+    const [made] = await createUnits(client, [
+      { client_ref: "root", name: `${NESTED_PREFIX}Site ${stamp}`, ou_type: "worksite", source: "manual" },
+    ]);
+    if (!made || made.group_id == null) return null;
+    createdRoot = true;
+    rows = await unitTreeOf(client);
+    byId = new Map(rows.map((u) => [u.ou_id, u]));
+    root = byId.get(made.ou_id) ?? null;
+  }
+  if (!root || root.group_id == null) return null;
+
+  const children = await createNestedUnits(
+    client,
+    root.ou_id,
+    [`${NESTED_PREFIX}Day ${stamp}`, `${NESTED_PREFIX}Night ${stamp}`],
+    "shift"
+  );
+  const [day, night] = children;
+  if (!day || !night) return null;
+  if (day.group_id == null || day.group_id !== night.group_id || day.group_id === root.group_id) {
+    // Not a nesting edge under NE-a (a same-group child is a sibling root, D6).
+    return null;
+  }
+
+  const groups = await groupsOf(client);
+  const group = groups.find((g) => g.group_id === root.group_id);
+  const childGroup = groups.find((g) => g.group_id === day.group_id);
+  if (!group || !childGroup) return null;
+
+  const after = await unitTreeOf(client);
+  return {
+    group,
+    root,
+    childGroup,
+    day: { ou_id: day.ou_id, name: day.name },
+    night: { ou_id: night.ou_id, name: night.name },
+    childGroupIsSubUnitOnly: isSubUnitOnlyGroup(after, childGroup.group_id),
+    worker,
+    originalPlacements,
+    createdRoot,
+  };
+}
+
+/**
+ * ONE tile, on ONE card. A nested card's DOM sits inside its root's card, so
+ * `tileIn` (which scopes by the card element) cannot tell "in A's own area"
+ * from "in Day inside A". Every tile carries both ids (`worker-tile.tsx`),
+ * which is exactly the distinction every §3.7 row turns on.
+ */
+export function tileOn(page: Page, ouId: number, workerId: number) {
+  return page.locator(`[data-worker-id="${workerId}"][data-ou-id="${ouId}"]`).first();
+}
+
+export async function expectTileOn(page: Page, ouId: number, workerId: number, visible: boolean) {
+  if (visible) await expect(tileOn(page, ouId, workerId)).toBeVisible({ timeout: 30_000 });
+  else await expect(page.locator(`[data-worker-id="${workerId}"][data-ou-id="${ouId}"]`)).toHaveCount(0, { timeout: 30_000 });
+}
+
+/**
+ * A root card's OWN area as a drop target: its heading. A drop anywhere in a
+ * root card bubbles to the root's handler unless a nested card consumed it
+ * first (`campaign-unit-card.tsx` D32), and the heading is above the nested
+ * cards, so dropping there always means "the parent's own area" (§3.7 row 4).
+ */
+export function cardHeading(page: Page, key: number | "unassigned" | "not-in-any-group") {
+  return cardById(page, key).locator("h3").first();
+}
+
+/** The ordered `structure_placements_move` payloads a drop issued (NX-a: one call per step). */
+export interface MoveRpcLog {
+  readonly calls: Record<string, unknown>[];
+  reset(): void;
+  expectOrdered(expected: Record<string, unknown>[], what: string): Promise<void>;
+}
+
+export async function recordPlacementMoves(page: Page): Promise<MoveRpcLog> {
+  const calls: Record<string, unknown>[] = [];
+  page.on("request", (request) => {
+    if (!request.url().includes("/rest/v1/rpc/structure_placements_move")) return;
+    try {
+      calls.push((request.postDataJSON() ?? {}) as Record<string, unknown>);
+    } catch {
+      calls.push({ unparsed: request.postData() ?? "" });
+    }
+  });
+  return {
+    calls,
+    reset: () => calls.splice(0, calls.length),
+    expectOrdered: async (expected, what) => {
+      await expect
+        .poll(() => calls.length, { timeout: 30_000, message: `${what}: ${expected.length} RPC call(s)` })
+        .toBe(expected.length);
+      expect(calls, what).toMatchObject(expected);
+    },
+  };
+}
+
+/**
+ * The second oracle (§4.5): the worker's sheet, Units tab, whose rows read
+ * "<Group> › <Unit>" — one per placement, so a nested worker's two rows say
+ * which worksite and which shift they hold. Opened from a named tile and
+ * closed again.
+ */
+export async function expectSheetUnits(
+  page: Page,
+  ouId: number,
+  worker: Fixture["worker"],
+  rows: { present?: string[]; absent?: string[] }
+): Promise<void> {
+  const name = `${worker.first_name} ${worker.last_name}`;
+  await tileOn(page, ouId, worker.worker_id).getByRole("button").first().click();
+  const sheet = page.getByRole("dialog", { name });
+  await expect(sheet).toBeVisible({ timeout: 15_000 });
+  await sheet.getByRole("tab", { name: "Units" }).click();
+  for (const row of rows.present ?? []) {
+    await expect(sheet.getByText(row, { exact: true }), `the sheet lists "${row}"`).toBeVisible({ timeout: 15_000 });
+  }
+  for (const row of rows.absent ?? []) {
+    await expect(sheet.getByText(row, { exact: true }), `the sheet does not list "${row}"`).toHaveCount(0);
+  }
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden({ timeout: 15_000 });
+}

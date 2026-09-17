@@ -18,15 +18,26 @@ export type UnitCardMenuAction = "rename" | "estimate" | "assign" | "split" | "m
  * estimate, Assign people, Split, Merge, Delete. Write-gated: a read-only
  * viewer sees no menu at all. The accessible name "Unit actions" is the
  * legacy kebab's, so the a11y inventory reads the same.
+ *
+ * WP2.4c (wp2.4c.md §3.8, SP-a): a nested card passes `canSplit={false}` and
+ * shows no Split… item — an item that can never succeed is not offered.
  */
 export function UnitCardMenu({
   ou,
   canMerge,
+  canSplit = true,
   onAction,
 }: {
   ou: WallChartOU;
   /** False when the unit is alone in its Group (nothing to merge with). */
   canMerge: boolean;
+  /**
+   * WP2.4c (wp2.4c.md §3.8, SP-a): false on a NESTED card — a split there
+   * would create a grandchild under a plain root, which the depth trigger
+   * refuses, so the item is not offered at all. Default true, so every
+   * WP2.4 caller is unchanged.
+   */
+  canSplit?: boolean;
   onAction: (action: UnitCardMenuAction, ou: WallChartOU) => void;
 }) {
   return (
@@ -48,7 +59,9 @@ export function UnitCardMenu({
         <DropdownMenuItem onSelect={() => onAction("estimate", ou)}>Set estimate…</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onAction("assign", ou)}>Assign people…</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => onAction("split", ou)}>Split…</DropdownMenuItem>
+        {canSplit && (
+          <DropdownMenuItem onSelect={() => onAction("split", ou)}>Split…</DropdownMenuItem>
+        )}
         <DropdownMenuItem disabled={!canMerge} onSelect={() => onAction("merge", ou)}>
           Merge…
         </DropdownMenuItem>

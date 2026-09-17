@@ -13,6 +13,12 @@
  * legacy number from the same run and are not worse — and, since the v2 chart
  * is well inside it, the legacy suite's own absolute budget (6 s) is asserted
  * too (fix round 2, A5).
+ *
+ * WP2.4c (wp2.4c.md §4.4): the `large` fixture has no NE-a nesting edge — its
+ * vessels are children of group CONTAINERS, a facet link — so its numbers are
+ * the same shape as before and the two budgets still hold. The campaign-42
+ * `nested` fixture is mounted once and REPORTED beside them; it is small (9
+ * units, 20 members) and is not asserted.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -106,6 +112,17 @@ describe("CampaignWallChartV2 render cost (same run as the legacy chart)", () =>
     // Every member in the one Unassigned card; the 153 empty units are hidden (Show empty units off).
     expect(allUnassigned.tiles).toBe(305);
     expect(allUnassigned.cards).toBe(2);
+
+    // Reported, not asserted (§4.4): the nested shape at its real size.
+    const nested = await measure(
+      "v2 nested (campaign-42 shape, Worksite)",
+      CampaignWallChartV2,
+      buildWallChartFixtureV2("nested"),
+      "group=2"
+    );
+    // A sanity check on the shape, not a budget: KGP's two nested cards are
+    // rendered, so the mount really did build the tree.
+    expect(nested.cards).toBeGreaterThanOrEqual(7);
 
     expect(largest.ms).toBeLessThanOrEqual(legacy.ms * NOT_WORSE_FACTOR);
     expect(allUnassigned.ms).toBeLessThanOrEqual(legacy.ms * NOT_WORSE_FACTOR);

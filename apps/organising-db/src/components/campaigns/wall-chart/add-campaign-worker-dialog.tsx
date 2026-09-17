@@ -309,6 +309,7 @@ function SearchExistingBody({
   ouPick,
   onOuPick,
   onSuccess,
+  onAdded,
   onCancel,
 }: {
   campaignId: string;
@@ -325,6 +326,7 @@ function SearchExistingBody({
   ouPick: string | null;
   onOuPick: (v: string) => void;
   onSuccess: () => void;
+  onAdded?: (workerIds: number[]) => void;
   onCancel: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -378,6 +380,7 @@ function SearchExistingBody({
     onSuccess: (workerId) => {
       toast.success(workerId ? `Worker #${workerId} added to this campaign.` : "Worker added.");
       invalidateWallChartSlices(queryClient, campaignId, cidNum);
+      if (workerId != null) onAdded?.([workerId]);
       onSuccess();
     },
     onError: (err: Error) => toast.error(err.message || "Failed to add worker"),
@@ -506,12 +509,14 @@ function AddCampaignWorkerFormBody({
   contextOu,
   organisingUnits,
   onSuccess,
+  onAdded,
   onCancel,
 }: {
   campaignId: string;
   contextOu: WallChartOU | null;
   organisingUnits: WallChartOU[];
   onSuccess: () => void;
+  onAdded?: (workerIds: number[]) => void;
   onCancel: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -596,6 +601,7 @@ function AddCampaignWorkerFormBody({
     onSuccess: (workerId) => {
       toast.success(workerId ? `Worker #${workerId} added.` : "Worker added.");
       invalidateWallChartSlices(queryClient, campaignId, cidNum);
+      if (workerId != null) onAdded?.([workerId]);
       onSuccess();
     },
     onError: (err: Error) => {
@@ -632,6 +638,7 @@ function AddCampaignWorkerFormBody({
           ouPick={ouPick}
           onOuPick={setOuPick}
           onSuccess={onSuccess}
+          onAdded={onAdded}
           onCancel={onCancel}
         />
       </TabsContent>
@@ -772,6 +779,7 @@ export function AddCampaignWorkerDialog({
   contextOu,
   organisingUnits,
   formResetKey,
+  onAdded,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -781,6 +789,13 @@ export function AddCampaignWorkerDialog({
   organisingUnits: WallChartOU[];
   /** Increment when opening the dialog so the form remounts with a clean state. */
   formResetKey: number;
+  /**
+   * WP2.4c (wp2.4c.md §3.10, AP-a): the worker ids this dialog just added,
+   * so a caller can follow up — the v2 wall chart uses it to place a worker
+   * added to a NESTED card on the card's root as well, which the writer
+   * behind this dialog does not do. Absent on every legacy caller.
+   */
+  onAdded?: (workerIds: number[]) => void;
 }) {
   if (!canWrite) return null;
 
@@ -803,6 +818,7 @@ export function AddCampaignWorkerDialog({
             contextOu={contextOu}
             organisingUnits={organisingUnits}
             onSuccess={() => onOpenChange(false)}
+            onAdded={onAdded}
             onCancel={() => onOpenChange(false)}
           />
         )}

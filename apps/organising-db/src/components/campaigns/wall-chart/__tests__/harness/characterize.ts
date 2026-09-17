@@ -161,7 +161,11 @@ function describeCard(card: Element, allCards: Element[]): CharacterizedCard {
   const heading = card.querySelector("h2, h3");
   const headerParagraphs = ownedBy(card, "p").map(text);
   const assessing = headerParagraphs.find((p) => p.startsWith("Assessing:")) ?? null;
-  const header = headerParagraphs.find((p) => /\bnamed\b/u.test(p)) ?? null;
+  // "N named / M est." on every card, and — WP2.4c (wp2.4c.md §3.13) — the
+  // roll-up sentence "<n> in unit · <m> not yet in a sub-unit" a v2 root card
+  // with nested children shows in its place. No legacy card renders either
+  // wording but the first, so the legacy golden master is unchanged.
+  const header = headerParagraphs.find((p) => /\bnamed\b|\bin unit\b/u.test(p)) ?? null;
   const typeChip = heading?.nextElementSibling;
 
   const tiles = ownedBy(card, "[data-worker-id]");

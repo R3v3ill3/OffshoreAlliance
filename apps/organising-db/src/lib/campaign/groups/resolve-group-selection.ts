@@ -8,6 +8,17 @@
 //   4. first group  — by `display_order`, then `group_id`;
 //   5. `none`       — Not in any group (the only view when there are no groups).
 // Invalid values never throw; each step falls through to the next.
+//
+// WP2.4c (wp2.4c.md §3.5, SG-a): the optional `primaryIds` narrows every step
+// to the groups the selector offers — the primary groups, i.e. everything but
+// a group whose every unit is nested under a unit of another group
+// (`primaryGroups` of `derive-group-tree.ts`). A `?group=` or a stored
+// preference naming a sub-unit-only group then falls through exactly as a
+// deleted group does today, so no view exists that the Group control cannot
+// reach and "Unassigned in Shift" is never rendered. `?ou=` naming a nested
+// unit resolves to the nearest ancestor carrying a primary group — its root's
+// group under NE-a — and the focus effect still scrolls to the nested card.
+// Absent (the WP2.4 callers and their cases): today's behaviour, unchanged.
 
 export type GroupSelection = number | "none";
 
@@ -25,14 +36,26 @@ export type GroupLike = {
 
 export type ResolveGroupSelectionInput = {
   groups: readonly GroupLike[];
-  /** Units, for the `?ou=` step: only `ou_id` and `group_id` are read. */
-  ous: readonly { readonly ou_id: number; readonly group_id?: number | null }[];
+  /**
+   * Units, for the `?ou=` step: `ou_id` and `group_id`, plus `parent_ou_id`
+   * for the WP2.4c walk to the nearest ancestor with a primary group.
+   */
+  ous: readonly {
+    readonly ou_id: number;
+    readonly group_id?: number | null;
+    readonly parent_ou_id?: number | null;
+  }[];
   /** Raw `?ou=` value; `null`/`undefined` when absent. */
   ouParam?: string | null;
   /** Raw `?group=` value; `null`/`undefined` when absent. */
   groupParam?: string | null;
   /** `wallChart.group` from the prefs document; `null`/`undefined` when absent. */
   prefsGroup?: GroupSelection | null;
+  /**
+   * WP2.4c SG-a: the ids the Group selector offers (`primaryGroups`). Absent
+   * or `null` → every group is selectable, which is WP2.4's behaviour.
+   */
+  primaryIds?: ReadonlySet<number> | readonly number[] | null;
 };
 
 export const NONE_GROUP_PARAM = "none";
@@ -79,24 +102,43 @@ function isKnownSelection(candidate: GroupSelection | null | undefined, known: R
 export function resolveGroupSelection(input: ResolveGroupSelectionInput): ResolvedGroupSelection {
   const ordered = orderGroups(input.groups);
   const known = new Set(ordered.map((g) => g.group_id));
+  // Selectable = the primary ids that are live groups; every group when the
+  // caller passes none (WP2.4).
+  const selectable =
+    input.primaryIds == null
+      ? known
+      : new Set([...input.primaryIds].filter((id) => known.has(id)));
 
-  // 1. `?ou=`: the unit's group, when the unit exists and carries a known group.
+  // 1. `?ou=`: the unit's group, or — when that group is not selectable — the
+  //    nearest ancestor's (a nested unit opens on its root's group, §3.5).
   const ouId = parseId(input.ouParam);
   if (ouId != null) {
-    const unit = input.ous.find((o) => o.ou_id === ouId);
-    const groupId = unit?.group_id ?? null;
-    if (groupId != null && known.has(groupId)) return { selection: groupId, source: "ou" };
+    // First row wins for a duplicated `ou_id`, as WP2.4's `find` did.
+    const byId = new Map<number, (typeof input.ous)[number]>();
+    for (const o of input.ous) if (!byId.has(o.ou_id)) byId.set(o.ou_id, o);
+    let unit = byId.get(ouId);
+    const walked = new Set<number>();
+    while (unit && !walked.has(unit.ou_id)) {
+      walked.add(unit.ou_id);
+      const groupId = unit.group_id ?? null;
+      if (groupId != null && selectable.has(groupId)) return { selection: groupId, source: "ou" };
+      // Without `primaryIds` the focused unit's own group is the only step
+      // (WP2.4, unchanged): no group, no view.
+      if (input.primaryIds == null) break;
+      const parentId = unit.parent_ou_id ?? null;
+      unit = parentId == null ? undefined : byId.get(parentId);
+    }
   }
 
   // 2. `?group=`.
   const fromUrl = parseGroupParam(input.groupParam);
-  if (isKnownSelection(fromUrl, known)) return { selection: fromUrl, source: "url" };
+  if (isKnownSelection(fromUrl, selectable)) return { selection: fromUrl, source: "url" };
 
   // 3. prefs.
-  if (isKnownSelection(input.prefsGroup, known)) return { selection: input.prefsGroup, source: "prefs" };
+  if (isKnownSelection(input.prefsGroup, selectable)) return { selection: input.prefsGroup, source: "prefs" };
 
-  // 4. first group; 5. none.
-  const first = ordered[0];
+  // 4. first selectable group; 5. none.
+  const first = ordered.find((g) => selectable.has(g.group_id));
   if (first) return { selection: first.group_id, source: "first" };
   return { selection: "none", source: "none" };
 }

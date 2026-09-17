@@ -8,6 +8,12 @@
  * hidden unit from a seeded prefs document, and the Not in any group view.
  * Nothing here re-implements product logic; every value is produced by
  * mounting the real `CampaignWallChartV2`.
+ *
+ * WP2.4c (wp2.4c.md §4.3): the `small` fixture's ou 13 "South Deck" is a
+ * Shift child of the Employer unit "Acme South", so the `default` and
+ * `read-only` snapshots now carry it as a NESTED card (level 2) inside Acme
+ * South, with Dan under it instead of in "Unassigned in Employer" — and a
+ * `nested` case is added over the campaign-42 fixture.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -108,6 +114,15 @@ describe("CampaignWallChartV2 characterization", () => {
       Component: CampaignWallChartV2,
       fixture: buildWallChartFixtureV2("small"),
       search: "group=none",
+    });
+    expect(characterize(mounted.container, mounted.queryClient)).toMatchSnapshot();
+  });
+
+  it("nested: the campaign-42 shape, Worksite (wp2.4c.md §4.3)", async () => {
+    mounted = await mountWallChart({
+      Component: CampaignWallChartV2,
+      fixture: buildWallChartFixtureV2("nested"),
+      search: "group=2",
     });
     expect(characterize(mounted.container, mounted.queryClient)).toMatchSnapshot();
   });

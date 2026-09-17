@@ -9,6 +9,13 @@
  * search over the per-user hidden set, the Not in any group view, the
  * zero-groups state, the refused-move toast, A8 and the MN-a dialog.
  *
+ * WP2.4c (wp2.4c.md §4.3) updates the cases the nested reading changes on the
+ * `small` fixture: ou 13 "South Deck" (Shift) is a child of ou 12 "Acme
+ * South" (Employer), so in the Employer view it renders NESTED inside Acme
+ * South and the Shift group — every unit of which is nested — is no longer
+ * offered as a primary group (SG-a). The nested behaviours themselves are
+ * pinned on the `nested` fixture in `wall-chart-v2.nesting.test.tsx`.
+ *
  * Every expectation is a literal.
  */
 
@@ -145,8 +152,19 @@ async function typeInto(input: HTMLInputElement, value: string): Promise<void> {
   });
 }
 
+/** The card's OWN ⋯ menu — a root card also contains its nested children's. */
+function ownUnitActions(card: HTMLElement): HTMLButtonElement {
+  const own = [...card.querySelectorAll("button")].filter(
+    (b) =>
+      b.getAttribute("aria-label") === "Unit actions" &&
+      b.closest('[class~="print:break-inside-avoid"]') === card
+  );
+  if (own.length !== 1) throw new Error(`Expected one own "Unit actions" button, found ${own.length}`);
+  return own[0];
+}
+
 async function openUnitActions(card: HTMLElement): Promise<HTMLElement[]> {
-  await keydown(button(card, "Unit actions"), "ArrowDown");
+  await keydown(ownUnitActions(card), "ArrowDown");
   await flush(2);
   return [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 }
@@ -172,13 +190,15 @@ describe("Group selector, ?group= and prefs", () => {
     const { container } = await mount();
 
     expect(groupTrigger(container).textContent).toBe("Employer");
-    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", EMPLOYER]);
+    // South Deck is nested inside Acme South (wp2.4c.md §3.6, B1).
+    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", "South Deck", EMPLOYER]);
 
     await click(groupTrigger(container));
+    // SG-a: Shift is sub-unit-only (its one unit is nested under an Employer
+    // unit), so it is not offered and no "Unassigned in Shift" view exists.
     expect([...document.body.querySelectorAll('[role="option"]')].map((o) => o.textContent)).toEqual([
       "Employer",
       "Worksite",
-      "Shift",
       "Not in any group",
     ]);
   });
@@ -203,17 +223,17 @@ describe("Group selector, ?group= and prefs", () => {
     expect(selectionBar(container)).not.toBeNull();
     spies.replace.mockClear();
 
-    await chooseGroup(container, "Shift");
+    await chooseGroup(container, "Worksite");
 
-    expect(groupTrigger(container).textContent).toBe("Shift");
-    expect(unitTitles(container)).toEqual(["South Deck", "Unassigned in Shift"]);
-    expect(cardTiles(unitCard(container, "South Deck"))).toEqual(["104 Dan Dawson"]);
-    expect(cardTiles(unitCard(container, "Unassigned in Shift"))).toContain("107 Gina Grant");
+    expect(groupTrigger(container).textContent).toBe("Worksite");
+    expect(unitTitles(container)).toEqual(["Port Alpha", "Unassigned in Worksite"]);
+    expect(cardTiles(unitCard(container, "Port Alpha"))).toContain("107 Gina Grant");
+    expect(cardTiles(unitCard(container, "Unassigned in Worksite"))).toContain("104 Dan Dawson");
     expect(selectionBar(container)).toBeNull();
     expect(spies.replace).toHaveBeenCalledTimes(1);
-    expect(spies.replace).toHaveBeenCalledWith("/campaigns/1?group=3", { scroll: false });
+    expect(spies.replace).toHaveBeenCalledWith("/campaigns/1?group=2", { scroll: false });
     expect(prefsUpserts()).toEqual([
-      { user_id: "test-user", campaign_id: CAMPAIGN, prefs: { wallChart: { group: 3, v: 1 } } },
+      { user_id: "test-user", campaign_id: CAMPAIGN, prefs: { wallChart: { group: 2, v: 1 } } },
     ]);
   });
 
@@ -238,10 +258,10 @@ describe("Group selector, ?group= and prefs", () => {
       fixture: buildWallChartFixtureV2("small", { prefs: { wallChart: { v: 1, group: 2 }, layout: "list" } }),
     });
 
-    await chooseGroup(container, "Shift");
+    await chooseGroup(container, "Employer");
 
     expect(prefsUpserts()).toEqual([
-      { user_id: "test-user", campaign_id: CAMPAIGN, prefs: { layout: "list", wallChart: { v: 1, group: 3 } } },
+      { user_id: "test-user", campaign_id: CAMPAIGN, prefs: { layout: "list", wallChart: { v: 1, group: 1 } } },
     ]);
   });
 
@@ -427,10 +447,12 @@ describe("drag rules (plan 5.6) and the selection bar", () => {
     expect(dialog.textContent).not.toContain("Copy");
 
     await click(button(dialog, "Target unit"));
+    // wp2.4c.md §3.7: the roots, each root's nested children right after it.
     expect([...document.body.querySelectorAll('[role="option"]')].map((o) => o.textContent)).toEqual([
       "Unassigned in Employer",
       "Acme North",
       "Acme South",
+      "Acme South › South Deck",
     ]);
     await click(selectOption("Acme South"));
     await click(button(openDialog(), "Move"));
@@ -469,16 +491,17 @@ describe("Filter, Colour by and Show empty units (campaign-wide)", () => {
       "110 Jack Jones",
       "111 Kim King",
     ]);
-    // Acme North (Ben 2, Gina 2) is empty after filtering and, with Show empty units off, hidden.
+    // Acme North (Ben 2, Gina 2) is empty after filtering and, with Show empty
+    // units off, hidden; so is the nested South Deck (Dan, rated 4).
     expect(unitTitles(container)).toEqual(["Acme South", EMPLOYER]);
-    expect(container.textContent).toContain("1 empty unit hidden");
+    expect(container.textContent).toContain("2 empty units hidden");
     expect(button(container, "Filter (1)")).toBeTruthy();
     const chips = container.querySelector('[aria-label="Active filters"]');
     expect(chips?.textContent).toContain("Rating");
 
     await click(button(container, "Remove Rating filter"));
 
-    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", EMPLOYER]);
+    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", "South Deck", EMPLOYER]);
     expect(container.querySelector('[aria-label="Active filters"]')).toBeNull();
   });
 
@@ -508,7 +531,7 @@ describe("Filter, Colour by and Show empty units (campaign-wide)", () => {
 
     await click(emptyUnitsSwitch(container));
 
-    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", EMPLOYER]);
+    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", "South Deck", EMPLOYER]);
     expect(cardTiles(unitCard(container, "Acme North"))).toEqual([]);
     expect(container.textContent).not.toContain("empty unit hidden");
     expect(prefsUpserts().at(-1)).toMatchObject({ prefs: { wallChart: { showEmptyUnits: true } } });
@@ -615,20 +638,22 @@ describe("hidden units, the Units manager and search (HU-a, appendix A 2.3)", ()
   it("the Units manager lists the selected group's units, hides one, and the prefs payload carries it", async () => {
     const { container } = await mount();
 
-    await click(button(container, "Units (2)"));
+    await click(button(container, "Units (3)"));
     const popover = [...document.body.querySelectorAll('[role="dialog"]')].at(-1);
     if (!popover) throw new Error("No Units popover");
     expect(popover.textContent).toContain("Hidden units are remembered for you on every device.");
+    // wp2.4c.md §3.9: the tree — each root, with its nested children under it.
     expect([...popover.querySelectorAll("label")].map((l) => l.textContent?.trim())).toEqual([
       "Acme North",
-      "Acme South",
+      "Acme South(1)",
+      "South Deck",
     ]);
     const box = popover.querySelector<HTMLElement>("#wc-ou-vis-11");
     if (!box) throw new Error("No visibility checkbox for Acme North");
     await click(box);
 
-    expect(unitTitles(container)).toEqual(["Acme South", EMPLOYER]);
-    expect(button(container, "Units (1/2)")).toBeTruthy();
+    expect(unitTitles(container)).toEqual(["Acme South", "South Deck", EMPLOYER]);
+    expect(button(container, "Units (2/3)")).toBeTruthy();
     expect(prefsUpserts().at(-1)).toEqual({
       user_id: "test-user",
       campaign_id: CAMPAIGN,
@@ -640,12 +665,12 @@ describe("hidden units, the Units manager and search (HU-a, appendix A 2.3)", ()
     const { container } = await mount({
       fixture: buildWallChartFixtureV2("small", { prefs: { wallChart: { v: 1, hiddenOuIds: [11, 20] } } }),
     });
-    expect(unitTitles(container)).toEqual(["Acme South", EMPLOYER]);
+    expect(unitTitles(container)).toEqual(["Acme South", "South Deck", EMPLOYER]);
 
-    await click(button(container, "Units (1/2)"));
+    await click(button(container, "Units (2/3)"));
     await click(button(document.body, "Show all"));
 
-    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", EMPLOYER]);
+    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", "South Deck", EMPLOYER]);
     expect(prefsUpserts().at(-1)).toMatchObject({ prefs: { wallChart: { hiddenOuIds: [20] } } });
   });
 
@@ -653,9 +678,9 @@ describe("hidden units, the Units manager and search (HU-a, appendix A 2.3)", ()
     const { container } = await mount({
       fixture: buildWallChartFixtureV2("small", { prefs: { wallChart: { v: 1, hiddenOuIds: [11, 999] } } }),
     });
-    expect(button(container, "Units (1/2)")).toBeTruthy();
+    expect(button(container, "Units (2/3)")).toBeTruthy();
 
-    await click(button(container, "Units (1/2)"));
+    await click(button(container, "Units (2/3)"));
     const box = document.body.querySelector<HTMLElement>("#wc-ou-vis-12");
     if (!box) throw new Error("No visibility checkbox for Acme South");
     await click(box);
@@ -667,7 +692,7 @@ describe("hidden units, the Units manager and search (HU-a, appendix A 2.3)", ()
     const { container } = await mount({
       fixture: buildWallChartFixtureV2("small", { prefs: { wallChart: { v: 1, hiddenOuIds: [11] } } }),
     });
-    expect(unitTitles(container)).toEqual(["Acme South", EMPLOYER]);
+    expect(unitTitles(container)).toEqual(["Acme South", "South Deck", EMPLOYER]);
 
     await click(button(container, "Find worker"));
     const input = document.body.querySelector<HTMLInputElement>('input[placeholder="Search workers by name…"]');
@@ -684,7 +709,7 @@ describe("hidden units, the Units manager and search (HU-a, appendix A 2.3)", ()
       await new Promise((resolve) => setTimeout(resolve, 120));
     });
 
-    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", EMPLOYER]);
+    expect(unitTitles(container)).toEqual(["Acme North", "Acme South", "South Deck", EMPLOYER]);
     expect(spies.openWorkerDetail).toHaveBeenCalledWith(BEN);
     expect(container.querySelector('[data-ou-id="11"]')?.className).toContain("ring-2");
     expect(prefsUpserts().at(-1)).toMatchObject({ prefs: { wallChart: { hiddenOuIds: [] } } });
@@ -884,13 +909,19 @@ describe("the card's ⋯ menu (MN-a) and the sheet (A8)", () => {
     expect(spies.toastError).toHaveBeenCalledWith("You don't have permission to change this campaign's units.");
   });
 
-  it("Dan is in South Deck under Shift and Unassigned under Employer — the same placement seen from two groups", async () => {
+  it("Dan is nested under Acme South in the Employer view and Shift is not offered (wp2.4c.md §4.3)", async () => {
     const { container } = await mount();
-    expect(cardTiles(unitCard(container, EMPLOYER))).toContain("104 Dan Dawson");
 
-    await chooseGroup(container, "Shift");
+    // NP-a: Dan holds the shift row only, so the tree infers his root from
+    // `parent_ou_id` and draws him inside Acme South's card, on South Deck —
+    // not in "Unassigned in Employer", which is what the flat view said.
+    expect(cardTiles(unitCard(container, "South Deck"))).toEqual([`${DAN} Dan Dawson`]);
+    expect(cardTiles(unitCard(container, EMPLOYER))).not.toContain(`${DAN} Dan Dawson`);
+    // The roll-up counts him under Acme South (B5), whose own area does not.
+    expect(button(unitCard(container, "Acme South"), "Select all in Acme South's own area (3 in unit · 2 not yet in a sub-unit)")).toBeTruthy();
 
-    expect(cardTiles(unitCard(container, "South Deck"))).toEqual(["104 Dan Dawson"]);
-    expect(cardTiles(unitCard(container, "Unassigned in Shift"))).not.toContain(`${DAN} Dan Dawson`);
+    // SG-a: there is no Shift view to switch to.
+    await click(groupTrigger(container));
+    expect([...document.body.querySelectorAll('[role="option"]')].map((o) => o.textContent)).not.toContain("Shift");
   });
 });

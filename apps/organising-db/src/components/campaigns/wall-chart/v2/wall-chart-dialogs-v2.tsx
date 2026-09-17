@@ -107,17 +107,70 @@ export function WallChartDialogsV2({
     addWorkerFormKey,
   } = shell.dialogs;
   const { setHighlightedOuId } = shell.highlight;
-  const { ous, ouById, groupUnits, nextDisplayOrder, workersByUnit } = structure;
+  const { ous, ouById, groupUnits, nextDisplayOrder, workersByUnit, tree, rollupByUnit, cardTitle } = structure;
   const { workerById } = structure.index;
   const group = groupsState.selectedGroup;
 
-  // Move targets: the Group's units, or — outside any Group — every unit that has a Group, "Group › Unit".
+  /**
+   * Move targets (wp2.4c.md §3.7): inside a Group, its roots, each root's
+   * nested children right after it as "<Root> › <Child>", then the flat
+   * foreign-nested cards — the same order the band renders. Outside any Group
+   * they stay every unit that has a Group, "Group › Unit" (§3.5: the Not in
+   * any group view is unchanged).
+   */
   const moveTargets = useMemo<MoveToUnitTarget[]>(() => {
-    if (group) return groupUnits.map((ou) => ({ ou, group }));
+    if (group) {
+      if (!tree) return groupUnits.map((ou) => ({ ou, group }));
+      const out: MoveToUnitTarget[] = [];
+      for (const root of tree.roots) {
+        out.push({ ou: root, group });
+        for (const child of tree.childrenByRoot.get(root.ou_id) ?? []) {
+          out.push({ ou: child, group, label: `${ouDisplayName(root)} › ${ouDisplayName(child)}` });
+        }
+      }
+      // A flat foreign-nested card is titled "<Parent> › <Unit>" here too
+      // (§3.13; review A-2, fix round 1).
+      for (const flat of tree.foreignNested) out.push({ ou: flat, group, label: cardTitle(flat) });
+      return out;
+    }
     return groupsState.groups.flatMap((g) =>
       (structure.unitsByGroup.get(g.group_id) ?? []).map((ou) => ({ ou, group: g }))
     );
-  }, [group, groupUnits, groupsState.groups, structure.unitsByGroup]);
+  }, [group, tree, groupUnits, groupsState.groups, structure.unitsByGroup, cardTitle]);
+
+  /**
+   * The delete dialog's inputs (wp2.4c.md §3.9). `childOuIds` is EVERY unit
+   * whose `parent_ou_id` is the target — not the NE-a nesting set — because
+   * `delete-organising-unit-dialog.tsx:121` sends `deleteChildren: true`
+   * unconditionally and `structure_unit_delete` then removes every child with
+   * its placements. What the dialog announces has to be what the RPC deletes
+   * (review B-2, fix round 1): the nesting set left two classes unannounced —
+   * a group container's members (Delete… on campaign 42's "EDI Downer" card
+   * takes all four worksites, their shifts and their placements) and a C-k
+   * same-group child (deleting "Barrow" takes the "Barrow Jetty" card beside
+   * it). Both are real children of the target and neither nests under NE-a.
+   * With them named, the dialog takes its "Delete group + N sub-units" branch
+   * and drops the reassignment step, which is right: those placements go too.
+   *
+   * A NESTED card has no children and hands over, as reassignment targets, its
+   * siblings in the same Group under the same root plus that Group's roots —
+   * the dialog's own same-parent rule then narrows them.
+   */
+  const deleteChildOuIds = useMemo(() => {
+    if (!deleteTargetOu) return [] as number[];
+    return ous.filter((o) => o.parent_ou_id === deleteTargetOu.ou_id).map((o) => o.ou_id);
+  }, [deleteTargetOu, ous]);
+  const deleteAllOus = useMemo(() => {
+    if (!deleteTargetOu || !tree) return groupUnits;
+    const nestedSiblings = [...tree.childrenByRoot.values()]
+      .flat()
+      .filter((c) => c.parent_ou_id === deleteTargetOu.parent_ou_id && c.group_id === deleteTargetOu.group_id);
+    // A card is nested when it is one of its root's children; a root and a
+    // flat foreign-nested card both keep WP2.4's Group-wide list.
+    const isNested = nestedSiblings.some((c) => c.ou_id === deleteTargetOu.ou_id);
+    if (!isNested) return groupUnits;
+    return [...nestedSiblings, ...groupUnits];
+  }, [deleteTargetOu, tree, groupUnits]);
 
   const tileDialogWorker = tileUnitDialog != null ? workerById.get(tileUnitDialog.workerId) : undefined;
   const tileRefs: DropRef[] = tileUnitDialog
@@ -130,8 +183,11 @@ export function WallChartDialogsV2({
   const workerCountByOu = useMemo(() => {
     const m = new Map<number, number>();
     for (const [ouId, ids] of workersByUnit) m.set(ouId, ids.length);
+    // A root's count is its roll-up, so the merge dialog names the same
+    // number the card shows (wp2.4c.md §3.6).
+    for (const [ouId, ids] of rollupByUnit) m.set(ouId, ids.length);
     return m;
-  }, [workersByUnit]);
+  }, [workersByUnit, rollupByUnit]);
 
   return (
     <>
@@ -212,7 +268,7 @@ export function WallChartDialogsV2({
           key={`merge-${mergeSourceOu.ou_id}`}
           campaignId={campaignId}
           source={mergeSourceOu}
-          candidates={groupUnits.filter((u) => u.ou_id !== mergeSourceOu.ou_id)}
+          candidates={actions.mergeCandidatesFor(mergeSourceOu)}
           workerCountByOu={workerCountByOu}
           onClose={() => setMergeSourceOu(null)}
         />
@@ -265,6 +321,10 @@ export function WallChartDialogsV2({
         contextOu={addWorkerContextOu}
         organisingUnits={ous}
         formResetKey={addWorkerFormKey}
+        // AP-a (wp2.4c.md §3.10): "Assign people…" on a nested card places the
+        // worker on the sub-unit only (the route has no parent logic), so the
+        // chart adds the root row itself for the workers who hold none.
+        onAdded={(workerIds) => actions.handleWorkersAdded(addWorkerContextOu, workerIds)}
       />
 
       {splitTargetOu && (
@@ -298,10 +358,11 @@ export function WallChartDialogsV2({
           }}
           campaignId={campaignId}
           unit={deleteTargetOu}
-          // Same-Group targets only (§3.13): the dialog's own same-parent /
-          // same-container rule then applies within them.
-          allOus={groupUnits}
-          childOuIds={[]}
+          // Same-Group targets only (§3.13), plus a nested source's siblings
+          // (wp2.4c.md §3.9); the dialog's own same-parent / same-container
+          // rule then applies within them.
+          allOus={deleteAllOus}
+          childOuIds={deleteChildOuIds}
           workers={actions.deleteUnitWorkers}
           onDeleted={() => {
             setDeleteTargetOu(null);

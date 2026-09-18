@@ -62,6 +62,10 @@ import {
   buildWorkerEmailContext,
 } from '@/lib/comms/campaign-email-context'
 import { tagWorkerEmailed } from '@/lib/comms/send-log'
+import {
+  loadDraftAttachmentPayloads,
+  toProviderAttachments,
+} from '@/lib/email/load-draft-attachments'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -319,6 +323,26 @@ export async function GET(request: Request) {
         continue
       }
 
+      let providerAttachments: OutboundEmail['attachments']
+      try {
+        const loaded = await loadDraftAttachmentPayloads(supabase, list.draft_id)
+        providerAttachments =
+          loaded.length > 0 ? toProviderAttachments(loaded) : undefined
+      } catch (attachmentErr) {
+        await supabase
+          .from('email_lists')
+          .update({ status: 'paused' })
+          .eq('list_id', list.list_id)
+        summary.errors.push({
+          list_id: list.list_id,
+          error:
+            attachmentErr instanceof Error
+              ? `Paused — ${attachmentErr.message}`
+              : 'Paused — could not load draft attachments',
+        })
+        continue
+      }
+
       if (!sender) sender = await getEmailSenderIdentity()
 
       if (list.status === 'queued') {
@@ -510,6 +534,7 @@ export async function GET(request: Request) {
               unsubscribeUrl,
               sender.replyTo || sender.fromEmail,
             ),
+            attachments: providerAttachments,
           })
           batchMeta.push({ item, worker })
         }

@@ -29,6 +29,11 @@ import { stripMergeFieldChips } from '@/lib/comms/chip-html'
 import { sanitiseEmailHtml } from '@/lib/comms/sanitise-email-html'
 import { htmlToPlain, isValidEmail } from '@/lib/comms/mailto-builder'
 import { loadCampaignEmailContext } from '@/lib/comms/campaign-email-context'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  loadDraftAttachmentPayloads,
+  toProviderAttachments,
+} from '@/lib/email/load-draft-attachments'
 
 function textToHtml(text: string): string {
   if (!text) return ''
@@ -151,6 +156,20 @@ export async function POST(
     unsubscribeUrl: unsubscribeUrlForToken('test-preview'),
   })
 
+  let providerAttachments
+  try {
+    const loaded = await loadDraftAttachmentPayloads(createAdminClient(), draftId)
+    providerAttachments = loaded.length > 0 ? toProviderAttachments(loaded) : undefined
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : 'Could not load email attachments',
+      },
+      { status: 500 },
+    )
+  }
+
   try {
     const [provider, sender] = await Promise.all([
       getEmailProvider(),
@@ -163,6 +182,7 @@ export async function POST(
           subject: subjectResolved,
           html: finalHtml,
           text: htmlToPlain(finalHtml),
+          attachments: providerAttachments,
         },
       ],
       { from: sender },

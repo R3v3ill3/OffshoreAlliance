@@ -10719,6 +10719,70 @@ export type Database = {
           },
         ]
       }
+      email_draft_attachments: {
+        Row: {
+          attachment_id: number
+          byte_size: number
+          campaign_id: number
+          content_type: string | null
+          created_at: string
+          created_by: string | null
+          draft_id: number
+          filename: string
+          source_document_id: number | null
+          storage_bucket: string
+          storage_path: string
+        }
+        Insert: {
+          attachment_id?: number
+          byte_size: number
+          campaign_id: number
+          content_type?: string | null
+          created_at?: string
+          created_by?: string | null
+          draft_id: number
+          filename: string
+          source_document_id?: number | null
+          storage_bucket?: string
+          storage_path: string
+        }
+        Update: {
+          attachment_id?: number
+          byte_size?: number
+          campaign_id?: number
+          content_type?: string | null
+          created_at?: string
+          created_by?: string | null
+          draft_id?: number
+          filename?: string
+          source_document_id?: number | null
+          storage_bucket?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_draft_attachments_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_draft_attachments_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_comms_drafts"
+            referencedColumns: ["draft_id"]
+          },
+          {
+            foreignKeyName: "email_draft_attachments_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["document_id"]
+          },
+        ]
+      }
       email_engagement_events: {
         Row: {
           event_id: number

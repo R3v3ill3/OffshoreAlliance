@@ -69,6 +69,7 @@ import {
 } from 'lucide-react'
 import { TemplatePicker } from '@/components/campaigns/planning/TemplatePicker'
 import { SubjectLineField, PreheaderField } from './SubjectLineField'
+import { EmailAttachmentsField, useEmailDraftAttachments } from './EmailAttachmentsField'
 import { EmailPreviewPane, type PreviewSampleContact } from './EmailPreviewPane'
 import { RecipientPanel, type RecipientRow } from './RecipientPanel'
 import { SendActions } from './SendActions'
@@ -157,6 +158,10 @@ export function EmailComposer() {
       Number.isFinite(campaignId) ? campaignId : null,
       draftId,
     )
+  const { data: draftAttachments = [] } = useEmailDraftAttachments(
+    campaignId,
+    draftId,
+  )
 
   const returnTo = searchParams.get('returnTo')
   const backHref =
@@ -1211,6 +1216,7 @@ export function EmailComposer() {
             setHasUnsavedChanges(true)
           }}
         />
+        <EmailAttachmentsField campaignId={campaignId} draftId={draftId} />
       </section>
 
       {/* Split-pane: editor / preview */}
@@ -1246,6 +1252,7 @@ export function EmailComposer() {
               bodyText={bodyText}
               campaignContext={varContext}
               sampleContacts={sampleContacts}
+              attachmentNames={draftAttachments.map((file) => file.filename)}
             />
           </Panel>
         </PanelGroup>

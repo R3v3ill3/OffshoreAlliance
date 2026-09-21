@@ -1087,7 +1087,7 @@ Commits: one per stage (CLAUDE.md: one commit per completed unit of work; the or
 
 ### 9.1 Questions for the operator (answer by label; "as recommended" is a complete answer)
 
-**Answered 2026-09-17 by the operator: "agree with all recommendations, proceed".** In force: **FQ-a-a** (include the 15 FQ-a readers), **RD-a** (member-scoped delete policy), **FQ-c allow**, **FQ-d/e/f leave**, **FQ-g-a** (simulation + schema rehearsal; no data run sheet rehearsal), **TRG-a**, **CA supply at Stage 2**, **HT delete afterwards**. Plan status: **approved; implementing Stage 1.**
+**Answered 2026-09-17 by the operator: "agree with all recommendations, proceed".** In force: **FQ-a-a** (include the 15 FQ-a readers), **RD-a** (member-scoped delete policy), **FQ-c allow**, **FQ-d/e/f leave**, **FQ-g-a** (simulation + schema rehearsal; no data run sheet rehearsal), **TRG-a**, **CA supply at Stage 2**, **HT delete afterwards**. Plan status: **approved; implementing Stage 1.** **2026-09-21, operator:** "go ahead with the plan … full permission to do all necessary steps up to the point of pushing everything to main" — this is the per-file approval for the dev apply (§0.1 step 2), the realistic-data rehearsal run sheet (§0.1 step 4) and the Stage 3/4 work; production (§0.1 step 6) and the merge stay the operator's.
 
 | # | Question | Recommendation |
 |---|---|---|

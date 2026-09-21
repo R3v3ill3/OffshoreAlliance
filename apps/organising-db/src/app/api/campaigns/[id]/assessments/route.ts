@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { loadCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 
 /**
  * GET /api/campaigns/[id]/assessments
@@ -27,10 +29,12 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // WP3.8 (wp3.8.md §2 A19): owned plus the parent's shared assessments.
+    const campaignParent = await loadCampaignParent(supabase, campaignId)
     const { data, error } = await supabase
       .from('campaign_activities')
       .select('activity_id, title, is_binary, template_key')
-      .eq('campaign_id', campaignId)
+      .or(familyActivityFilter(campaignId, campaignParent.parentId))
       .eq('activity_kind', 'assessment')
       .order('title', { ascending: true })
 

@@ -24,6 +24,10 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
+import { useCampaignWriteAccess } from "@/lib/hooks/useCampaignWriteAccess";
+import { CAMPAIGN_PARENT_QUERY_KEY } from "@/lib/campaign/campaign-parent";
+import { familyErrorMessage } from "@/lib/campaign/families";
+import { trackCampaignParentSet } from "@/lib/analytics/events";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 import {
   campaignOrganiserPickerValueForUser,
@@ -40,6 +44,8 @@ interface CampaignBasics {
   plan_timeframe_weeks?: number | null;
   total_worker_estimate: number | null;
   organiser_id: number | null;
+  /** WP3.8 (wp3.8.md §3.5): the campaign this one is part of. Optional so fixtures compile. */
+  parent_campaign_id?: number | null;
 }
 
 interface FormState {
@@ -49,7 +55,20 @@ interface FormState {
   plan_timeframe_mode: "weeks" | "months" | "custom";
   plan_timeframe_weeks: string;
   total_worker_estimate: string;
+  /** "" = none (SET-a: clearing is always allowed). */
+  parent_campaign_id: string;
 }
+
+/** A campaign that may be chosen as the parent (wp3.8.md §3.7 "Basics sheet"). */
+type ParentCandidateRow = {
+  campaign_id: number;
+  name: string;
+  parent_campaign_id?: number | null;
+  is_sms_episode?: boolean | null;
+  is_standing?: boolean | null;
+};
+
+const NO_PARENT_VALUE = "__none__";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -102,6 +121,8 @@ function hydrateForm(campaign: CampaignBasics): FormState {
         : "",
     total_worker_estimate:
       campaign.total_worker_estimate != null ? String(campaign.total_worker_estimate) : "",
+    parent_campaign_id:
+      campaign.parent_campaign_id != null ? String(campaign.parent_campaign_id) : "",
   };
 }
 
@@ -197,6 +218,73 @@ export function CampaignBasicsEditSheet({
 
   const assignedCount = coverage?.total_assigned_workers ?? 0;
 
+  // ── Part of (WP3.8, wp3.8.md §3.7 "Basics sheet") ──────────────────────────
+  // Candidates: campaigns with no parent that are neither an SMS episode nor
+  // the standing campaign, minus this one; the same predicates are repeated
+  // client-side so a backend that ignores filters still agrees with PostgREST.
+  // Then intersected with `campaigns_i_can_write` (SET-a: writer of both;
+  // the trigger is the authority, this is the friendly pre-check).
+  const { data: parentCandidates = [] } = useQuery({
+    queryKey: ["campaign-parent-candidates", campaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaigns")
+        .select("campaign_id, name, parent_campaign_id, is_sms_episode, is_standing")
+        .is("parent_campaign_id", null)
+        .eq("is_sms_episode", false)
+        .eq("is_standing", false)
+        .neq("campaign_id", campaignId)
+        .order("name");
+      if (error) throw error;
+      return ((data ?? []) as ParentCandidateRow[]).filter(
+        (c) =>
+          Number(c.campaign_id) !== campaignId &&
+          c.parent_campaign_id == null &&
+          !c.is_sms_episode &&
+          !c.is_standing
+      );
+    },
+    enabled: !!user && open,
+  });
+
+  const candidateIds = useMemo(
+    () => parentCandidates.map((c) => Number(c.campaign_id)),
+    [parentCandidates]
+  );
+  const { data: writableIds } = useCampaignWriteAccess(candidateIds);
+  const parentOptions = useMemo(
+    () => parentCandidates.filter((c) => writableIds?.has(Number(c.campaign_id))),
+    [parentCandidates, writableIds]
+  );
+
+  const { data: childCampaigns = [] } = useQuery({
+    queryKey: ["campaign-children", String(campaignId)],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaigns")
+        .select("campaign_id, name, parent_campaign_id")
+        .eq("parent_campaign_id", campaignId)
+        .order("name");
+      if (error) throw error;
+      return ((data ?? []) as ParentCandidateRow[]).filter(
+        (c) => Number(c.parent_campaign_id) === campaignId
+      );
+    },
+    enabled: !!user && open,
+  });
+  const childCount = childCampaigns.length;
+  const parentLocked = childCount > 0;
+
+  // The current parent may be one the organiser cannot write to (set by an
+  // admin); keep it selectable as the current value so Save does not drop it.
+  const currentParentOption = useMemo(() => {
+    if (!form.parent_campaign_id) return null;
+    const id = Number(form.parent_campaign_id);
+    return parentOptions.some((c) => Number(c.campaign_id) === id)
+      ? null
+      : (parentCandidates.find((c) => Number(c.campaign_id) === id) ?? { campaign_id: id, name: `Campaign ${id}` });
+  }, [form.parent_campaign_id, parentOptions, parentCandidates]);
+
   // ── Computed warnings ──────────────────────────────────────────────────────
 
   const warnings = useMemo(() => {
@@ -237,6 +325,7 @@ export function CampaignBasicsEditSheet({
         { currentUserId: user.id, canLinkOtherOrganisers: isAdmin || isLeadOrganiser }
       );
 
+      const nextParentId = form.parent_campaign_id ? Number(form.parent_campaign_id) : null;
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
         start_date: form.start_date || null,
@@ -246,19 +335,40 @@ export function CampaignBasicsEditSheet({
           ? Number(form.total_worker_estimate)
           : null,
         organiser_id: resolvedOrganiserId,
+        parent_campaign_id: nextParentId,
       };
 
       const { error } = await supabase
         .from("campaigns")
         .update(payload)
         .eq("campaign_id", campaignId);
-      if (error) throw error;
+      if (error) {
+        // The one-level trigger's refusals (campaign_family_*) read as sentences.
+        const e = error as { code?: string | null; message: string };
+        throw new Error(familyErrorMessage(e.code, e.message));
+      }
+      return { nextParentId };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       // Invalidate all queries that derive from campaign fundamentals.
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-settings", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-wall-chart", campaignId] });
+      const previousParentId = campaign.parent_campaign_id ?? null;
+      const nextParentId = result?.nextParentId ?? null;
+      if (nextParentId !== previousParentId) {
+        // WP3.8: the family readers of this campaign and of both parents.
+        queryClient.invalidateQueries({ queryKey: [CAMPAIGN_PARENT_QUERY_KEY, campaignId] });
+        queryClient.invalidateQueries({ queryKey: ["campaign-children"] });
+        queryClient.invalidateQueries({ queryKey: ["campaign-parent-candidates"] });
+        queryClient.invalidateQueries({ queryKey: ["campaign-activities-family", String(campaignId)] });
+        queryClient.invalidateQueries({ queryKey: ["campaign-assessments-rated", String(campaignId)] });
+        trackCampaignParentSet({
+          campaign_id: campaignId,
+          parent_id: nextParentId,
+          previous_parent_id: previousParentId,
+        });
+      }
       onSaved();
       onOpenChange(false);
     },
@@ -304,6 +414,40 @@ export function CampaignBasicsEditSheet({
             resetKey={organiserResetKey}
             showStaffHint={false}
           />
+
+          {/* Part of (WP3.8) */}
+          <div className="space-y-2">
+            <Label htmlFor="basics-parent">Part of</Label>
+            <Select
+              value={form.parent_campaign_id || NO_PARENT_VALUE}
+              onValueChange={(v) =>
+                setForm({ ...form, parent_campaign_id: v === NO_PARENT_VALUE ? "" : v })
+              }
+              disabled={parentLocked}
+            >
+              <SelectTrigger id="basics-parent" aria-label="Part of">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_PARENT_VALUE}>None</SelectItem>
+                {currentParentOption && (
+                  <SelectItem value={String(currentParentOption.campaign_id)}>
+                    {currentParentOption.name}
+                  </SelectItem>
+                )}
+                {parentOptions.map((c) => (
+                  <SelectItem key={c.campaign_id} value={String(c.campaign_id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {parentLocked
+                ? `This campaign has ${childCount} child ${childCount === 1 ? "campaign" : "campaigns"}, so it cannot be part of another campaign.`
+                : "A campaign that is part of another sees the assessments that campaign shares with its family."}
+            </p>
+          </div>
 
           {/* Start date */}
           <div className="space-y-2">

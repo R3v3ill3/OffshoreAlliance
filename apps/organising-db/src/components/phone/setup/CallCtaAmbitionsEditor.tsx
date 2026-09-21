@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { useCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -320,22 +322,25 @@ export function CallCtaAmbitionsEditor({
     enabled: !!scriptId,
   })
 
-  // Assessment activities available on the campaign — used to link each
-  // CTA ambition to a concrete assessment (and therefore a rating scale).
+  // Assessment activities available on the campaign — its own plus the
+  // parent's shared ones (WP3.8, wp3.8.md §2 A32) — used to link each CTA
+  // ambition to a concrete assessment (and therefore a rating scale).
+  const campaignParent = useCampaignParent(campaignId > 0 ? campaignId : null)
+  const campaignParentId = campaignParent.data?.parentId ?? null
   const { data: assessments = [] } = useQuery({
-    queryKey: ['campaign-assessments-for-cta', campaignId],
+    queryKey: ['campaign-assessments-for-cta', campaignId, campaignParentId ?? 0],
     queryFn: async (): Promise<AssessmentOption[]> => {
       if (!campaignId || campaignId <= 0) return []
       const { data, error } = await supabase
         .from('campaign_activities')
         .select('activity_id, title, is_binary')
-        .eq('campaign_id', campaignId)
+        .or(familyActivityFilter(campaignId, campaignParentId))
         .eq('activity_kind', 'assessment')
         .order('created_at', { ascending: false })
       if (error) throw error
       return (data ?? []) as AssessmentOption[]
     },
-    enabled: !!campaignId && campaignId > 0,
+    enabled: !!campaignId && campaignId > 0 && campaignParent.isSuccess,
   })
 
   const hasNoCtas = !isLoading && ctaDefinitions.length === 0

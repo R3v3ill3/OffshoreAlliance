@@ -11,6 +11,8 @@ import { isLeadershipRoleName } from "@/lib/import/participation-import-shared";
 import { toE164 } from "@/lib/phone/normalise-phone";
 import { parseFactRawValue } from "@/lib/campaign-facts/values";
 import { recordCampaignFactRpc } from "@/lib/campaign-facts/record-fact";
+import { loadCampaignParent } from "@/lib/campaign/campaign-parent";
+import { isFamilyActivity, isOwnedActivity } from "@/lib/campaign/families";
 
 const extraHitSchema = z.object({
   activity_key: z.string().min(1).max(80),
@@ -300,14 +302,22 @@ export async function POST(
   }
 
   // ── Resolve the primary activity (never creates during dry runs) ───────────
+  // WP3.8 (wp3.8.md §3.5 row 8, §3.6 RAT-a): an existing target may be this
+  // campaign's own assessment or the parent's `scope = family` one — the
+  // ratings then land on the parent's row for this campaign's matched workers.
+  const campaignParent = await loadCampaignParent(supabase, campaignId);
+  const acceptsActivity = (activity: { activity_id: number; campaign_id: number; scope?: string | null }) =>
+    isOwnedActivity(activity, campaignId) ||
+    isFamilyActivity(activity, campaignId, campaignParent.parentId);
+
   let activityId: number | null = null;
   if (body.activity.mode === "existing") {
     const { data: activity, error: actErr } = await supabase
       .from("campaign_activities")
-      .select("activity_id, campaign_id, title")
+      .select("activity_id, campaign_id, title, scope")
       .eq("activity_id", body.activity.activity_id)
       .maybeSingle();
-    if (actErr || !activity || activity.campaign_id !== campaignId) {
+    if (actErr || !activity || !acceptsActivity(activity)) {
       return jsonError("Assessment not found for this campaign", 400);
     }
     activityId = activity.activity_id;
@@ -333,10 +343,10 @@ export async function POST(
       extraExistingIds.add(extra.activity.activity_id);
       const { data: activity, error: actErr } = await supabase
         .from("campaign_activities")
-        .select("activity_id, campaign_id, title")
+        .select("activity_id, campaign_id, title, scope")
         .eq("activity_id", extra.activity.activity_id)
         .maybeSingle();
-      if (actErr || !activity || activity.campaign_id !== campaignId) {
+      if (actErr || !activity || !acceptsActivity(activity)) {
         return jsonError(`Extra assessment not found for this campaign (${extra.key})`, 400);
       }
       const { map, error: mapErr } = await loadRatingMap(supabase, activity.activity_id);

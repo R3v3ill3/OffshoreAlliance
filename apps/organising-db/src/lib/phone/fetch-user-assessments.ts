@@ -16,6 +16,8 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { loadCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 
 export interface UserAssessmentRow {
   activity_id: number
@@ -27,11 +29,14 @@ export async function fetchUserAssessments(
   supabase: SupabaseClient,
   campaignId: number,
 ): Promise<UserAssessmentRow[]> {
-  // 1. All campaign_activities of kind='assessment' for this campaign.
+  // 1. All campaign_activities of kind='assessment' for this campaign — plus
+  //    its parent's `scope = family` ones (WP3.8, wp3.8.md §2 A41). The parent
+  //    is loaded here, once, so the two callers' queryFns stay as they are.
+  const campaignParent = await loadCampaignParent(supabase, campaignId)
   const { data: activities, error: actErr } = await supabase
     .from('campaign_activities')
     .select('activity_id, title, is_binary, activity_kind')
-    .eq('campaign_id', campaignId)
+    .or(familyActivityFilter(campaignId, campaignParent.parentId))
     .eq('activity_kind', 'assessment')
     .order('created_at', { ascending: false })
   if (actErr) throw actErr

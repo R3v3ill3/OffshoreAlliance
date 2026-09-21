@@ -18,13 +18,25 @@ import { AlertTriangle, ChevronDown, ChevronUp, X } from "lucide-react";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { isWorkerMemberLike } from "@/lib/campaign/constants";
+import { useCampaignParent } from "@/lib/campaign/campaign-parent";
+import {
+  familyActivityFilter,
+  familyLabel,
+  isFamilyActivity,
+  isOwnedActivity,
+  partitionFamilyActivities,
+  type ActivityScope,
+} from "@/lib/campaign/families";
+import { trackFamilyAssessmentRated } from "@/lib/analytics/events";
 import { syncWorkersToMatchingCampaigns } from "@/lib/workers/sync-campaign-universe";
 import {
   MembershipNonOaFields,
@@ -1293,34 +1305,49 @@ export function RatingsTab({
   const [notes, setNotes] = useState("");
   const [taskListDialogOpen, setTaskListDialogOpen] = useState(false);
 
+  // WP3.8 (wp3.8.md §3.5 rows 5, 5b): the parent's shared assessments are
+  // offered and their history rows shown; a rating on one posts against the
+  // option's own `activity_id` — the parent's row (RAT-a). Both queries gate
+  // on the parent so the first render already has the family rows.
+  const parent = useCampaignParent(campaignId);
+  const parentId = parent.data?.parentId ?? null;
+
   const { data: assessments = [] } = useQuery({
-    queryKey: ["campaign-activities", campaignId, "assessment"],
+    queryKey: ["campaign-activities", campaignId, "assessment", parentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_activities")
-        .select("activity_id, title, is_binary, supporter_outcome_value, activity_kind")
-        .eq("campaign_id", campaignId)
+        .select("activity_id, campaign_id, scope, title, is_binary, supporter_outcome_value, activity_kind")
+        .or(familyActivityFilter(campaignId, parentId))
         .eq("activity_kind", "assessment")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as {
         activity_id: number;
+        campaign_id: number;
+        scope: ActivityScope | null;
         title: string;
         is_binary: boolean | null;
         supporter_outcome_value: string | null;
         activity_kind: string;
       }[];
     },
+    enabled: parent.isSuccess,
   });
 
+  const groupedAssessments = useMemo(
+    () => partitionFamilyActivities(assessments, campaignId, parentId),
+    [assessments, campaignId, parentId]
+  );
+
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["worker-activity-ratings", campaignId, workerId],
+    queryKey: ["worker-activity-ratings", campaignId, workerId, parentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_activity_ratings")
         .select(
           `rating_id, rating, binary_value, notes, rated_at, source,
-           activity:campaign_activities(activity_id, title, is_binary, campaign_id)`
+           activity:campaign_activities(activity_id, title, is_binary, campaign_id, scope)`
         )
         .eq("worker_id", workerId)
         .order("rated_at", { ascending: false });
@@ -1329,7 +1356,13 @@ export function RatingsTab({
         .map((r) => {
           const aRaw = (r as { activity: unknown }).activity;
           const a = (Array.isArray(aRaw) ? aRaw[0] : aRaw) as
-            | { activity_id: number; title: string; is_binary: boolean | null; campaign_id: number }
+            | {
+                activity_id: number;
+                title: string;
+                is_binary: boolean | null;
+                campaign_id: number;
+                scope: ActivityScope | null;
+              }
             | null;
           return { ...(r as Record<string, unknown>), activity: a } as {
             rating_id: number;
@@ -1343,11 +1376,18 @@ export function RatingsTab({
               title: string;
               is_binary: boolean | null;
               campaign_id: number;
+              scope: ActivityScope | null;
             } | null;
           };
         })
-        .filter((r) => r.activity?.campaign_id === Number(campaignId));
+        .filter(
+          (r) =>
+            r.activity != null &&
+            (isOwnedActivity(r.activity, campaignId) ||
+              isFamilyActivity(r.activity, campaignId, parentId))
+        );
     },
+    enabled: parent.isSuccess,
   });
 
   const selectedActivity = useMemo(
@@ -1357,9 +1397,17 @@ export function RatingsTab({
 
   const saveRating = useSaveActivityRating({
     campaignId,
-    onSuccess: () => {
+    onSuccess: (args) => {
       toast.success("Rating saved");
       setNotes("");
+      const rated = assessments.find((a) => a.activity_id === args.activityId);
+      if (parentId != null && rated && isFamilyActivity(rated, campaignId, parentId)) {
+        trackFamilyAssessmentRated({
+          campaign_id: Number(campaignId),
+          parent_id: parentId,
+          activity_id: args.activityId,
+        });
+      }
     },
     onError: (err) => {
       toast.error(`Failed to save rating: ${err.message}`);
@@ -1437,12 +1485,26 @@ export function RatingsTab({
                     <SelectValue placeholder="Pick an assessment…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {assessments.map((a) => (
+                    {groupedAssessments.owned.map((a) => (
                       <SelectItem key={a.activity_id} value={String(a.activity_id)}>
                         {a.title}
                         {a.is_binary ? " (binary)" : ""}
                       </SelectItem>
                     ))}
+                    {groupedAssessments.family.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel className="text-[10px]">
+                          {familyLabel(parent.data?.parentName)}
+                        </SelectLabel>
+                        {groupedAssessments.family.map((a) => (
+                          <SelectItem key={a.activity_id} value={String(a.activity_id)}>
+                            {a.title}
+                            {a.is_binary ? " (binary)" : ""}
+                            {" · shared"}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1512,6 +1574,14 @@ export function RatingsTab({
                 <div className="min-w-0">
                   <p className="font-medium truncate">
                     {r.activity?.title ?? "(untitled activity)"}
+                    {r.activity && isFamilyActivity(r.activity, campaignId, parentId) && (
+                      <span
+                        className="ml-1 inline-flex items-center rounded border px-1 py-0 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+                        title={familyLabel(parent.data?.parentName)}
+                      >
+                        Shared
+                      </span>
+                    )}
                   </p>
                   <p className="text-muted-foreground">
                     {new Date(r.rated_at).toLocaleDateString()} · {r.source ?? "—"}

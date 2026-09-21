@@ -27,6 +27,8 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { RATING_LEVELS } from '@/types/planner-types'
@@ -84,14 +86,17 @@ export function SmsAssessmentPanel({
     workerId,
   )
 
-  // Campaign assessments (same sourcing as the wall-chart Ratings tab).
+  // Campaign assessments (same sourcing as the wall-chart Ratings tab):
+  // owned plus the parent's shared ones (WP3.8, wp3.8.md §2 A33).
+  const campaignParent = useCampaignParent(campaignId)
+  const campaignParentId = campaignParent.data?.parentId ?? null
   const { data: assessments = [] } = useQuery({
-    queryKey: ['sms-campaign-assessments', campaignId],
+    queryKey: ['sms-campaign-assessments', campaignId, campaignParentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('campaign_activities')
         .select('activity_id, title, is_binary, rating_labels')
-        .eq('campaign_id', campaignId as number)
+        .or(familyActivityFilter(campaignId as number, campaignParentId))
         .eq('activity_kind', 'assessment')
         .order('created_at', { ascending: false })
       if (error) throw error
@@ -100,7 +105,7 @@ export function SmsAssessmentPanel({
         rating_labels: (a.rating_labels ?? null) as Record<string, string> | null,
       })) as AssessmentActivity[]
     },
-    enabled: campaignId != null,
+    enabled: campaignId != null && campaignParent.isSuccess,
     staleTime: 30_000,
   })
 

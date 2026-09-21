@@ -1,7 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { useCampaignParent } from "@/lib/campaign/campaign-parent";
+import {
+  familyActivityFilter,
+  familyLabel,
+  partitionFamilyActivities,
+  type ActivityScope,
+} from "@/lib/campaign/families";
 import {
   Select,
   SelectContent,
@@ -27,21 +35,38 @@ export type ParticipationSelectorProps = {
 const ANY_VALUE = "any";
 const LATEST_VALUE = "latest";
 
+type ActivityRow = {
+  activity_id: number;
+  campaign_id: number;
+  scope: ActivityScope | null;
+  title: string;
+  created_at: string;
+};
+
 export function ParticipationSelector({ campaignId, value, onChange }: ParticipationSelectorProps) {
   const supabase = createClient();
+  // WP3.8 (wp3.8.md §3.5 row 2): owned activities plus the parent's shared ones.
+  const parent = useCampaignParent(campaignId);
+  const parentId = parent.data?.parentId ?? null;
 
   const { data: activities = [] } = useQuery({
-    queryKey: ["wallchart-activities-list", campaignId],
+    queryKey: ["wallchart-activities-list", campaignId, parentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_activities")
-        .select("activity_id, title, created_at")
-        .eq("campaign_id", campaignId)
+        .select("activity_id, campaign_id, scope, title, created_at")
+        .or(familyActivityFilter(campaignId, parentId))
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as { activity_id: number; title: string; created_at: string }[];
+      return (data ?? []) as ActivityRow[];
     },
+    enabled: parent.isSuccess,
   });
+
+  const grouped = useMemo(
+    () => partitionFamilyActivities(activities, campaignId, parentId),
+    [activities, campaignId, parentId]
+  );
 
   const { data: taskLists = [] } = useQuery({
     queryKey: ["wallchart-task-lists-list", campaignId],
@@ -94,12 +119,23 @@ export function ParticipationSelector({ campaignId, value, onChange }: Participa
           <SelectItem value={ANY_VALUE}>Any supportive rating</SelectItem>
           <SelectItem value={LATEST_VALUE}>Latest activity</SelectItem>
         </SelectGroup>
-        {activities.length > 0 && (
+        {grouped.owned.length > 0 && (
           <SelectGroup>
             <SelectLabel>Activities</SelectLabel>
-            {activities.map((a) => (
+            {grouped.owned.map((a) => (
               <SelectItem key={a.activity_id} value={`a:${a.activity_id}`}>
                 {a.title}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
+        {grouped.family.length > 0 && (
+          <SelectGroup>
+            <SelectLabel>{familyLabel(parent.data?.parentName)}</SelectLabel>
+            {grouped.family.map((a) => (
+              <SelectItem key={a.activity_id} value={`a:${a.activity_id}`}>
+                {a.title}
+                {" · shared"}
               </SelectItem>
             ))}
           </SelectGroup>

@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { useCampaignParent } from "@/lib/campaign/campaign-parent";
+import {
+  familyActivityFilter,
+  familyLabel,
+  isFamilyActivity,
+  partitionFamilyActivities,
+  type ActivityScope,
+} from "@/lib/campaign/families";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -44,21 +52,38 @@ export function ClearRatingsDialog({
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [selectedActivityId, setSelectedActivityId] = useState<string>("");
+  // WP3.8 (wp3.8.md §3.5 row 4, §3.8 CL-a): the parent's shared assessments
+  // are offered too; the delete stays `.in("worker_id", workerIds)` — the
+  // selected tiles, i.e. this campaign's members — so it can never touch
+  // another campaign's members' ratings.
+  const parent = useCampaignParent(campaignId);
+  const parentId = parent.data?.parentId ?? null;
 
   const { data: assessments = [], isLoading } = useQuery({
-    queryKey: ["campaign-activities", campaignId, "assessment"],
+    queryKey: ["campaign-activities", campaignId, "assessment", parentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_activities")
-        .select("activity_id, title, is_binary")
-        .eq("campaign_id", campaignId)
+        .select("activity_id, campaign_id, scope, title, is_binary")
+        .or(familyActivityFilter(campaignId, parentId))
         .eq("activity_kind", "assessment")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as { activity_id: number; title: string; is_binary: boolean | null }[];
+      return (data ?? []) as {
+        activity_id: number;
+        campaign_id: number;
+        scope: ActivityScope | null;
+        title: string;
+        is_binary: boolean | null;
+      }[];
     },
-    enabled: open,
+    enabled: open && parent.isSuccess,
   });
+
+  const grouped = useMemo(
+    () => partitionFamilyActivities(assessments, campaignId, parentId),
+    [assessments, campaignId, parentId]
+  );
 
   const clearMutation = useAuthAwareMutation<void, Error, void>({
     mutationFn: async () => {
@@ -91,6 +116,8 @@ export function ClearRatingsDialog({
   const selectedAssessment = assessments.find(
     (a) => String(a.activity_id) === selectedActivityId
   );
+  const selectedIsFamily =
+    selectedAssessment != null && isFamilyActivity(selectedAssessment, campaignId, parentId);
 
   function handleClose() {
     if (clearMutation.isPending) return;
@@ -133,19 +160,38 @@ export function ClearRatingsDialog({
             <SelectContent>
               <SelectGroup>
                 <SelectLabel className="text-[10px]">Assessments</SelectLabel>
-                {assessments.map((a) => (
+                {grouped.owned.map((a) => (
                   <SelectItem key={a.activity_id} value={String(a.activity_id)}>
                     {a.title}
                     {a.is_binary ? " (binary)" : ""}
                   </SelectItem>
                 ))}
               </SelectGroup>
+              {grouped.family.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel className="text-[10px]">{familyLabel(parent.data?.parentName)}</SelectLabel>
+                  {grouped.family.map((a) => (
+                    <SelectItem key={a.activity_id} value={String(a.activity_id)}>
+                      {a.title}
+                      {a.is_binary ? " (binary)" : ""}
+                      {" · shared"}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
             </SelectContent>
           </Select>
           {selectedAssessment && (
             <p className="text-[11px] text-muted-foreground pt-1">
               All existing ratings for &ldquo;{selectedAssessment.title}&rdquo; will be removed for
               the selected workers.
+              {selectedIsFamily && (
+                <>
+                  {" "}
+                  This assessment is shared from {parent.data?.parentName ?? "the parent campaign"};
+                  only the selected workers&rsquo; ratings are cleared.
+                </>
+              )}
             </p>
           )}
         </div>

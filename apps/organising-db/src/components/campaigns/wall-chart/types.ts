@@ -1,5 +1,6 @@
 // Shared types for the wall chart subcomponents.
 
+import type { ActivityScope } from "@/lib/campaign/families";
 import type { CampaignOuUnitBasis } from "@/types/organising-row-types";
 
 /** Worker detail sheet Details-tab focus target (phone/email fields). */
@@ -122,6 +123,12 @@ export type WallChartAssessmentOption = {
   has_linked_ambition: boolean;
   /** Per-level label overrides for the 1–5 scale. Keys "1"–"5". */
   rating_labels: Record<string, string> | null;
+  /** WP3.8 (wp3.8.md §3.7): the owning campaign — the parent's id for a shared assessment. */
+  campaign_id: number;
+  /** WP3.8: `family` when the owner shares it with its child campaigns. */
+  scope: ActivityScope;
+  /** WP3.8: true when this option is the parent's shared assessment seen from a child (ratings post against `activity_id`, the parent's row). */
+  is_family: boolean;
 };
 
 export type WallChartOU = {

@@ -175,15 +175,27 @@ export async function POST(
       campaignName = campaign?.name ?? null
 
       if (conversation.worker_id != null) {
-        const { data: ratingRows } = await supabase
-          .from('campaign_activity_ratings')
-          .select(
-            'rating, binary_value, notes, rated_at, campaign_activities!inner(title, campaign_id)',
-          )
-          .eq('worker_id', conversation.worker_id)
-          .eq('campaign_activities.campaign_id', conversation.campaign_id)
-          .order('rated_at', { ascending: false })
-          .limit(RATINGS_LIMIT)
+        // WP3.8 (wp3.8.md §2 A26): the worker's ratings on the activities this
+        // campaign may read — its own plus its parent's shared ones — from the
+        // database helper, in place of the owner-only embed filter.
+        const { data: familyIds } = await supabase.rpc('campaign_family_activity_ids', {
+          p_campaign_id: conversation.campaign_id,
+        })
+        const activityIds = ((familyIds ?? []) as unknown[])
+          .map((v) => (typeof v === 'object' && v !== null ? Object.values(v)[0] : v))
+          .map(Number)
+          .filter((n) => Number.isInteger(n))
+        const { data: ratingRows } = activityIds.length === 0
+          ? { data: [] }
+          : await supabase
+              .from('campaign_activity_ratings')
+              .select(
+                'rating, binary_value, notes, rated_at, campaign_activities(title, campaign_id)',
+              )
+              .eq('worker_id', conversation.worker_id)
+              .in('activity_id', activityIds)
+              .order('rated_at', { ascending: false })
+              .limit(RATINGS_LIMIT)
         ratings = ((ratingRows ?? []) as Array<{
           rating: number | null
           binary_value: string | null

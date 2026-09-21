@@ -17,7 +17,10 @@ import {
 } from "@/components/ui/select";
 import { RatingPicker, type RatingPickerValue } from "@/components/campaigns/assessments/rating-picker";
 import { useSaveActivityRating } from "@/lib/hooks/useSaveActivityRating";
-import { useWallChartAssessmentOptions } from "./assessment-selector";
+import { useCampaignParent } from "@/lib/campaign/campaign-parent";
+import { familyLabel } from "@/lib/campaign/families";
+import { trackFamilyAssessmentRated } from "@/lib/analytics/events";
+import { groupAssessmentOptions, useWallChartAssessmentOptions } from "./assessment-selector";
 import type { WallChartAssessmentOption } from "./types";
 
 export type InlineRatingPopoverProps = {
@@ -221,6 +224,10 @@ export function CumulativeRatingPopover({
   const [notes, setNotes] = useState("");
 
   const { data: options = [], isLoading } = useWallChartAssessmentOptions(String(campaignId));
+  // WP3.8 (wp3.8.md §3.7): the parent's shared assessments are offered under
+  // their own group; a rating on one posts against the parent's activity_id.
+  const { data: parent } = useCampaignParent(campaignId);
+  const parentId = parent?.parentId ?? null;
 
   const selectedOption: WallChartAssessmentOption | undefined = options.find(
     (o) => String(o.activity_id) === selectedActivityId
@@ -228,13 +235,21 @@ export function CumulativeRatingPopover({
 
   const save = useSaveActivityRating({
     campaignId,
-    onSuccess: () => {
+    onSuccess: (args) => {
       // First, so a toast failure cannot swallow it; and guarded, so a throwing
       // callback cannot leave the popover open ("never gates the save").
       try {
         onSaved?.();
       } catch {
         /* an additive notification must never break the save path */
+      }
+      const rated = options.find((o) => o.activity_id === args.activityId);
+      if (rated?.is_family && parentId != null) {
+        trackFamilyAssessmentRated({
+          campaign_id: Number(campaignId),
+          parent_id: parentId,
+          activity_id: args.activityId,
+        });
       }
       toast.success(`Rating saved for ${workerName}`);
       setOpen(false);
@@ -273,8 +288,11 @@ export function CumulativeRatingPopover({
     selectedOption != null &&
     (isBinary ? value.binary_value !== null : value.rating !== null);
 
-  const withRatings = options.filter((o) => o.last_rated_at != null);
-  const withoutRatings = options.filter((o) => o.last_rated_at == null);
+  const { withRatings, withoutRatings, family } = groupAssessmentOptions(
+    options,
+    campaignId,
+    parentId
+  );
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -337,6 +355,16 @@ export function CumulativeRatingPopover({
                   {withoutRatings.map((opt) => (
                     <SelectItem key={opt.activity_id} value={String(opt.activity_id)}>
                       {opt.title}{opt.is_binary ? " (binary)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {family.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel className="text-[10px]">{familyLabel(parent?.parentName)}</SelectLabel>
+                  {family.map((opt) => (
+                    <SelectItem key={opt.activity_id} value={String(opt.activity_id)}>
+                      {opt.title}{opt.is_binary ? " (binary)" : ""}{" · shared"}
                     </SelectItem>
                   ))}
                 </SelectGroup>

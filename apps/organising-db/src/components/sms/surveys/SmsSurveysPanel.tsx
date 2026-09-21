@@ -14,6 +14,8 @@ import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { createClient } from '@/lib/supabase/client'
+import { useCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -595,7 +597,10 @@ export function SurveyEditorSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, surveyId])
 
-  const activitiesQueryKey = ['sms-survey-activities', campaignId] as const
+  // WP3.8 (wp3.8.md §2 A38): survey targets may be the parent's shared assessments.
+  const campaignParent = useCampaignParent(open && !hideAssessments ? campaignId : null)
+  const campaignParentId = campaignParent.data?.parentId ?? null
+  const activitiesQueryKey = ['sms-survey-activities', campaignId, campaignParentId ?? 0] as const
   const { data: activities } = useQuery({
     queryKey: activitiesQueryKey,
     queryFn: async () => {
@@ -603,7 +608,7 @@ export function SurveyEditorSheet({
       const { data, error } = await supabase
         .from('campaign_activities')
         .select('activity_id, title, is_binary')
-        .eq('campaign_id', Number(campaignId))
+        .or(familyActivityFilter(Number(campaignId), campaignParentId))
         .eq('activity_kind', 'assessment')
         .order('title')
       if (error) throw error
@@ -613,7 +618,7 @@ export function SurveyEditorSheet({
         is_binary: !!a.is_binary,
       }))
     },
-    enabled: open && !hideAssessments,
+    enabled: open && !hideAssessments && campaignParent.isSuccess,
   })
 
   const catalogueOptions = useMemo(() => {

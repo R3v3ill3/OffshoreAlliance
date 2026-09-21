@@ -311,10 +311,17 @@ const SMALL_RATING_SUMMARY: readonly WallChartRatingSummary[] = [
   ratingSummaryRow(112, 3, null, false),
 ];
 
-/** One non-binary assessment activity, already rated, so the selector and the charts have content. */
+/**
+ * One non-binary assessment activity, already rated, so the selector and the
+ * charts have content. WP3.8: carries its owner (`campaign_id: 1`) and
+ * `scope: "campaign"`, as every real row does after the migration; neither
+ * field is rendered, so the characterisation DOM is unchanged.
+ */
 const ASSESSMENT_ACTIVITIES: readonly unknown[] = [
   {
     activity_id: 501,
+    campaign_id: 1,
+    scope: "campaign",
     title: "Petition ask",
     is_binary: false,
     supporter_outcome_value: null,
@@ -324,6 +331,40 @@ const ASSESSMENT_ACTIVITIES: readonly unknown[] = [
     activity_ambitions: [],
   },
 ];
+
+/**
+ * WP3.8 (wp3.8.md §4.3) — the `family` knob. `parentId`/`parentName` make
+ * campaign 1 a CHILD: the `campaigns` row gains `parent_campaign_id` and the
+ * embedded `parent`, and `activities` (the parent's `scope = "family"` rows,
+ * `campaign_id: parentId`) are appended to `campaign_activities`. `children`
+ * make campaign 1 a PARENT: rows with `parent_campaign_id: 1` are appended to
+ * `campaigns` (after campaign 1's own row, which `.maybeSingle()` reads first)
+ * and `ownedScope` flips the owned assessment to `"family"`. Because the fake
+ * ignores filters, exclusion is proven by the pure tests; these fixtures prove
+ * rendering and the write target.
+ */
+export type WallChartFamilyFixture = {
+  parentId?: number;
+  parentName?: string;
+  /** The parent's shared assessments; defaults to one, `SHARED_FAMILY_ACTIVITY`. */
+  activities?: readonly unknown[];
+  children?: readonly { campaign_id: number; name: string }[];
+  ownedScope?: "campaign" | "family";
+};
+
+/** The parent's one shared assessment, unrated, used when `family.activities` is omitted. */
+export const SHARED_FAMILY_ACTIVITY = {
+  activity_id: 901,
+  campaign_id: 9,
+  scope: "family",
+  title: "Sector petition",
+  is_binary: false,
+  supporter_outcome_value: null,
+  created_at: "2026-01-03T00:00:00.000Z",
+  rating_labels: null,
+  activity_kind: "assessment",
+  activity_ambitions: [],
+} as const;
 
 const ACTIVITY_RATINGS: readonly ActivityRating[] = [
   { rating_id: 9001, worker_id: 101, activity_id: 501, rating: 1, binary_value: null, rating_phase: "assessment", rated_at: "2026-01-02T00:00:00.000Z", source: "fixture", notes: null },
@@ -393,6 +434,8 @@ function buildLarge(): { members: RawCampaignMemberRow[]; ous: WallChartOU[]; as
 export type BuildWallChartFixtureOptions = {
   /** Hint ids already dismissed by the signed-in user. Defaults to the rating hint (hidden). */
   hintDismissals?: readonly string[];
+  /** WP3.8: make campaign 1 a child (parentId) or a parent (children). Absent = no family, today's fixture. */
+  family?: WallChartFamilyFixture;
 };
 
 export function buildWallChartFixture(
@@ -415,6 +458,40 @@ export function buildWallChartFixture(
         ? { ...buildNested(), estimate: 24 }
         : { ...buildLarge(), estimate: 400 };
 
+  const family = opts.family;
+  const parentId = family?.parentId ?? null;
+  const ownCampaignRow = {
+    campaign_id: Number(campaignId),
+    total_worker_estimate: base.estimate,
+    name: "Test Campaign",
+    parent_campaign_id: parentId,
+    parent:
+      parentId != null
+        ? { campaign_id: parentId, name: family?.parentName ?? "Parent campaign" }
+        : null,
+  };
+  const campaignRows: readonly unknown[] = [
+    ownCampaignRow,
+    ...(family?.children ?? []).map((c) => ({
+      campaign_id: c.campaign_id,
+      name: c.name,
+      parent_campaign_id: Number(campaignId),
+      parent: null,
+    })),
+  ];
+  const ownedActivities: readonly unknown[] =
+    family?.ownedScope === "family"
+      ? ASSESSMENT_ACTIVITIES.map((a) => ({ ...(a as Record<string, unknown>), scope: "family" }))
+      : ASSESSMENT_ACTIVITIES;
+  const familyActivities: readonly unknown[] =
+    parentId != null
+      ? (family?.activities ?? [SHARED_FAMILY_ACTIVITY]).map((a) => ({
+          ...(a as Record<string, unknown>),
+          campaign_id: parentId,
+          scope: "family",
+        }))
+      : [];
+
   return {
     campaignId,
     tables: {
@@ -422,8 +499,8 @@ export function buildWallChartFixture(
       campaign_worker_rating_summary: base.ratings,
       campaign_organising_units: base.ous,
       campaign_worker_ou: base.assignments,
-      campaigns: [{ total_worker_estimate: base.estimate, name: "Test Campaign" }],
-      campaign_activities: ASSESSMENT_ACTIVITIES,
+      campaigns: campaignRows,
+      campaign_activities: [...ownedActivities, ...familyActivities],
       campaign_activity_ratings: ACTIVITY_RATINGS,
       activity_ambitions: [],
       campaign_task_lists: [],

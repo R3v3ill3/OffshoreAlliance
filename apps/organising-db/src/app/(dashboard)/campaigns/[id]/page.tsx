@@ -48,6 +48,7 @@ import { RoleCheckTab } from "@/components/campaigns/role-check-tab";
 import { CampaignPlanPanel } from "@/components/campaigns/campaign-plan-panel";
 import { CampaignWorkplanSection } from "@/components/campaigns/campaign-workplan";
 import { CampaignUniverseSection } from "@/components/campaigns/campaign-universe-section";
+import { CampaignFamilyCard } from "@/components/campaigns/campaign-family-card";
 import { CampaignUnitsSection } from "@/components/campaigns/campaign-units-section";
 import { CampaignEmployersWorksitesCard } from "@/components/campaigns/campaign-employers-worksites-card";
 import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
@@ -109,6 +110,8 @@ interface CampaignDetail {
   /** Added by Wave 1 of Bargaining to Win (20260510100000). May be absent on older rows. */
   current_phase?: string | null;
   is_sms_episode?: boolean;
+  /** WP3.8 (wp3.8.md §3.5): the campaign this one is part of; absent before the migration. */
+  parent_campaign_id?: number | null;
   /** WP1.4: presence only — drives the Setup tab's Strategic plan card copy. */
   campaign_stage_plans?: { plan_id: number }[];
 }
@@ -757,6 +760,7 @@ export default function CampaignDetailPage() {
             />
 
             <TabsContent value="universe" className="space-y-6" {...panelName("workforce", "universe")}>
+              <CampaignFamilyCard campaignId={id} canWrite={!!canWrite} />
               <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
 
               {SHOW_NAMED_UNIVERSES && (

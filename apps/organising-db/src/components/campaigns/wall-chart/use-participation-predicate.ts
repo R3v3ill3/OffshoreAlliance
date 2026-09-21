@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { useCampaignParent } from "@/lib/campaign/campaign-parent";
+import { familyActivityFilter } from "@/lib/campaign/families";
 import type { ParticipationSource } from "./participation-selector";
 import type { WallChartRatingSummary } from "./types";
 
@@ -34,21 +36,24 @@ export function useParticipationPredicate(
   ratingSummary?: WallChartRatingSummary[]
 ): ParticipationResult {
   const supabase = createClient();
+  // WP3.8 (wp3.8.md §3.5 row 3): "latest" is the latest across owned + family.
+  const parent = useCampaignParent(campaignId);
+  const parentId = parent.data?.parentId ?? null;
 
   const { data: latestActivity } = useQuery({
-    queryKey: ["wallchart-latest-activity", campaignId],
+    queryKey: ["wallchart-latest-activity", campaignId, parentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_activities")
         .select("activity_id")
-        .eq("campaign_id", campaignId)
+        .or(familyActivityFilter(campaignId, parentId))
         .order("created_at", { ascending: false })
         .limit(1);
       if (error) throw error;
       const first = (data ?? [])[0] as { activity_id: number } | undefined;
       return first ?? null;
     },
-    enabled: source.kind === "latest",
+    enabled: source.kind === "latest" && parent.isSuccess,
   });
 
   const resolvedActivityId =

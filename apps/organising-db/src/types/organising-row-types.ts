@@ -1,3 +1,5 @@
+import type { ActivityScope } from "@/lib/campaign/families";
+
 export type UserRole = "admin" | "user" | "viewer";
 
 export type WorkRole =
@@ -548,6 +550,8 @@ export interface CampaignActivity {
   supporter_outcome_value: string | null;
   is_custom: boolean;
   created_at: string;
+  /** WP3.8 (wp3.8.md §3.9): `campaign` (owner only) or `family` (shared with child campaigns). Optional so fixtures compile. */
+  scope?: ActivityScope;
 }
 
 export interface CampaignActivityRating {

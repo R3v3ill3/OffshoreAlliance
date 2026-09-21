@@ -11,6 +11,19 @@ import {
   stripCampaignProtectedFields,
 } from "@/lib/workers/campaign-protected-fields";
 import type { ParsedMembershipRow } from "../parse/route";
+import type { MembershipImportType } from "@/lib/import/membership-import-types";
+
+/** A weekly-update row applies the rules of the file it came from. */
+function applyBranch(
+  importType: MembershipImportType,
+  sourceKind: ParsedMembershipRow["sourceKind"]
+): MembershipImportType {
+  if (importType !== "weekly_update") return importType;
+  if (sourceKind === "new") return "new_joins";
+  if (sourceKind === "recommenced") return "recommencing";
+  if (sourceKind === "resigned") return "resignations";
+  return "status_sync";
+}
 
 /**
  * Rows are written one at a time; the wizard sends them in batches of a few
@@ -272,7 +285,9 @@ export async function POST(request: NextRequest) {
         if (resolvedWorkArea != null) patch.work_area_id = resolvedWorkArea;
         if (resolvedRosterPanel != null) patch.roster_panel_id = resolvedRosterPanel;
 
-        if (importType === "new_joins") {
+        const branch = applyBranch(importType, row.sourceKind);
+
+        if (branch === "new_joins") {
           if (row.joinDate) patch.join_date = row.joinDate;
           // Only update rejoin_date if the new value is more recent
           if (row.rejoinDate) {
@@ -290,7 +305,7 @@ export async function POST(request: NextRequest) {
           if (financialMemberTypeId) patch.union_membership_type_id = financialMemberTypeId;
         }
 
-        if (importType === "resignations") {
+        if (branch === "resignations") {
           patch.resignation_date = row.resignationDate;
           if (row.resignationReason) patch.resignation_reason = row.resignationReason;
           patch.is_active = false;
@@ -308,7 +323,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (importType === "recommencing") {
+        if (branch === "recommencing") {
           // Only update rejoin_date if more recent
           if (row.rejoinDate) {
             const { data: existing } = await supabase
@@ -327,7 +342,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (importType === "status_sync") {
+        if (branch === "status_sync") {
           // Status is the one thing the member list is authoritative for. A
           // row whose status was mapped to "ignore" leaves it unchanged.
           if (row.resolvedMembershipTypeId) {
@@ -352,7 +367,9 @@ export async function POST(request: NextRequest) {
         }
       } else if (row.dedupAction === "create") {
         // ── CREATE new worker ──────────────────────────────────────────────
-        if (importType === "resignations") {
+        const branch = applyBranch(importType, row.sourceKind);
+
+        if (branch === "resignations") {
           // For resignations, only create if we have enough info (name + reference_id or email)
           if (!row.referenceId && !row.email) {
             errors.push(
@@ -388,14 +405,14 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         };
 
-        if (importType === "new_joins") {
+        if (branch === "new_joins") {
           workerData.join_date = row.joinDate || null;
           workerData.rejoin_date = row.rejoinDate || null;
           workerData.is_active = true;
           workerData.union_membership_type_id = financialMemberTypeId;
         }
 
-        if (importType === "resignations") {
+        if (branch === "resignations") {
           workerData.join_date = row.joinDate || null;
           workerData.resignation_date = row.resignationDate || null;
           workerData.resignation_reason = row.resignationReason || null;
@@ -403,13 +420,13 @@ export async function POST(request: NextRequest) {
           workerData.union_membership_type_id = resignedTypeId;
         }
 
-        if (importType === "recommencing") {
+        if (branch === "recommencing") {
           workerData.rejoin_date = row.rejoinDate || null;
           workerData.is_active = true;
           workerData.union_membership_type_id = row.resolvedMembershipTypeId || financialMemberTypeId;
         }
 
-        if (importType === "status_sync") {
+        if (branch === "status_sync") {
           const typeId = row.resolvedMembershipTypeId || financialMemberTypeId;
           workerData.union_membership_type_id = typeId;
           workerData.is_active = typeId !== resignedTypeId;

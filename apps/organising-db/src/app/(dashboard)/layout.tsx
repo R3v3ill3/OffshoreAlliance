@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { MembershipUpdateBanner } from "@/components/membership-updates/membership-update-banner";
 
 export default function DashboardLayout({
   children,
@@ -11,6 +12,7 @@ export default function DashboardLayout({
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
+        <MembershipUpdateBanner />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>

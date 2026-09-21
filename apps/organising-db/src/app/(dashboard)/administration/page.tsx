@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import NextLink from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
@@ -65,6 +66,7 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { EmployerWizard } from "@/components/administration/employer-wizard";
+import { WeeklyUpdatesTab } from "@/components/administration/weekly-updates-tab";
 import { ReferenceDataWizard } from "@/components/import/reference-data-wizard";
 import { MembershipImportWizard } from "@/components/import/membership-import-wizard";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
@@ -2600,7 +2602,8 @@ function MembershipImportTab() {
               Members) or a full member list to refresh membership status. Choose the file type
               after clicking Start Import. Each file is matched against existing workers by
               Reference ID, then email/phone. Workers in a live campaign keep their campaign
-              employer, worksite and job title.
+              employer, worksite and job title. Weekly emailed New / Recommenced / Resigned /
+              Unfinancial files are on the Weekly Updates tab.
             </p>
           </div>
           <Button onClick={() => setWizardOpen(true)}>
@@ -2703,8 +2706,12 @@ function ReferenceDataTab() {
 
 // ---------- Main Page ----------
 
-export default function AdministrationPage() {
+function AdministrationPageInner() {
   const { isAdmin, loading } = useAuth();
+  const searchParams = useSearchParams();
+  const initialMainTab = searchParams.get("tab") === "data" ? "data" : "system";
+  const initialDataTab =
+    searchParams.get("sub") === "weekly_updates" ? "weekly_updates" : "imports";
 
   if (loading) {
     return (
@@ -2733,7 +2740,7 @@ export default function AdministrationPage() {
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Administration</h1>
 
-      <Tabs defaultValue="system">
+      <Tabs defaultValue={initialMainTab}>
         <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 flex-nowrap">
           <TabsTrigger value="system">System Management</TabsTrigger>
           <TabsTrigger value="data">Data Management</TabsTrigger>
@@ -2777,10 +2784,11 @@ export default function AdministrationPage() {
         </TabsContent>
 
         <TabsContent value="data">
-          <Tabs defaultValue="imports" className="mt-4">
+          <Tabs defaultValue={initialDataTab} className="mt-4">
             <TabsList className="h-9 bg-muted/50">
               <TabsTrigger value="imports">Import History</TabsTrigger>
               <TabsTrigger value="membership_import">Membership Import</TabsTrigger>
+              <TabsTrigger value="weekly_updates">Weekly Updates</TabsTrigger>
               <TabsTrigger value="employer_wizard">Employer Wizard</TabsTrigger>
               <TabsTrigger value="ref_data">Reference Data Import</TabsTrigger>
             </TabsList>
@@ -2789,6 +2797,9 @@ export default function AdministrationPage() {
             </TabsContent>
             <TabsContent value="membership_import">
               <MembershipImportTab />
+            </TabsContent>
+            <TabsContent value="weekly_updates">
+              <WeeklyUpdatesTab />
             </TabsContent>
             <TabsContent value="employer_wizard">
               <EmployerWizard />
@@ -2807,6 +2818,20 @@ export default function AdministrationPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function AdministrationPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24">
+          <EurekaLoadingSpinner size="lg" />
+        </div>
+      }
+    >
+      <AdministrationPageInner />
+    </Suspense>
   );
 }
 

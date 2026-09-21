@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -13,8 +13,16 @@ import { loadCampaignProtectedWorkerIds } from "@/lib/workers/campaign-protected
 import { parseMembershipStatus } from "@/lib/workers/worker-import-membership";
 import {
   MEMBERSHIP_IMPORT_TYPE_LABELS,
+  WEEKLY_UPDATE_COMBINED_HEADERS,
   type MembershipImportType,
 } from "@/lib/import/membership-import-types";
+import {
+  MEMBERSHIP_UPDATE_DEFAULT_TYPE_KEY,
+  MEMBERSHIP_UPDATE_KIND_LABELS,
+  computeNetMovement,
+  defaultActionForUnmatched,
+  type MembershipUpdateKind,
+} from "@/lib/membership-updates/kinds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -231,6 +239,35 @@ function scoreOccupation(query: string, occupations: Occupation[]) {
  */
 const APPLY_BATCH_SIZE = 200;
 
+function weeklyCountsFromRows(rows: ParsedMembershipRow[]) {
+  const counts = { new: 0, recommenced: 0, resigned: 0, unfinancial: 0 };
+  for (const row of rows) {
+    if (row.sourceKind && row.sourceKind in counts) counts[row.sourceKind] += 1;
+  }
+  return counts;
+}
+
+function WeeklyMovementSummary({ rows }: { rows: ParsedMembershipRow[] }) {
+  const counts = weeklyCountsFromRows(rows);
+  const net = computeNetMovement(counts);
+  return (
+    <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+      {(["new", "recommenced", "resigned", "unfinancial"] as const).map((kind) => (
+        <div key={kind} className="rounded-md border bg-background px-2 py-1.5">
+          <p className="text-muted-foreground">{MEMBERSHIP_UPDATE_KIND_LABELS[kind]}</p>
+          <p className="text-sm font-semibold">{counts[kind]}</p>
+        </div>
+      ))}
+      <div className="rounded-md border bg-background px-2 py-1.5">
+        <p className="text-muted-foreground">Net movement</p>
+        <p className={`text-sm font-semibold ${net >= 0 ? "text-green-700" : "text-red-700"}`}>
+          {net > 0 ? `+${net}` : net}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
 const ALL_STEPS: { id: WizardStep; label: string }[] = [
@@ -251,6 +288,12 @@ interface MembershipImportWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete?: () => void;
+  /** Prepared weekly-update rows — skips the file-upload step. */
+  preparedRows?: ParsedMembershipRow[];
+  preparedHeaders?: string[];
+  preparedFileName?: string;
+  preparedType?: MembershipImportType;
+  weeklyBatchId?: number;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -259,6 +302,11 @@ export function MembershipImportWizard({
   open,
   onOpenChange,
   onComplete,
+  preparedRows,
+  preparedHeaders,
+  preparedFileName,
+  preparedType,
+  weeklyBatchId,
 }: MembershipImportWizardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
@@ -391,18 +439,49 @@ export function MembershipImportWizard({
   });
 
   // ── Step visibility ──────────────────────────────────────────────────────
-  const hasValueMapping = importType === "recommencing" || importType === "status_sync";
+  const hasValueMapping =
+    importType === "recommencing" || importType === "status_sync" || importType === "weekly_update";
 
   function getVisibleSteps(): { id: WizardStep; label: string }[] {
     return ALL_STEPS.filter((s) => {
+      if (s.id === "upload" && (preparedRows?.length ?? 0) > 0) return false;
       if (s.id === "occupation_matching" && importType === "resignations") return false;
       if (s.id === "value_mapping" && !hasValueMapping) return false;
       return true;
     });
   }
 
+  function hydratePrepared() {
+    if (!preparedRows?.length) return false;
+    setImportType(preparedType ?? "weekly_update");
+    setRows(preparedRows);
+    setHeaders(preparedHeaders?.length ? preparedHeaders : [...WEEKLY_UPDATE_COMBINED_HEADERS]);
+    setFileName(preparedFileName ?? "Weekly update");
+    setStep("preview");
+    return true;
+  }
+
+  useEffect(() => {
+    if (open && preparedRows?.length) hydratePrepared();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate only when a prepared batch is opened
+  }, [open, preparedRows, preparedFileName, preparedType]);
+
   // ── Reset ────────────────────────────────────────────────────────────────
   function reset() {
+    if (hydratePrepared()) {
+      setIsLoading(false);
+      setParseError(null);
+      setEmployerResolutions([]);
+      setWorksiteResolutions([]);
+      setOccupationResolutions([]);
+      setMembershipTypeResolutions([]);
+      setDedupRows([]);
+      setDedupError(null);
+      setProtectCampaignWorkers(true);
+      setApplyProgress(null);
+      setResult(null);
+      return;
+    }
     setStep("upload");
     setIsLoading(false);
     setParseError(null);
@@ -564,6 +643,13 @@ export function MembershipImportWizard({
       let match = unionMembershipTypes.find(
         (t) => t.display_name.toLowerCase() === lc || t.type_name.toLowerCase() === lc
       );
+      if (!match && importType === "weekly_update") {
+        const kind = rows.find((r) => r.membershipTypeRaw === raw)?.sourceKind as
+          | MembershipUpdateKind
+          | undefined;
+        const typeKey = kind ? MEMBERSHIP_UPDATE_DEFAULT_TYPE_KEY[kind] : null;
+        if (typeKey) match = byTypeName.get(typeKey);
+      }
       if (!match && importType === "status_sync") {
         // Account-status exports use their own vocabulary. Only the
         // unambiguous values are pre-filled; suspended / stopped-payment
@@ -716,7 +802,12 @@ export function MembershipImportWizard({
         if (byPhone) return matched(byPhone, "phone");
         return {
           rowIndex: row.rowIndex,
-          action: importType === "resignations" ? "skip" : "create",
+          action:
+            importType === "weekly_update" && row.sourceKind
+              ? defaultActionForUnmatched(row.sourceKind)
+              : importType === "resignations"
+                ? "skip"
+                : "create",
           existingWorkerId: null,
           matchReason: null,
           existingName: null,
@@ -939,6 +1030,30 @@ export function MembershipImportWizard({
           rowsTotal: applyRows.length,
         });
       }
+      if (
+        weeklyBatchId &&
+        (totals.created + totals.updated > 0 || errors.length === 0)
+      ) {
+        try {
+          const completeRes = await fetchApi(`/api/membership-updates/${weeklyBatchId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "complete",
+              importSummary: { ...totals, errors, fileName },
+            }),
+          });
+          if (!completeRes.ok) {
+            errors.push(
+              "Rows were imported, but the weekly update could not be marked complete. Open Weekly Updates to close it."
+            );
+          }
+        } catch {
+          errors.push(
+            "Rows were imported, but the weekly update could not be marked complete. Open Weekly Updates to close it."
+          );
+        }
+      }
       setResult({ ...totals, errors });
       setStep("done");
       if (onComplete) onComplete();
@@ -1062,6 +1177,8 @@ export function MembershipImportWizard({
   function renderPreview() {
     const preview = rows.slice(0, 5);
     const typeLabels = MEMBERSHIP_IMPORT_TYPE_LABELS;
+    const weeklyNet =
+      importType === "weekly_update" ? computeNetMovement(weeklyCountsFromRows(rows)) : null;
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
@@ -1070,9 +1187,11 @@ export function MembershipImportWizard({
             <p className="text-sm font-medium">{fileName}</p>
             <p className="text-xs text-muted-foreground">
               {rows.length} rows — {typeLabels[importType]}
+              {weeklyNet != null ? ` · net movement ${weeklyNet > 0 ? `+${weeklyNet}` : weeklyNet}` : ""}
             </p>
           </div>
         </div>
+        {importType === "weekly_update" && <WeeklyMovementSummary rows={rows} />}
 
         <div className="border rounded-lg overflow-auto max-h-[260px]">
           <Table>
@@ -1105,9 +1224,11 @@ export function MembershipImportWizard({
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => { setStep("upload"); setRows([]); }}>
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
+          {(preparedRows?.length ?? 0) === 0 && (
+            <Button variant="outline" onClick={() => { setStep("upload"); setRows([]); }}>
+              <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+          )}
           <Button onClick={proceedFromPreview}>
             Match Employers <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
@@ -1811,7 +1932,9 @@ export function MembershipImportWizard({
         <p className="text-sm text-muted-foreground">
           {importType === "status_sync"
             ? "Map each Member Account Status value to a membership type. Rows mapped to “Ignore” keep the worker's current status."
-            : "Map the raw Membership Type values to recognised membership types."}
+            : importType === "weekly_update"
+              ? "Each row's membership status comes from which weekly file it was in (New, Recommenced, Resigned, Unfinancial). Confirm the mapped type — Unfinancial defaults to On hold."
+              : "Map the raw Membership Type values to recognised membership types."}
         </p>
         <div className="border rounded-lg overflow-hidden">
           <Table>
@@ -2047,6 +2170,9 @@ export function MembershipImportWizard({
       <div className="space-y-4">
         <div className="rounded-lg border p-4 space-y-3">
           <p className="font-medium text-sm">{typeLabels[importType]} — {fileName}</p>
+          {importType === "weekly_update" && (
+            <WeeklyMovementSummary rows={rows} />
+          )}
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div className="text-center p-3 rounded-md bg-green-50 border border-green-200">
               <p className="text-2xl font-bold text-green-700">{createCount}</p>
@@ -2189,9 +2315,11 @@ export function MembershipImportWizard({
           <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>
             Close
           </Button>
-          <Button onClick={reset}>
-            Import another file
-          </Button>
+          {!weeklyBatchId && (
+            <Button onClick={reset}>
+              Import another file
+            </Button>
+          )}
         </DialogFooter>
       </div>
     );

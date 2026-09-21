@@ -983,7 +983,7 @@ production output exists (operator paste), which is the post-data evidence.
 | Stage | Ends in this verifiable state | Needs the operator |
 |---|---|---|
 | **1** ✅ `f3888ef` + fix round 1 | Migration, `90`, `10`, `91`, `00`, `01`, README written; `families.ts` + `campaign-parent.ts` + unit tests green; contract suite written (compiles under `tsc`); `pnpm validate:migrations` green; lint/test/build green. Fresh Fable **static** review of the SQL (the WP2.2 Stage 1 practice). | FQ-a … FQ-g and TRG-a answered in §9.1 (they shape Stage 1's files). |
-| **2** | Migration on normal dev with its ledger row; `01` identical before/after; `pg_get_viewdef` pasted; contract run 1 pasted (0 skipped). Realistic-data rehearsal (§0 step 4) pasted with the four checksum points and the measurement. | Approval of the exact dev file and of the realistic-set run sheet. |
+| **2** ✅ database steps 2026-09-21 (contract run pending CA credentials) | Migration on normal dev with its ledger row; `01` identical before/after; `pg_get_viewdef` pasted; contract run 1 pasted (0 skipped). Realistic-data rehearsal (§0 step 4) pasted with the four checksum points and the measurement. | Approval of the exact dev file and of the realistic-set run sheet. |
 | **3** | Reader switch rows 1–10 (+ 11–25 under FQ-a), UI of §3.7/§3.8, telemetry; jsdom tests green; contract run 2 pasted; preview deployed. Fresh Fable review (database-touching package). | — |
 | **4** | Operator hand test (§5.4) passed with screenshots; measurement re-run; whole-PR review; ledger row; PR marked ready. Production run sheet prepared (§0 step 6). | Hand test; then the production sequence (operator only): migration → merge → `10`. |
 
@@ -1147,7 +1147,37 @@ realistic yqjkuobcawvigsfpgrcm:    activities_md5 8a477f781ad6799b03f5ed2f650bdd
 
 Because dev has no campaign 61/62/64, the dev before/after comparison uses `whole_summary_md5` and the three whole-table counts; the 61/62/64 checksums are the realistic set's evidence.
 
-_(Stage 2 to paste: dev apply output; ledger row; `01` after on dev; `pg_get_viewdef`; realistic set: `01` ×4, `90` output, `EXPLAIN` per R4)_
+*Stage 2 (orchestrator through the connector under the operator's 2026-09-21 approval; one submission per step, output recorded before the next):*
+
+```
+NORMAL DEV dpnnmkhabysfdogllsyh
+  migration (exact file at 7e6c3ce, one submission BEGIN … COMMIT) →
+    parent_col 1, scope_col 1, helper_present true, trigger_present 1, policy_present 1,
+    view_reloptions {security_invoker=true}, view_columns = the baseline six, children_now 0, family_now 0
+  ledger row INSERT → 20260917100000 wp3_8_campaign_families
+  01 variant B after → whole_summary_md5 e483c02f0a11d32d57190fd9e7e34955 (= before), all_activities 5, all_ratings 54,
+    all_campaigns 5 (= before), children_n 0, family_n 0, ledger tail 20260914090000,20260914090100,20260917100000
+  pg_get_viewdef(campaign_worker_rating_summary) → the two IN (SELECT campaign_family_activity_ids(m.campaign_id)) predicates present,
+    r.campaign_id = m.campaign_id absent; vw_sms_chat_session_report → a.activity_id IN (SELECT campaign_family_activity_ids(o.campaign_id))
+
+REALISTIC DATA SET yqjkuobcawvigsfpgrcm (no ledger catch-up; WP2.2a/b absent there, out of scope)
+  01 A before          activities 8a477f781ad6799b03f5ed2f650bdd27  ratings e4e8fa5cbc1cbf5f1cb6e460420bff87  summary 9ccbaa63abe95f41265a84ddfb22d62c  whole d42abdb414100cfd5038dc311af8b823
+  forward 1 + ledger   post-assertions passed; ledger_row 1
+  01 B after-forward-1 activities d744d93fb8f2ed6df22235f38d30f544 (scope column added, expected)  ratings e4e8fa5c… (=)  summary 9ccbaa63… (=)  whole d42abdb4… (=)  children 0 family 0
+  90 rollback          policy_before 1 → policy_after 0; parent/scope/helper/trigger remain: false; view_reloptions {security_invoker=true};
+                       summary_checksum before = after = d42abdb414100cfd5038dc311af8b823; campaigns 22, activities 43, ratings 494, memberships 2726 unchanged
+  ledger repair        DELETE … WHERE version = '20260917100000' → 1 row
+  01 A after-rollback  activities 8a477f78… (= before)  ratings e4e8fa5c… (=)  summary 9ccbaa63… (=)  whole d42abdb4… (=)
+  forward 2 + ledger   post-assertions passed; ledger_row 1
+  01 B after-forward-2 activities d744d93f… (= after-forward-1)  ratings e4e8fa5c… (=)  summary 9ccbaa63… (=)  whole d42abdb4… (=)  children 0 family 0
+                       ledger tail 20260913000000, 20260917100000
+  00 measurement       61: 48 members, 2 changed, 2 shared with 64, 2 rated on 88 · 62: 64 / 13 / 13 / 13 · 64: 276 / 0 / 0 / 0  (= planning-time prediction)
+  R4 EXPLAIN ANALYZE   SELECT * FROM campaign_worker_rating_summary WHERE campaign_id IN (64, 57): 581 rows, Execution Time 26.984 ms,
+                       Planning 7.940 ms, shared hit 4634, 192 helper evaluations in the outer join, 20 in the last-rating subplan — under the
+                       100 ms budget (no same-query pre-migration timing was taken, so the 10× clause is not measured; the absolute budget holds)
+```
+
+Stage 2 remaining: the contract suite (§4.2, §5.2) — needs the `OUX_CONTRACT_*` accounts, which this remote session does not hold (CA).
 
 **Item 2 — contract tests on dev (run 1 and run 2).**
 _(passed / failed / skipped; the VIEW-a and one-level cases named)_

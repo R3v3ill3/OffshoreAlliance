@@ -175,6 +175,57 @@ Phase 2 exit: e2e flows two and three green; the share of memberships in at leas
 
 **WP3.7 Guides.** Manifest updates for A4 and A5; re-recording is human. Depends on WP3.4.
 
+**WP3.8 Campaign families and shared assessments.** *(Appended 2026-09-17 from the campaign-families orchestration prompt; Fable planner, Fable implementer at `max`, Fable reviewer.)*
+
+**Specification.** Add the parent link and the assessment scope; make every per-campaign assessment read and write honour "owned by this campaign, or owned by my parent with `scope = 'family'`", with ratings filtered to the viewing campaign's membership; expose both in the UI. Migration `supabase/migrations/<ts>_wp3_8_campaign_families.sql` with rollback `scripts/data-hygiene/oux-wp3.8/90_rollback_wp3_8_campaign_families.sql`, both in the WP2.1/2.2 style (preconditions that refuse a repeated apply, no explicit BEGIN/COMMIT, post-assertions).
+
+Schema (under FAM-a, ASC-a):
+- `campaigns.parent_campaign_id integer NULL REFERENCES campaigns(campaign_id) ON DELETE SET NULL`, CHECK `parent_campaign_id <> campaign_id`, index on `parent_campaign_id`, trigger `campaigns_enforce_one_level` (BEFORE INSERT OR UPDATE OF `parent_campaign_id`) refusing a parent that has a parent and a child that has children; a parent may not be `is_sms_episode` or `is_standing`.
+- `campaign_activities.scope` as above; COMMENT stating the rule. No change to ratings.
+- A helper `campaign_family_activity_ids(p_campaign_id integer) RETURNS SETOF integer` (STABLE, SECURITY INVOKER, `SET search_path`) returning owned activity ids plus the parent's `family` ones, so SQL and PostgREST readers share one definition.
+- `campaign_worker_rating_summary` rewritten so `rating_activity` joins on `a.activity_id IN (SELECT campaign_family_activity_ids(m.campaign_id))` and the `last_activity_rating` subquery does the same; membership join unchanged (VIEW-a). `v_worker_escalation_tier` and the SMS/call report views: the planner lists each one with its line range and states per view whether it must change (the rule: any view that answers "this campaign's assessments" changes; a view keyed to a plan or a list does not).
+- RLS: activities and ratings policies are already permissive enough for RAT-a (`:25923`, `:25927`); the delete policy on activities stays owner-only (`:27518`). The planner confirms with a `user`-role contract test that a child organiser can rate a parent's family activity and cannot delete it.
+- Generated types: `parent_campaign_id` and `scope` appear in `packages/db-types/generated.ts` only after production carries the migration (the regen hazard in `CURRENT_STATUS_AND_NEXT_STEPS.md`); the code must not depend on the generated types for either column until then.
+
+Application:
+- One pure module `lib/campaign/families.ts`: `familyActivityFilter(campaignId, parentId)` used by every PostgREST reader (`.or(...)` on `campaign_id` and `scope`), `isFamilyActivity(activity, campaignId)`, `familyLabel(parentName)`; vitest beside it.
+- Every reader in the inventory above switches to the helper. `participation-import/apply/route.ts:305–313` accepts a family activity of the parent (ratings then land on the parent's row, RAT-a). `campaign-assessments.tsx` shows a **Shared from <parent>** section: definition read-only (title, type, labels), ratings editable, no delete; a `family` activity in the parent shows a **Shared with N campaigns** badge and a scope toggle. `assessment-selector.tsx` and `participation-selector.tsx` list family assessments with the badge. `worker-detail-sheet.tsx` shows them under the same heading.
+- Basics edit sheet (`campaign-basics-edit-sheet.tsx`): **Part of** selector (SET-a), listing campaigns the user can write to that have no parent and are not SMS episodes or standing; clearing it is allowed. The campaign header shows "Part of <parent>" as a link; the parent's Setup shows its children.
+- Telemetry: `campaign_parent_set`, `assessment_scope_changed`, `family_assessment_rated` (campaign, parent, activity).
+
+Data, operator-run after the migration is on production: set campaign 64 as the parent of 61 and 62 (and of the TMT child once created), and mark whichever of 64's seven assessments are sector-wide as `family`. Prepared as a run sheet; the agent never decides which assessments are sector-wide.
+
+**Acceptance evidence** (the verifier pastes each into `wp/wp3.8.md` §9.2):
+1. Migration applied to normal dev; `validate:migrations`, `lint`, `test`, `build` green; rollback applied and re-applied on the realistic data set under an approved run sheet, with before/after checksums of `campaign_activities`, `campaign_activity_ratings` and the view output for campaigns 61, 62, 64 unchanged where scope is untouched.
+2. Contract tests on dev: one-level trigger refuses grandparent and grandchild; family helper returns owned plus parent-family ids and nothing from a sibling; a `user` on the child can insert a rating on the parent's family activity and cannot delete the activity; `campaign_worker_rating_summary` for the child counts a family rating for a member and not for a non-member (VIEW-a).
+3. jsdom: Assessments tab renders the Shared section; the chart selector lists a family assessment with the badge; rating from the child's sheet posts against the parent's `activity_id`.
+4. Read-only measurement on the realistic data set: for campaign 64 with 61 and 62 as children and one assessment flagged family, the child summaries change only for shared workers, and the parent's counts are unchanged.
+5. Operator hand-test on the branch preview (E2 pattern): set a parent, share an assessment, rate a worker from the child, see the rating in the parent's Assessments tab.
+
+**Promotion gate:** the inherited one. Migration on dev → preview green → operator applies to production → operator merges → operator runs the campaign-64 data run sheet.
+
+**Depends on:** nothing in flight (it touches no structure file). May start now, in parallel with WP2.5/2.6/2.7, on `feat/oux-wp3.8-campaign-families` off `main`. Decisions 11 (FAM, SET, SPN, UNV, KND, MIR) and 12 (ASC, RAT, VIEW) in `DECISIONS.md`. The reader inventory the specification refers to ("the inventory above") is recorded in `DECISIONS.md` under decision 12 and in `wp/wp3.8.md` §2.
+
+**WP3.9 Start a campaign from this unit.** *(Appended 2026-09-17 from the same prompt; Opus planner and implementer, Fable reviewer.)*
+
+**Specification.** From a unit card in the v2 chart (`unit-card-menu.tsx`: new action `spin_off`, label "Start a campaign from this unit…") and from the WP2.7 editor's unit row, open a dialog that creates the child campaign and lands on its chart. The dialog is WP3.6's "New campaign from this action" shape (plan §5.12) applied to a unit, and it opens WP3.1's three-screen create flow with state prefilled rather than inserting a campaign itself.
+
+Preconditions (menu item disabled with a reason otherwise): the unit has a non-custom basis with `employer_id` and/or `worksite_id`; the current campaign has no parent (one level); the actor can write to the current campaign; no existing child of this campaign already has the same universe basis (if one does, the item reads "Open <child>" and navigates).
+
+Prefill: name "<unit name>" (editable); kind per KND; universe per UNV from the unit's basis; organisers = the actor plus the current campaign's organisers (editable); `parent_campaign_id` = the current campaign (FAM); **Share these assessments** — checklist of the parent's assessments, pre-ticked where `scope = 'family'` already, ticking one sets the scope (ASC-a) when the flow completes; **Build the Worksite group** — on by default, runs WP2.7's Build from Who's in after the sync; the vessels become roots of the child's Worksite group and shifts are added later with WP2.7's Nest under (SPN-a). Membership and Employer/Worksite placements come from `syncCampaignUniverseFromEmployersWorksites`; nothing is copied.
+
+Completion: the flow's last screen lands on the child's wall chart with WP2.4's sync notice ("N workers added, M placed…"). The parent's unit card gains a footer link "Organised in <child> →". A `campaign_spun_off` telemetry event (parent, child, unit, members). Idempotent on retry: a second run for the same unit opens the existing child.
+
+Out of scope, recorded so it is not folded in: moving sub-unit rows (SPN-b); a "merge back" or un-spin; spinning off a sub-unit; multi-level families; touch drag (WP4.1).
+
+**Acceptance evidence:**
+1. `lint`, `test`, `build` green; jsdom tests for the menu preconditions (custom unit disabled; campaign with a parent disabled; existing child → Open) and for the dialog's prefill from a both-key unit basis.
+2. Contract test on dev: a spin-off from a fixture parent produces a child with `parent_campaign_id` set, `campaign_employers` = the unit's employer, membership = the parent unit's members with that employer, Worksite units built and universe placements present, chosen assessments `family`.
+3. e2e (Playwright, written and type-checked; run per the D80/D81 rule of `wp/wp2.2.md`): flow "spin off a unit": open the parent chart, Start a campaign from this unit, complete the create flow, land on the child's chart with a Worksite group and a shared assessment in the selector.
+4. Operator hand-test on the preview with the campaign-64 shape recreated on dev (an employer unit with two nested vessel units).
+
+**Depends on:** WP3.8 (on production), WP2.7 (auto-build, Nest under, the editor's unit row), WP3.1 (the create flow), and, per MIR-a, WP2.4b. Branch `feat/oux-wp3.9-spin-off-unit` off `main`. No migration expected; if the planner finds one is needed (for example an idempotency key on `campaigns` such as `spun_off_from_ou_id`), it says so and the promotion gate applies. Non-negotiable for both packages: one level (enforced in the database); ratings never duplicated; no cross-campaign unit or placement moves (no `parent_ou_id` across campaigns); no new creation path (WP3.9 waits for WP3.1); the sector campaign is not restructured; structure-table files off limits while WP2.5/2.6/2.7/2.4b are in flight.
+
 Phase 3 exit: e2e flows four and five green; one creation path; a standalone action linked end to end on dev.
 
 ## Phase 4: field use and method alignment

@@ -30,6 +30,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { loadCampaignParent } from '@/lib/campaign/campaign-parent'
+import { isFamilyActivity, isOwnedActivity } from '@/lib/campaign/families'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { VOTE_SUPPORTER_OPTIONS } from '@/lib/campaign/constants'
@@ -181,14 +183,23 @@ export async function POST(
       )
     }
 
-    // The activity must belong to the effective campaign.
+    // The activity must belong to the effective campaign — or be a shared
+    // assessment of its parent (WP3.8, wp3.8.md §2 A25; the rating lands on
+    // the parent's row, RAT-a, and the write gate below stays the child's).
     const { data: activity, error: actErr } = await supabase
       .from('campaign_activities')
-      .select('activity_id, campaign_id')
+      .select('activity_id, campaign_id, scope')
       .eq('activity_id', activityId)
       .maybeSingle()
     if (actErr) throw actErr
-    if (!activity || activity.campaign_id !== effectiveCampaignId) {
+    const effectiveParent = await loadCampaignParent(supabase, effectiveCampaignId)
+    if (
+      !activity ||
+      !(
+        isOwnedActivity(activity, effectiveCampaignId) ||
+        isFamilyActivity(activity, effectiveCampaignId, effectiveParent.parentId)
+      )
+    ) {
       return NextResponse.json(
         { error: 'Activity not found in this conversation’s campaign' },
         { status: 400 },

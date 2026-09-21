@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAnClient, AN_NOT_CONFIGURED_ERROR } from "@/lib/api/an-client";
 import { listAnActions } from "@/lib/api/an-actions";
+import { loadCampaignParent } from "@/lib/campaign/campaign-parent";
+import { familyActivityFilter } from "@/lib/campaign/families";
 import type {
   AnActionListItem,
   AnActionsResponse,
@@ -56,11 +58,13 @@ export async function GET(
       linked_activity_title: null,
     }));
 
-    // Flag actions already linked to one of this campaign's assessments.
+    // Flag actions already linked to one of this campaign's assessments —
+    // or to a shared assessment of its parent (WP3.8, wp3.8.md §3.5 row 10).
+    const campaignParent = await loadCampaignParent(supabase, campaignId);
     const { data: linked } = await supabase
       .from("campaign_activities")
       .select("activity_id, title, an_resource_type, an_resource_id")
-      .eq("campaign_id", campaignId)
+      .or(familyActivityFilter(campaignId, campaignParent.parentId))
       .not("an_resource_id", "is", null);
     const linkByKey = new Map(
       (linked ?? []).map((l) => [

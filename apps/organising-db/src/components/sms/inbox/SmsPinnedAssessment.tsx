@@ -26,6 +26,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2, Pin, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -114,13 +116,17 @@ export function SmsPinnedAssessment({
     new Map(),
   )
 
+  // WP3.8 (wp3.8.md §2 A36): owned plus the parent's shared assessments —
+  // the sector petition is rated from SMS boards.
+  const campaignParent = useCampaignParent(campaignId)
+  const campaignParentId = campaignParent.data?.parentId ?? null
   const { data: assessments = [] } = useQuery({
-    queryKey: ['sms-pinned-assessments', campaignId],
+    queryKey: ['sms-pinned-assessments', campaignId, campaignParentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('campaign_activities')
         .select('activity_id, title, is_binary, rating_labels')
-        .eq('campaign_id', campaignId as number)
+        .or(familyActivityFilter(campaignId as number, campaignParentId))
         .eq('activity_kind', 'assessment')
         .order('created_at', { ascending: false })
       if (error) throw error
@@ -129,7 +135,7 @@ export function SmsPinnedAssessment({
         rating_labels: (a.rating_labels ?? null) as Record<string, string> | null,
       })) as AssessmentActivity[]
     },
-    enabled: campaignId != null,
+    enabled: campaignId != null && campaignParent.isSuccess,
     staleTime: 30_000,
   })
 

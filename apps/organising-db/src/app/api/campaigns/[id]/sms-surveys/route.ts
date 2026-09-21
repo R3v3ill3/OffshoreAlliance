@@ -13,6 +13,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { loadCampaignParent } from '@/lib/campaign/campaign-parent'
+import { isFamilyActivity, isOwnedActivity } from '@/lib/campaign/families'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { isValidTimeZone } from '@/lib/sms/blackout'
@@ -142,16 +144,20 @@ export async function POST(
       return NextResponse.json({ error: errors.join(' ') }, { status: 400 })
     }
 
-    // The rating target must live in this campaign — build-time
+    // The rating target must live in this campaign — or be a shared
+    // assessment of its parent (WP3.8, wp3.8.md §2 A22) — build-time
     // validation is what makes the webhook's admin-client rating
     // writes safe (Phase 4 plan).
+    const campaignParent = await loadCampaignParent(supabase, cid)
+    const acceptsActivity = (a: { activity_id: number; campaign_id: number; scope?: string | null }) =>
+      isOwnedActivity(a, cid) || isFamilyActivity(a, cid, campaignParent.parentId)
     if (body.activity_id != null) {
       const { data: activity } = await supabase
         .from('campaign_activities')
-        .select('activity_id, campaign_id')
+        .select('activity_id, campaign_id, scope')
         .eq('activity_id', body.activity_id)
         .maybeSingle()
-      if (!activity || activity.campaign_id !== cid) {
+      if (!activity || !acceptsActivity(activity)) {
         return NextResponse.json(
           { error: 'Activity not found in this campaign' },
           { status: 400 },
@@ -188,10 +194,10 @@ export async function POST(
     if (questionActivityIds.length > 0) {
       const { data: activities } = await supabase
         .from('campaign_activities')
-        .select('activity_id, campaign_id, is_binary')
+        .select('activity_id, campaign_id, scope, is_binary')
         .in('activity_id', questionActivityIds)
       questionActivities = (activities ?? [])
-        .filter((a) => a.campaign_id === cid)
+        .filter((a) => acceptsActivity(a))
         .map((a) => ({
           activity_id: a.activity_id as number,
           is_binary: !!a.is_binary,

@@ -26,6 +26,8 @@ import {
   UserRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -116,20 +118,23 @@ export function SmsMemberSidebar({
   })
 
   // Campaign activities for the attach-to-activity select (Phase 3)
-  // and the canned-reply outcome options.
+  // and the canned-reply outcome options — owned plus the parent's shared
+  // ones (WP3.8, wp3.8.md §2 A34).
+  const campaignParent = useCampaignParent(conversation.campaign_id)
+  const campaignParentId = campaignParent.data?.parentId ?? null
   const { data: campaignActivities } = useQuery({
-    queryKey: ['sms-campaign-activity-options', conversation.campaign_id],
+    queryKey: ['sms-campaign-activity-options', conversation.campaign_id, campaignParentId ?? 0],
     queryFn: async () => {
       const supabase = createClient()
       const { data, error } = await supabase
         .from('campaign_activities')
         .select('activity_id, title, activity_kind, is_binary')
-        .eq('campaign_id', conversation.campaign_id as number)
+        .or(familyActivityFilter(conversation.campaign_id as number, campaignParentId))
         .order('title', { ascending: true })
       if (error) throw error
       return data ?? []
     },
-    enabled: conversation.campaign_id != null,
+    enabled: conversation.campaign_id != null && campaignParent.isSuccess,
   })
 
   const attachedActivity =

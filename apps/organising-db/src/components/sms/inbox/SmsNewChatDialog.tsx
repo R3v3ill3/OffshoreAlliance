@@ -17,6 +17,8 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2, MessageSquarePlus, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -122,19 +124,22 @@ export function SmsNewChatDialog({
     enabled: open && workerId != null,
   })
 
+  // WP3.8 (wp3.8.md §2 A35): owned plus the parent's shared activities.
+  const campaignParent = useCampaignParent(open ? campaignId : null)
+  const campaignParentId = campaignParent.data?.parentId ?? null
   const { data: activities } = useQuery({
-    queryKey: ['sms-campaign-activity-options', campaignId ?? null],
+    queryKey: ['sms-campaign-activity-options', campaignId ?? null, campaignParentId ?? 0],
     queryFn: async () => {
       const supabase = createClient()
       const { data, error } = await supabase
         .from('campaign_activities')
         .select('activity_id, title')
-        .eq('campaign_id', campaignId as number)
+        .or(familyActivityFilter(campaignId as number, campaignParentId))
         .order('title', { ascending: true })
       if (error) throw error
       return data ?? []
     },
-    enabled: open && campaignId != null,
+    enabled: open && campaignId != null && campaignParent.isSuccess,
   })
 
   // Sibling-thread trap guard: surface the member's existing OPEN

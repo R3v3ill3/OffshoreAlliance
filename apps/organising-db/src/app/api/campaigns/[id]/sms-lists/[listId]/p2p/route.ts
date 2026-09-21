@@ -28,6 +28,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { loadCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 import { errorResponse } from '@/lib/api/error-response'
 import { loadCampaignEmailContext } from '@/lib/comms/campaign-email-context'
 import { validateSmsBody } from '@/lib/sms/compliance'
@@ -606,11 +608,13 @@ export async function PATCH(
 
       if (unique.length > 0) {
         // Postgres cannot FK an array element, so membership is checked
-        // here: every pin must be an assessment in the effective campaign.
+        // here: every pin must be an assessment in the effective campaign —
+        // or one its parent shares (WP3.8, wp3.8.md §2 A21b).
+        const targetParent = await loadCampaignParent(supabase, targetCampaign)
         const { data: valid, error: validErr } = await supabase
           .from('campaign_activities')
           .select('activity_id')
-          .eq('campaign_id', targetCampaign)
+          .or(familyActivityFilter(targetCampaign, targetParent.parentId))
           .eq('activity_kind', 'assessment')
           .in('activity_id', unique)
         if (validErr) throw validErr

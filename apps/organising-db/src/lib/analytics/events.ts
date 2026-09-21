@@ -34,7 +34,11 @@ export type OrganiserUxEvent =
   | "campaign_tab_opened"
   | "wallchart_group_selected"
   | "wallchart_filter_applied"
-  | "wallchart_first_interaction";
+  | "wallchart_first_interaction"
+  // WP3.8 (wp3.8.md §3.7): campaign families and shared assessments.
+  | "campaign_parent_set"
+  | "assessment_scope_changed"
+  | "family_assessment_rated";
 
 /**
  * Allowed property value shapes. Widened from `phone/telemetry.ts` by
@@ -237,4 +241,73 @@ export function trackWallchartFirstInteraction(
   p: WallchartFirstInteractionProps
 ): void {
   track("wallchart_first_interaction", buildWallchartFirstInteractionProps(p));
+}
+
+// ---------------------------------------------------------------------------
+// WP3.8 — campaign families (wp3.8.md §3.7, last bullet). Integer ids and a
+// closed union only; no name, no free text.
+// ---------------------------------------------------------------------------
+
+/** `campaign_activities.scope` as it travels on the event (closed union). */
+export type AssessmentScopeProp = "campaign" | "family";
+
+export type CampaignParentSetProps = {
+  campaign_id: number;
+  parent_id: number | null;
+  previous_parent_id: number | null;
+};
+
+export function buildCampaignParentSetProps(p: CampaignParentSetProps): CampaignParentSetProps {
+  return {
+    campaign_id: p.campaign_id,
+    parent_id: p.parent_id,
+    previous_parent_id: p.previous_parent_id,
+  };
+}
+
+export function trackCampaignParentSet(p: CampaignParentSetProps): void {
+  track("campaign_parent_set", buildCampaignParentSetProps(p));
+}
+
+export type AssessmentScopeChangedProps = {
+  campaign_id: number;
+  activity_id: number;
+  scope: AssessmentScopeProp;
+  child_count: number;
+};
+
+export function buildAssessmentScopeChangedProps(
+  p: AssessmentScopeChangedProps
+): AssessmentScopeChangedProps {
+  return {
+    campaign_id: p.campaign_id,
+    activity_id: p.activity_id,
+    scope: p.scope,
+    child_count: p.child_count,
+  };
+}
+
+export function trackAssessmentScopeChanged(p: AssessmentScopeChangedProps): void {
+  track("assessment_scope_changed", buildAssessmentScopeChangedProps(p));
+}
+
+/** A rating recorded from a child campaign against its parent's shared assessment (RAT-a). No worker id. */
+export type FamilyAssessmentRatedProps = {
+  campaign_id: number;
+  parent_id: number;
+  activity_id: number;
+};
+
+export function buildFamilyAssessmentRatedProps(
+  p: FamilyAssessmentRatedProps
+): FamilyAssessmentRatedProps {
+  return {
+    campaign_id: p.campaign_id,
+    parent_id: p.parent_id,
+    activity_id: p.activity_id,
+  };
+}
+
+export function trackFamilyAssessmentRated(p: FamilyAssessmentRatedProps): void {
+  track("family_assessment_rated", buildFamilyAssessmentRatedProps(p));
 }

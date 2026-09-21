@@ -85,6 +85,9 @@ This is what campaign 42 looks like on production, built here by hand. Dev has n
 1. Open the **Group** control.
    *Expected: the list is the same as the one you wrote down in step 0.6 — **Shift is not listed**, even though two
    shift units now exist.*
+   *Note (2026-09-17): the same rule applies to a **sector campaign** whose vessels or worksites are nested under Employer
+   units (campaign 64, where the vessels are custom Work area units): that group is sub-unit-only and is absent from this list. That is expected under SG-a,
+   not a bug (`PROGRESS.md` incidental findings 2026-09-17; plan §5.5 addendum).*
 2. Close the list (press Escape) and look down the whole board.
    *Expected: there is no card anywhere titled "Unassigned in Shift"; the only Unassigned card is "Unassigned in
    Worksite".*

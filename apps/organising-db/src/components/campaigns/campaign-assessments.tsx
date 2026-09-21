@@ -51,6 +51,18 @@ import type { CampaignActivity } from "@/types/database";
 import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
 import { ActivityAmbitionLinksPanel } from "./assessments/activity-ambition-links-panel";
+import { AssessmentScopeToggle } from "./assessments/assessment-scope-toggle";
+import { useCampaignParent } from "@/lib/campaign/campaign-parent";
+import {
+  FAMILY_SCOPE,
+  familyActivityFilter,
+  familyLabel,
+  isFamilyActivity,
+  isOwnedActivity,
+  partitionFamilyActivities,
+  sharedWithLabel,
+} from "@/lib/campaign/families";
+import { trackFamilyAssessmentRated } from "@/lib/analytics/events";
 import { invalidateCampaignAmbitionCaches } from "@/lib/hooks/useCampaignAmbitionContext";
 import {
   removeDeletedActivityFromWallChartCache,
@@ -153,17 +165,47 @@ export function CampaignAssessmentsSection({
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [seedAttributeKeys, setSeedAttributeKeys] = useState<Set<string>>(new Set());
 
+  // WP3.8 (wp3.8.md §3.5 row 6, §3.7): this campaign's activities plus the
+  // parent's `scope = family` ones, under a key of its own (the task-list
+  // dialog keeps `["campaign-activities", campaignId]` owned-only, FQ-f).
+  const parent = useCampaignParent(campaignId);
+  const parentId = parent.data?.parentId ?? null;
+  const parentName = parent.data?.parentName ?? null;
+  const numericCampaignId = Number(campaignId);
+
   const { data: activities = [] } = useQuery({
-    queryKey: ["campaign-activities", campaignId],
+    queryKey: ["campaign-activities-family", campaignId, parentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_activities")
         .select("*")
-        .eq("campaign_id", campaignId)
+        .or(familyActivityFilter(campaignId, parentId))
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as CampaignActivity[];
     },
+    enabled: parent.isSuccess,
+  });
+
+  // The campaigns that are part of this one (empty for a child or a lone
+  // campaign): names the "Shared with N campaigns" badge and decides whether
+  // the sharing toggle is offered (UI-a). The `parent_campaign_id` filter is
+  // applied server-side and repeated client-side so any backend that ignores
+  // filters agrees with PostgREST.
+  const { data: children = [] } = useQuery({
+    queryKey: ["campaign-children", campaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaigns")
+        .select("campaign_id, name, parent_campaign_id")
+        .eq("parent_campaign_id", numericCampaignId)
+        .order("name");
+      if (error) throw error;
+      return ((data ?? []) as { campaign_id: number; name: string; parent_campaign_id: number | null }[]).filter(
+        (c) => Number(c.parent_campaign_id) === numericCampaignId
+      );
+    },
+    enabled: Number.isInteger(numericCampaignId) && numericCampaignId > 0,
   });
 
   const { data: members = [] } = useQuery({
@@ -204,6 +246,23 @@ export function CampaignAssessmentsSection({
     () => activities.filter((a) => a.activity_kind === "assessment"),
     [activities]
   );
+
+  // Owned first, then the parent's shared ones; anything else is dropped.
+  const familyPartition = useMemo(
+    () => partitionFamilyActivities(assessmentActivities, campaignId, parentId),
+    [assessmentActivities, campaignId, parentId]
+  );
+
+  const emitFamilyRated = (activityId: number) => {
+    const rated = assessmentActivities.find((a) => a.activity_id === activityId);
+    if (parentId != null && rated && isFamilyActivity(rated, campaignId, parentId)) {
+      trackFamilyAssessmentRated({
+        campaign_id: numericCampaignId,
+        parent_id: parentId,
+        activity_id: activityId,
+      });
+    }
+  };
 
   const activityForRates =
     selectedActivityId ?? assessmentActivities[0]?.activity_id ?? null;
@@ -276,6 +335,7 @@ export function CampaignAssessmentsSection({
       removeDeletedActivityFromWallChartCache(queryClient, campaignId, activityId);
       refreshWallChartAssessmentOptions(queryClient, campaignId);
       queryClient.invalidateQueries({ queryKey: ["campaign-activities", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-activities-family", campaignId] });
       queryClient.invalidateQueries({
         queryKey: ["campaign-assessment-options", campaignId],
       });
@@ -315,9 +375,10 @@ export function CampaignAssessmentsSection({
       );
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["campaign-activity-ratings"] });
       queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+      emitFamilyRated(vars.activity_id);
     },
   });
 
@@ -363,6 +424,7 @@ export function CampaignAssessmentsSection({
       setBulkBinaryValue(UNSET_VALUE);
       queryClient.invalidateQueries({ queryKey: ["campaign-activity-ratings"] });
       queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+      if (activityForRates != null) emitFamilyRated(activityForRates);
     },
   });
 
@@ -642,11 +704,15 @@ export function CampaignAssessmentsSection({
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {assessmentActivities.length === 0 ? (
+          {parent.isError ? (
+            <p className="text-sm text-destructive" role="alert">
+              Couldn&apos;t load this campaign&apos;s family: {parent.error.message}
+            </p>
+          ) : assessmentActivities.length === 0 ? (
             <p className="text-sm text-muted-foreground">No assessments yet.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {assessmentActivities.map((activity) => (
+              {familyPartition.owned.map((activity) => (
                 <div
                   key={activity.activity_id}
                   className="inline-flex items-stretch rounded-md border bg-background shadow-sm overflow-hidden"
@@ -665,7 +731,24 @@ export function CampaignAssessmentsSection({
                         {activity.template_key}
                       </Badge>
                     )}
+                    {parentId == null && activity.scope === FAMILY_SCOPE && (
+                      <Badge variant="outline" className="ml-1 text-[10px]">
+                        {sharedWithLabel(children.length)}
+                      </Badge>
+                    )}
                   </Button>
+                  {canWrite &&
+                    parentId == null &&
+                    activity.activity_kind === "assessment" &&
+                    (children.length > 0 || activity.scope === FAMILY_SCOPE) && (
+                      <AssessmentScopeToggle
+                        campaignId={campaignId}
+                        activityId={activity.activity_id}
+                        activityTitle={activity.title}
+                        scope={activity.scope === FAMILY_SCOPE ? FAMILY_SCOPE : "campaign"}
+                        childCount={children.length}
+                      />
+                    )}
                   {canWrite && (
                     <Button
                       type="button"
@@ -686,7 +769,41 @@ export function CampaignAssessmentsSection({
             </div>
           )}
 
-          {activityForRates && selectedActivity && (
+          {/* WP3.8 (wp3.8.md §3.7): the parent's shared assessments. Selectable
+              (the table and the bulk update post against the pill's
+              activity_id — the parent's row, RAT-a); read-only definition:
+              no Remove, no ambition links (those are the owner's plan). */}
+          {familyPartition.family.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {familyLabel(parentName)}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {familyPartition.family.map((activity) => (
+                  <div
+                    key={activity.activity_id}
+                    className="inline-flex items-stretch rounded-md border bg-background shadow-sm overflow-hidden"
+                  >
+                    <Button
+                      variant={activity.activity_id === activityForRates ? "default" : "ghost"}
+                      size="sm"
+                      className="rounded-none border-0 shadow-none px-3"
+                      onClick={() => {
+                        setSelectedActivityId(activity.activity_id);
+                      }}
+                    >
+                      {activity.title}
+                      <Badge variant="outline" className="ml-1 text-[10px]">
+                        Shared
+                      </Badge>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activityForRates && selectedActivity && isOwnedActivity(selectedActivity, campaignId) && (
             <ActivityAmbitionLinksPanel
               campaignId={campaignId}
               activityId={activityForRates}
@@ -1114,6 +1231,9 @@ export function CampaignAssessmentsSection({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         lockKind="assessment"
+        onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ["campaign-activities-family", campaignId] });
+        }}
       />
 
       <AlertDialog

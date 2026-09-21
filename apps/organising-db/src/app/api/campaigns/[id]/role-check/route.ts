@@ -62,30 +62,63 @@ export async function GET(
     (x): x is number => Number.isFinite(x as number)
   );
 
-  // 1. Collect activities for this campaign.
+  // 1. Collect the activities this campaign may read and rate — its own plus
+  //    its parent's shared ones (WP3.8, wp3.8.md §3.5 row 9): one call to the
+  //    database helper, the same definition the summary view uses.
+  const { data: familyIds, error: fErr } = await supabase.rpc("campaign_family_activity_ids", {
+    p_campaign_id: campaignId,
+  });
+  if (fErr) {
+    return NextResponse.json(
+      { ok: false, error: fErr.message },
+      { status: 500 }
+    );
+  }
+  const activityIds = ((familyIds ?? []) as unknown[])
+    .map((v) => (typeof v === "object" && v !== null ? Object.values(v)[0] : v))
+    .map(Number)
+    .filter((n) => Number.isInteger(n));
+  if (activityIds.length === 0) {
+    return NextResponse.json({ ok: true, rows: [], leader_role_ids: leaderRoleIds });
+  }
   const { data: activities, error: aErr } = await supabase
     .from("campaign_activities")
     .select("activity_id, title")
-    .eq("campaign_id", campaignId);
+    .in("activity_id", activityIds);
   if (aErr) {
     return NextResponse.json(
       { ok: false, error: aErr.message },
       { status: 500 }
     );
   }
-  if (!activities || activities.length === 0) {
-    return NextResponse.json({ ok: true, rows: [], leader_role_ids: leaderRoleIds });
-  }
-  const activityIds = activities.map((a) => a.activity_id as number);
   const activityTitleById = new Map<number, string>(
-    activities.map((a) => [a.activity_id as number, (a.title as string) ?? ""])
+    (activities ?? []).map((a) => [a.activity_id as number, (a.title as string) ?? ""])
   );
 
-  // 2. Pull rating=1 rows on those activities.
+  // 1b. VIEW-a: candidates are this campaign's members only. A shared
+  //     assessment carries the parent's other members' ratings too; they are
+  //     never surfaced here.
+  const { data: memberships, error: mErr } = await supabase
+    .from("campaign_worker_membership")
+    .select("worker_id")
+    .eq("campaign_id", campaignId);
+  if (mErr) {
+    return NextResponse.json(
+      { ok: false, error: mErr.message },
+      { status: 500 }
+    );
+  }
+  const memberIds = (memberships ?? []).map((m) => m.worker_id as number);
+  if (memberIds.length === 0) {
+    return NextResponse.json({ ok: true, rows: [], leader_role_ids: leaderRoleIds });
+  }
+
+  // 2. Pull rating=1 rows on those activities, for members only.
   const { data: ratings, error: rErr } = await supabase
     .from("campaign_activity_ratings")
     .select("activity_id, worker_id, rating, rated_at")
     .in("activity_id", activityIds)
+    .in("worker_id", memberIds)
     .eq("rating", 1)
     .order("rated_at", { ascending: false });
   if (rErr) {

@@ -47,6 +47,8 @@ import {
 import { validateSmsBody } from '@/lib/sms/compliance'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+import { useCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
@@ -345,20 +347,23 @@ export function NewChatBoardSheet({
   // SMS analogue of the phone pathway's assessment-setup step. Skipped
   // for standalone boards: their campaign is a hidden episode with no
   // assessments — those nominate a real campaign from the workspace.
+  // WP3.8 (wp3.8.md §2 A37): owned plus the parent's shared assessments.
+  const campaignParent = useCampaignParent(open && !standaloneMode ? campaignId : null)
+  const campaignParentId = campaignParent.data?.parentId ?? null
   const { data: campaignAssessments = [] } = useQuery({
-    queryKey: ['sms-chat-setup-assessments', campaignId],
+    queryKey: ['sms-chat-setup-assessments', campaignId, campaignParentId ?? 0],
     queryFn: async () => {
       const supabase = createSupabaseClient()
       const { data, error } = await supabase
         .from('campaign_activities')
         .select('activity_id, title')
-        .eq('campaign_id', Number(campaignId))
+        .or(familyActivityFilter(Number(campaignId), campaignParentId))
         .eq('activity_kind', 'assessment')
         .order('created_at', { ascending: false })
       if (error) throw error
       return (data ?? []) as { activity_id: number; title: string }[]
     },
-    enabled: open && !standaloneMode,
+    enabled: open && !standaloneMode && campaignParent.isSuccess,
     staleTime: 30_000,
   })
 

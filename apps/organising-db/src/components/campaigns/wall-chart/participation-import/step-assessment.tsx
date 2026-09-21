@@ -28,7 +28,9 @@ export function StepAssessment({
   controller: ParticipationImportController;
 }) {
   const { assessment, setAssessment, source } = controller;
-  const { data: options = [], isLoading } = useWallChartAssessmentOptions(campaignId);
+  // WP3.8 fix round 1 (F6): `isPending`, not `isLoading` — the options query
+  // is disabled until the parent loads, and must not read as "no assessments".
+  const { data: options = [], isPending: isLoading } = useWallChartAssessmentOptions(campaignId);
 
   // Seed a sensible default when the step is first entered: a linked AN
   // action re-syncs into its existing assessment; otherwise a new binary

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAssessmentScopeChangedProps,
+  buildCampaignParentSetProps,
   buildCampaignTabOpenedProps,
+  buildFamilyAssessmentRatedProps,
   buildWallchartFilterAppliedProps,
   buildWallchartFirstInteractionProps,
   buildWallchartGroupSelectedProps,
@@ -134,6 +137,34 @@ describe("buildWallchartFirstInteractionProps", () => {
   });
 });
 
+describe("WP3.8 campaign-family builders", () => {
+  it("campaign_parent_set carries the campaign, the new parent and the previous parent (null allowed)", () => {
+    expect(
+      buildCampaignParentSetProps({ campaign_id: 61, parent_id: 64, previous_parent_id: null })
+    ).toEqual({ campaign_id: 61, parent_id: 64, previous_parent_id: null });
+    expect(
+      buildCampaignParentSetProps({ campaign_id: 61, parent_id: null, previous_parent_id: 64 })
+    ).toEqual({ campaign_id: 61, parent_id: null, previous_parent_id: 64 });
+  });
+
+  it("assessment_scope_changed carries ids, the closed scope union and the child count", () => {
+    expect(
+      buildAssessmentScopeChangedProps({
+        campaign_id: 64,
+        activity_id: 88,
+        scope: "family",
+        child_count: 3,
+      })
+    ).toEqual({ campaign_id: 64, activity_id: 88, scope: "family", child_count: 3 });
+  });
+
+  it("family_assessment_rated carries campaign, parent and activity ids — and no worker id", () => {
+    const props = buildFamilyAssessmentRatedProps({ campaign_id: 61, parent_id: 64, activity_id: 88 });
+    expect(props).toEqual({ campaign_id: 61, parent_id: 64, activity_id: 88 });
+    expect(Object.keys(props)).not.toContain("worker_id");
+  });
+});
+
 /**
  * The privacy rule from the header of `events.ts`, as an executable assertion.
  * Every property of every event this module can emit must be an id, an enum, a
@@ -168,6 +199,23 @@ describe("privacy rule: no personal-data property keys", () => {
       ms_since_login: 1_000,
       interaction: "drag",
       login_source: "login_form",
+    }),
+    // WP3.8: the three campaign-family events.
+    campaign_parent_set: buildCampaignParentSetProps({
+      campaign_id: 1,
+      parent_id: 9,
+      previous_parent_id: null,
+    }),
+    assessment_scope_changed: buildAssessmentScopeChangedProps({
+      campaign_id: 9,
+      activity_id: 501,
+      scope: "family",
+      child_count: 1,
+    }),
+    family_assessment_rated: buildFamilyAssessmentRatedProps({
+      campaign_id: 1,
+      parent_id: 9,
+      activity_id: 501,
     }),
   };
 

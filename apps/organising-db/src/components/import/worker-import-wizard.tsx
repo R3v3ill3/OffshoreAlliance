@@ -3,6 +3,8 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { useCampaignParent } from "@/lib/campaign/campaign-parent";
+import { familyActivityFilter } from "@/lib/campaign/families";
 import {
   fetchApi,
   API_FETCH_TIMEOUT_UPLOAD_MS,
@@ -705,19 +707,24 @@ export function WorkerImportWizard({
     enabled: open && numericCampaignId != null,
   });
 
+  // WP3.8 (wp3.8.md §3.5 row 7): import columns may map onto the parent's
+  // shared assessments too; the parent is loaded once, only while open.
+  const campaignParent = useCampaignParent(open ? numericCampaignId : null);
+  const campaignParentId = campaignParent.data?.parentId ?? null;
+
   const { data: campaignAssessments = [] } = useQuery<CampaignAssessment[]>({
-    queryKey: ["worker-import-assessments", numericCampaignId],
+    queryKey: ["worker-import-assessments", numericCampaignId, campaignParentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_activities")
         .select("activity_id, title, is_binary, template_key")
-        .eq("campaign_id", numericCampaignId)
+        .or(familyActivityFilter(numericCampaignId!, campaignParentId))
         .eq("activity_kind", "assessment")
         .order("title");
       if (error) throw error;
       return data ?? [];
     },
-    enabled: open && numericCampaignId != null,
+    enabled: open && numericCampaignId != null && campaignParent.isSuccess,
   });
 
   const { data: ratingLevels = [] } = useQuery<RatingLevel[]>({

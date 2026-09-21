@@ -29,6 +29,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { loadCampaignParent } from '@/lib/campaign/campaign-parent'
+import { isFamilyActivity, isOwnedActivity } from '@/lib/campaign/families'
 import { errorResponse } from '@/lib/api/error-response'
 
 const UNIQUE_VIOLATION = '23505'
@@ -349,12 +351,14 @@ export async function PATCH(
           )
         }
         // An attached activity must belong to the conversation's campaign
-        // (post-update): the FK alone would allow cross-campaign attaches.
+        // (post-update) — or be a shared assessment of that campaign's
+        // parent (WP3.8, wp3.8.md §2 A27): the FK alone would allow
+        // cross-campaign attaches.
         if (body.activity_id != null) {
           const [{ data: activity }, { data: conv }] = await Promise.all([
             supabase
               .from('campaign_activities')
-              .select('campaign_id')
+              .select('activity_id, campaign_id, scope')
               .eq('activity_id', body.activity_id)
               .maybeSingle(),
             supabase
@@ -365,7 +369,16 @@ export async function PATCH(
           ])
           const targetCampaign =
             body.campaign_id !== undefined ? body.campaign_id : conv?.campaign_id
-          if (!activity || targetCampaign == null || activity.campaign_id !== targetCampaign) {
+          const targetParent =
+            targetCampaign != null ? await loadCampaignParent(supabase, targetCampaign) : null
+          if (
+            !activity ||
+            targetCampaign == null ||
+            !(
+              isOwnedActivity(activity, targetCampaign) ||
+              isFamilyActivity(activity, targetCampaign, targetParent?.parentId ?? null)
+            )
+          ) {
             return NextResponse.json(
               { error: 'activity_id must belong to the conversation campaign' },
               { status: 400 },

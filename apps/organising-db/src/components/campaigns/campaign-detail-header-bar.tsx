@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCampaign } from "@/lib/hooks/usePlannerCampaigns";
+import { useCampaignParent } from "@/lib/campaign/campaign-parent";
 import { SMS_EPISODE_TOOLS_HREF } from "@/lib/campaign/visible-campaigns";
 import {
   isCampaignChromeWizardRoute,
@@ -147,6 +148,29 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
   const { data: campaign, isLoading } = useCampaign(numericCampaignId, {
     enabled: campaignIdValid,
   });
+  // WP3.8 (wp3.8.md §3.7 "Header"): "Part of <parent>" under the dates. The
+  // id is on the row the header already has; the name comes from the shared
+  // parent query (cached five minutes, keyed like every other reader).
+  const { data: campaignParent } = useCampaignParent(
+    campaign?.parent_campaign_id != null ? numericCampaignId : null
+  );
+
+  // WP3.8: the Setup tab's family card links here with `?edit=basics` (there
+  // is no route for the sheet; it is header state). The parameter holds the
+  // sheet open; closing it drops the parameter so a reload does not reopen it.
+  const basicsSheetOpenFromUrl = searchParams.get("edit") === "basics" && canWrite;
+  const handleBasicsSheetOpenChange = useCallback(
+    (next: boolean) => {
+      setBasicsSheetOpen(next);
+      if (!next && basicsSheetOpenFromUrl) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete("edit");
+        const qs = params.toString();
+        router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+      }
+    },
+    [basicsSheetOpenFromUrl, pathname, router, searchParams]
+  );
 
   // A hidden episode campaign has no detail page of its own — send the
   // organiser to the SMS hub. Its chat workspace is the one legitimate
@@ -362,6 +386,17 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
                 <p className="text-xs text-muted-foreground md:text-sm">
                   {formatDate(campaign.start_date)} — {formatDate(campaign.end_date)}
                 </p>
+                {campaign.parent_campaign_id != null && (
+                  <p className="text-xs text-muted-foreground md:text-sm">
+                    Part of{" "}
+                    <Link
+                      href={`/campaigns/${campaign.parent_campaign_id}`}
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      {campaignParent?.parentName ?? `campaign ${campaign.parent_campaign_id}`}
+                    </Link>
+                  </p>
+                )}
               </>
             )}
           </div>
@@ -381,8 +416,8 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
       {campaign && campaignIdValid && (
         <>
           <CampaignBasicsEditSheet
-            open={basicsSheetOpen}
-            onOpenChange={setBasicsSheetOpen}
+            open={basicsSheetOpen || basicsSheetOpenFromUrl}
+            onOpenChange={handleBasicsSheetOpenChange}
             campaign={campaign}
             campaignId={numericCampaignId}
             onSaved={() => queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] })}
@@ -398,6 +433,14 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
               });
               queryClient.invalidateQueries({
                 queryKey: ["campaign-assessments-rated", numericCampaignId],
+              });
+              // WP3.8 (wp3.8.md §3.5 row 6): the Assessments tab's family-keyed
+              // list and the selector cache, keyed by the string id the sections use.
+              queryClient.invalidateQueries({
+                queryKey: ["campaign-activities-family", campaignId],
+              });
+              queryClient.invalidateQueries({
+                queryKey: ["campaign-assessments-rated", campaignId],
               });
             }}
           />

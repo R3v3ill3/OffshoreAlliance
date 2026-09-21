@@ -16,10 +16,24 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils/cn";
+import {
+  familyActivityFilter,
+  familyLabel,
+  isFamilyActivity,
+  type ActivityScope,
+} from "@/lib/campaign/families";
+import { useCampaignParent } from "@/lib/campaign/campaign-parent";
 import type {
   AssessmentSelection,
   WallChartAssessmentOption,
 } from "./types";
+import { groupAssessmentOptions } from "./assessment-option-groups";
+
+export { groupAssessmentOptions } from "./assessment-option-groups";
+export type { GroupedAssessmentOptions } from "./assessment-option-groups";
+
+/** WP3.8: the cache prefix every consumer invalidates; the full key carries `parentId ?? 0` (wp3.8.md §3.5 row 1). */
+export const WALL_CHART_ASSESSMENT_OPTIONS_KEY = "campaign-assessments-rated" as const;
 
 export const CUMULATIVE_VALUE = "__cumulative__";
 export const INHERIT_VALUE = "__inherit__";
@@ -36,22 +50,30 @@ function assessmentSelectionsEqual(
   return false;
 }
 
+/**
+ * This campaign's assessments plus, with a parent, the parent's `scope =
+ * family` ones (WP3.8, wp3.8.md §3.5 row 1). `parentId` comes from
+ * `loadCampaignParent` / `useCampaignParent`; omitted or null means owned only.
+ */
 export async function fetchWallChartAssessmentOptions(
   supabase: SupabaseClient,
-  campaignId: string
+  campaignId: string,
+  parentId: number | null = null
 ): Promise<WallChartAssessmentOption[]> {
   const { data: activities, error: actErr } = await supabase
     .from("campaign_activities")
     .select(
-      `activity_id, title, is_binary, supporter_outcome_value, created_at, rating_labels,
+      `activity_id, campaign_id, scope, title, is_binary, supporter_outcome_value, created_at, rating_labels,
        activity_ambitions(plan_ambition_id)`
     )
-    .eq("campaign_id", campaignId)
+    .or(familyActivityFilter(campaignId, parentId))
     .eq("activity_kind", "assessment");
   if (actErr) throw actErr;
 
   const rows = (activities ?? []) as Array<{
     activity_id: number;
+    campaign_id: number;
+    scope: ActivityScope | null;
     title: string;
     is_binary: boolean | null;
     supporter_outcome_value: string | null;
@@ -73,6 +95,7 @@ export async function fetchWallChartAssessmentOptions(
       existing.has_linked_ambition = existing.has_linked_ambition || hasLinked;
       continue;
     }
+    const scope: ActivityScope = r.scope === "family" ? "family" : "campaign";
     byId.set(r.activity_id, {
       activity_id: r.activity_id,
       title: r.title,
@@ -82,6 +105,9 @@ export async function fetchWallChartAssessmentOptions(
       last_rated_at: null,
       has_linked_ambition: hasLinked,
       rating_labels: r.rating_labels ?? null,
+      campaign_id: r.campaign_id,
+      scope,
+      is_family: isFamilyActivity({ activity_id: r.activity_id, campaign_id: r.campaign_id, scope }, campaignId, parentId),
     });
   }
 
@@ -120,25 +146,34 @@ export async function fetchWallChartAssessmentOptions(
   });
 }
 
+/**
+ * Signature unchanged (nine callers, some in files WP3.8 does not touch).
+ * WP3.8: loads the parent once through `useCampaignParent` and gates on it,
+ * so the first successful fetch already carries the family rows; the key
+ * gains `parentId ?? 0`, and every prefix invalidation still matches.
+ */
 export function useWallChartAssessmentOptions(campaignId: string) {
   const supabase = createClient();
+  const parent = useCampaignParent(campaignId);
+  const parentId = parent.data?.parentId ?? null;
   return useQuery({
-    queryKey: ["campaign-assessments-rated", campaignId],
-    queryFn: () => fetchWallChartAssessmentOptions(supabase, campaignId),
+    queryKey: [WALL_CHART_ASSESSMENT_OPTIONS_KEY, campaignId, parentId ?? 0],
+    queryFn: () => fetchWallChartAssessmentOptions(supabase, campaignId, parentId),
+    enabled: parent.isSuccess,
     // Assessments can be deleted on another sub-tab while this query is unmounted.
     staleTime: 0,
     refetchOnMount: "always",
   });
 }
 
-/** Drop a deleted activity from the cached selector list immediately. */
+/** Drop a deleted activity from the cached selector list immediately (every parent-keyed entry). */
 export function removeDeletedActivityFromWallChartCache(
   queryClient: QueryClient,
   campaignId: string,
   activityId: number
 ) {
-  queryClient.setQueryData<WallChartAssessmentOption[]>(
-    ["campaign-assessments-rated", campaignId],
+  queryClient.setQueriesData<WallChartAssessmentOption[]>(
+    { queryKey: [WALL_CHART_ASSESSMENT_OPTIONS_KEY, campaignId] },
     (prev) => (prev ? prev.filter((o) => o.activity_id !== activityId) : [])
   );
 }
@@ -149,7 +184,7 @@ export function refreshWallChartAssessmentOptions(
   campaignId: string
 ) {
   void queryClient.refetchQueries({
-    queryKey: ["campaign-assessments-rated", campaignId],
+    queryKey: [WALL_CHART_ASSESSMENT_OPTIONS_KEY, campaignId],
     type: "all",
   });
 }
@@ -175,7 +210,10 @@ export function AssessmentSelector({
   label = "Assessment view (campaign default)",
   triggerAriaLabel,
 }: AssessmentSelectorProps) {
-  const { data: options = [], isLoading, refetch } = useWallChartAssessmentOptions(campaignId);
+  const { data: options = [], isLoading, isPending, refetch } = useWallChartAssessmentOptions(campaignId);
+  const parentQuery = useCampaignParent(campaignId);
+  const parent = parentQuery.data;
+  const parentId = parent?.parentId ?? null;
 
   const handleSelectOpenChange = useCallback(
     (open: boolean) => {
@@ -186,10 +224,13 @@ export function AssessmentSelector({
 
   useEffect(() => {
     if (value.kind !== "assessment") return;
-    if (isLoading) return;
+    // WP3.8: `isPending` (no data yet), not `isLoading` — while the parent is
+    // still loading the options query is disabled and must not reset a
+    // stored assessment selection to Cumulative.
+    if (isPending) return;
     if (options.some((o) => o.activity_id === value.activityId)) return;
     onChange({ kind: "cumulative" });
-  }, [value, options, isLoading, onChange]);
+  }, [value, options, isPending, onChange]);
 
   const selectValue =
     value.kind === "cumulative" ? CUMULATIVE_VALUE : String(value.activityId);
@@ -212,11 +253,10 @@ export function AssessmentSelector({
     });
   };
 
-  const groupedAssessments = useMemo(() => {
-    const withRatings = options.filter((o) => o.last_rated_at != null);
-    const withoutRatings = options.filter((o) => o.last_rated_at == null);
-    return { withRatings, withoutRatings };
-  }, [options]);
+  const groupedAssessments = useMemo(
+    () => groupAssessmentOptions(options, campaignId, parentId),
+    [options, campaignId, parentId]
+  );
 
   return (
     <div className="flex flex-col gap-1 min-w-[14rem]">
@@ -233,7 +273,14 @@ export function AssessmentSelector({
           <SelectValue placeholder={isLoading ? "Loading…" : "Select assessment view…"} />
         </SelectTrigger>
         <SelectContent>
-          {options.length === 0 ? (
+          {parentQuery.isError ? (
+            <SelectGroup>
+              <SelectLabel className="text-[10px] text-destructive">
+                Couldn&apos;t load this campaign&apos;s family: {parentQuery.error.message}
+              </SelectLabel>
+              <SelectItem value={CUMULATIVE_VALUE}>Cumulative</SelectItem>
+            </SelectGroup>
+          ) : options.length === 0 ? (
             <SelectGroup>
               <SelectLabel className="text-[10px]">No assessments in this campaign</SelectLabel>
               <SelectItem value={CUMULATIVE_VALUE}>Cumulative</SelectItem>
@@ -269,6 +316,21 @@ export function AssessmentSelector({
                       {opt.title}
                       {opt.is_binary ? " (binary)" : ""}
                       {!opt.has_linked_ambition ? " · no plan link" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {groupedAssessments.family.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel className="text-[10px]">{familyLabel(parent?.parentName)}</SelectLabel>
+                  {groupedAssessments.family.map((opt) => (
+                    <SelectItem
+                      key={opt.activity_id}
+                      value={String(opt.activity_id)}
+                    >
+                      {opt.title}
+                      {opt.is_binary ? " (binary)" : ""}
+                      {" · shared"}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -313,7 +375,9 @@ export function UnitAssessmentViewControl({
   override,
   onChangeOverride,
 }: UnitAssessmentViewControlProps) {
-  const { data: options = [], isLoading, refetch } = useWallChartAssessmentOptions(campaignId);
+  const { data: options = [], isLoading, isPending, refetch } = useWallChartAssessmentOptions(campaignId);
+  const { data: parent } = useCampaignParent(campaignId);
+  const parentId = parent?.parentId ?? null;
 
   const handleSelectOpenChange = useCallback(
     (open: boolean) => {
@@ -324,10 +388,10 @@ export function UnitAssessmentViewControl({
 
   useEffect(() => {
     if (override?.kind !== "assessment") return;
-    if (isLoading) return;
+    if (isPending) return;
     if (options.some((o) => o.activity_id === override.activityId)) return;
     onChangeOverride(undefined);
-  }, [override, options, isLoading, onChangeOverride]);
+  }, [override, options, isPending, onChangeOverride]);
 
   const effective = override ?? campaignDefault;
   const selectValue =
@@ -359,11 +423,10 @@ export function UnitAssessmentViewControl({
     });
   };
 
-  const groupedAssessments = useMemo(() => {
-    const withRatings = options.filter((o) => o.last_rated_at != null);
-    const withoutRatings = options.filter((o) => o.last_rated_at == null);
-    return { withRatings, withoutRatings };
-  }, [options]);
+  const groupedAssessments = useMemo(
+    () => groupAssessmentOptions(options, campaignId, parentId),
+    [options, campaignId, parentId]
+  );
 
   const inheritHint = campaignDefaultShortLabel(campaignDefault);
 
@@ -427,6 +490,18 @@ export function UnitAssessmentViewControl({
                     <SelectItem key={opt.activity_id} value={String(opt.activity_id)}>
                       {opt.title}
                       {opt.is_binary ? " (bin)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {groupedAssessments.family.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel className="text-[10px]">{familyLabel(parent?.parentName)}</SelectLabel>
+                  {groupedAssessments.family.map((opt) => (
+                    <SelectItem key={opt.activity_id} value={String(opt.activity_id)}>
+                      {opt.title}
+                      {opt.is_binary ? " (bin)" : ""}
+                      {" · shared"}
                     </SelectItem>
                   ))}
                 </SelectGroup>

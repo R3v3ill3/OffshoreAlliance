@@ -68,6 +68,8 @@ let rpcAnswers = new Map<string, FakeRpcResult[]>();
 let writeLog: WriteInvocation[] = [];
 let queryLog: QueryInvocation[] = [];
 let directStructureWritesAllowed = false;
+/** WP3.8 fix round 1 (F4c): queued errors for the next write on `table:op`, consumed one per write. */
+let writeAnswers = new Map<string, FakeRpcError[]>();
 
 export class UnseededBackendError extends Error {}
 
@@ -83,6 +85,19 @@ export function resetBackend(): void {
   writeLog = [];
   queryLog = [];
   directStructureWritesAllowed = false;
+  writeAnswers = new Map();
+}
+
+/**
+ * WP3.8 fix round 1 (F4c, additive): make the next `insert/update/upsert/delete`
+ * on `table` resolve with `error` (the PostgREST error shape) instead of
+ * success. The write is still recorded. Each queued answer serves one write.
+ */
+export function answerWrite(table: string, op: WriteInvocation["op"], error: FakeRpcError): void {
+  const key = `${table}:${op}`;
+  const queue = writeAnswers.get(key) ?? [];
+  queue.push(error);
+  writeAnswers.set(key, queue);
 }
 
 /** Opt one test in to recorded (not refused) direct writes on the structure tables. */
@@ -118,6 +133,8 @@ class FakePostgrestQuery implements PromiseLike<FakePostgrestResult> {
   private rows: readonly unknown[];
   private readonly table: string;
   private readonly record: QueryInvocation;
+  /** A queued write error (answerWrite), returned by `then` / `single` / `maybeSingle`. */
+  private error: FakeRpcError | null = null;
 
   constructor(table: string, rows: readonly unknown[]) {
     this.table = table;
@@ -138,6 +155,7 @@ class FakePostgrestQuery implements PromiseLike<FakePostgrestResult> {
     this.note(op, payload === null ? [] : [payload]);
     writeLog.push({ table: this.table, op, payload: JSON.parse(JSON.stringify(payload ?? null)) as unknown });
     this.rows = [];
+    this.error = writeAnswers.get(`${this.table}:${op}`)?.shift() ?? null;
     return this;
   }
   /** Stage 5: recorded, answered with no rows; the fixture tables are never changed. */
@@ -210,18 +228,17 @@ class FakePostgrestQuery implements PromiseLike<FakePostgrestResult> {
       | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
   ): PromiseLike<TResult1 | TResult2> {
-    return Promise.resolve<FakePostgrestResult>({ data: [...this.rows], error: null }).then(
-      onfulfilled,
-      onrejected
-    );
+    return Promise.resolve<FakePostgrestResult>(
+      this.error ? { data: null, error: this.error } : { data: [...this.rows], error: null }
+    ).then(onfulfilled, onrejected);
   }
   single(): Promise<{ data: unknown; error: { message: string } | null }> {
     this.note("single", []);
-    return Promise.resolve({ data: this.rows[0] ?? null, error: null });
+    return Promise.resolve({ data: this.error ? null : (this.rows[0] ?? null), error: this.error });
   }
   maybeSingle(): Promise<{ data: unknown; error: { message: string } | null }> {
     this.note("maybeSingle", []);
-    return Promise.resolve({ data: this.rows[0] ?? null, error: null });
+    return Promise.resolve({ data: this.error ? null : (this.rows[0] ?? null), error: this.error });
   }
 }
 

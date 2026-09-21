@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { fetchWallChartAssessmentOptions } from "@/components/campaigns/wall-chart/assessment-selector";
+import { useWallChartAssessmentOptions } from "@/components/campaigns/wall-chart/assessment-selector";
 import { collapseActivityRatingsToWorkerMap } from "@/lib/utils/collapse-activity-ratings";
 import type { WallChartOU } from "@/components/campaigns/wall-chart/types";
 import { ouDisplayName } from "@/components/campaigns/wall-chart/types";
@@ -42,11 +42,13 @@ export type OuGroup = {
 export function useAssessmentDistributions(campaignId: string) {
   const supabase = createClient();
 
-  // 1. Assessment options (sorted by last_rated_at desc)
-  const { data: assessmentOptions = [], isLoading: loadingOptions } = useQuery({
-    queryKey: ["campaign-assessments-rated", campaignId],
-    queryFn: () => fetchWallChartAssessmentOptions(supabase, campaignId),
-  });
+  // 1. Assessment options (sorted by last_rated_at desc). WP3.8 (wp3.8.md
+  // §3.5 row 1b): the shared hook, so the parent-keyed cache entry has one
+  // queryFn and the family rows arrive here too.
+  // `isPending` (fix round 1, F6): the query is disabled until the parent
+  // loads and would otherwise report "not loading" with no data.
+  const { data: assessmentOptions = [], isPending: loadingOptions } =
+    useWallChartAssessmentOptions(campaignId);
 
   // 2. Campaign member IDs (the universe for unassessed count)
   const { data: memberRows = [], isLoading: loadingMembers } = useQuery({

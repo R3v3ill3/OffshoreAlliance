@@ -6,6 +6,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useCallScripts } from '@/lib/hooks/useCallScripts'
 import { useCreateCallList } from '@/lib/hooks/useCallList'
 import { createClient } from '@/lib/supabase/client'
+import { useCampaignParent } from '@/lib/campaign/campaign-parent'
+import { familyActivityFilter } from '@/lib/campaign/families'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -307,20 +309,23 @@ export default function NewCallListPage() {
     },
   })
 
-  // Fetch campaign assessments for the Specific Assessment filter
+  // Fetch campaign assessments for the Specific Assessment filter — owned
+  // plus the parent's shared ones (WP3.8, wp3.8.md §2 A18).
+  const campaignParent = useCampaignParent(campaignId)
+  const campaignParentId = campaignParent.data?.parentId ?? null
   const { data: assessments = [] } = useQuery({
-    queryKey: ['campaign-assessments-for-list-builder', campaignId],
+    queryKey: ['campaign-assessments-for-list-builder', campaignId, campaignParentId ?? 0],
     queryFn: async () => {
       const supabase = createClient()
       const { data } = await supabase
         .from('campaign_activities')
         .select('activity_id, title, is_binary')
-        .eq('campaign_id', parseInt(campaignId))
+        .or(familyActivityFilter(parseInt(campaignId), campaignParentId))
         .eq('activity_kind', 'assessment')
         .order('title')
       return (data ?? []) as Array<{ activity_id: number; title: string; is_binary: boolean | null }>
     },
-    enabled: !!campaignId,
+    enabled: !!campaignId && campaignParent.isSuccess,
   })
 
   const selectedAssessment = assessments.find(

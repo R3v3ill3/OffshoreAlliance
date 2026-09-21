@@ -984,8 +984,8 @@ production output exists (operator paste), which is the post-data evidence.
 |---|---|---|
 | **1** ✅ `f3888ef` + fix round 1 | Migration, `90`, `10`, `91`, `00`, `01`, README written; `families.ts` + `campaign-parent.ts` + unit tests green; contract suite written (compiles under `tsc`); `pnpm validate:migrations` green; lint/test/build green. Fresh Fable **static** review of the SQL (the WP2.2 Stage 1 practice). | FQ-a … FQ-g and TRG-a answered in §9.1 (they shape Stage 1's files). |
 | **2** ✅ database steps 2026-09-21 (contract run pending CA credentials) | Migration on normal dev with its ledger row; `01` identical before/after; `pg_get_viewdef` pasted; contract run 1 pasted (0 skipped). Realistic-data rehearsal (§0 step 4) pasted with the four checksum points and the measurement. | Approval of the exact dev file and of the realistic-set run sheet. |
-| **3** | Reader switch rows 1–10 (+ 11–25 under FQ-a), UI of §3.7/§3.8, telemetry; jsdom tests green; contract run 2 pasted; preview deployed. Fresh Fable review (database-touching package). | — |
-| **4** | Operator hand test (§5.4) passed with screenshots; measurement re-run; whole-PR review; ledger row; PR marked ready. Production run sheet prepared (§0 step 6). | Hand test; then the production sequence (operator only): migration → merge → `10`. |
+| **3** ✅ `5fde140` + fix round 1 `1cbb64c` (review APPROVE WITH ADVISORIES) | Reader switch rows 1–10 (+ 11–25 under FQ-a), UI of §3.7/§3.8, telemetry; jsdom tests green; contract run 2 pasted; preview deployed. Fresh Fable review (database-touching package). | — |
+| **4** (short path, operator 2026-09-21: hand test on production after the data run sheet instead of the preview; contract run when the CA credentials exist) | Operator hand test (§5.4) passed with screenshots; measurement re-run; whole-PR review; ledger row; PR marked ready. Production run sheet prepared (§0 step 6). | Hand test; then the production sequence (operator only): migration → merge → `10`. |
 
 Commits: one per stage (CLAUDE.md: one commit per completed unit of work; the orchestrator commits the plan).
 
@@ -1204,8 +1204,24 @@ Stage 2 remaining: the contract suite (§4.2, §5.2) — needs the `OUX_CONTRACT
 **Item 2 — contract tests on dev (run 1 and run 2).**
 _(passed / failed / skipped; the VIEW-a and one-level cases named)_
 
-**Item 3 — jsdom.**
-_(the four test files' results)_
+**Item 3 — jsdom, and the Stage 3 verifier run** (Sonnet verifier 2026-09-21 on `5fde140`; fix round 1 `1cbb64c` figures from the implementer's run):
+
+```
+git status --short              → (empty)                                      tsc --noEmit → (no output) exit 0
+pnpm lint                       → ✖ 298 problems (146 errors, 152 warnings)   = baseline 298
+eslint <45 changed TS files>    → 15 problems, every one on a pre-existing line outside the commit's hunks
+                                  (campaign-assessments.tsx 28/548/556/561, worker-detail-sheet.tsx 265/1229,
+                                   worker-import-wizard.tsx 11/504/1578/2209, CallCtaAmbitionsEditor.tsx 8, sms-surveys/[surveyId]/route.ts 582)
+pnpm test (5fde140)             → Test Files 1 failed | 125 passed (126); Tests 1 failed | 1767 passed (1768)
+pnpm test (1cbb64c, fix round)  → Test Files 1 failed | 125 passed (126); Tests 1 failed | 1771 passed (1772)
+                                  failed (both): wall-chart.render-cost "renders 305 members across 161 units within budget" — wall-clock budget, sandbox speed, untouched file
+family/telemetry files          → 8 files, 69 passed (5fde140); 73 passed (1cbb64c)
+pnpm build                      → ƒ (Dynamic) server-rendered on demand       exit 0
+snapshot diffs                  → legacy and v2 characterisation .snap: 0 non-key changed lines each (react-query key lines only)
+familyActivityFilter call sites → 21; remaining .eq("campaign_id") in the six chart/tab files are task lists, membership,
+                                  the summary view, the owner-only delete and the import wizard's units (intended)
+boundary grep                   → only the v2 characterisation .snap (D20); no production ref outside PRODUCTION_HOST constants
+```
 
 **Item 4 — read-only measurement on the realistic data set.**
 _(§5.3 output; planning-time result recorded above: 61 → 2 rows, 62 → 13 rows, 64 → 0)_
@@ -1223,7 +1239,21 @@ _(§5.4 steps with pass/fail and screenshot paths)_
 | A2 (advisory) | Migration comment wrongly said the helper runs as the view's owner; `anon` (blanket GRANT on `vw_sms_chat_session_report`) now gets "permission denied for function" on that view; no reader uses anon. | **Fixed:** comment reworded; recorded as §7 R11 / §8.3 D5. |
 | A3 (advisory) | `10`/`91` asserted global zero/3/5 counts, so a "Part of" set by an organiser between the deploy and step (e) would stop the run. | **Fixed:** assertions scoped to children of 64 (= 61/62/69) and family rows on 64 (= 88–92); "no other row changed" now compares checksums of the affected rows; README tells the operator to run `10` straight after the deploy. §8.3 D9. |
 | A4 (advisory) | §8.3 gaps (D10 `is_sms_episode` unflag; D9 `archived_at` precondition; unused captured column). | **Fixed** (D9, D10 extended; column dropped). |
-| A5 (advisory, Stage 3 watch) | `campaign-parent.ts` imports the browser `createClient` factory into a module routes will import (D1); no top-level `window` access found, but a first for this app. | **Carried to Stage 3:** one route smoke call after `pnpm build` (Stage 3 acceptance). |
+| A5 (advisory, Stage 3 watch) | `campaign-parent.ts` imports the browser `createClient` factory into a module routes will import (D1); no top-level `window` access found, but a first for this app. | **Closed in Stage 3 (D30):** every switched route's built chunk loads under plain `node` and exposes its handlers; the built `campaign-parent` chunk loads with `window` undefined. |
+
+**Stage 3 review (fresh Fable, 2026-09-21, on `5fde140`): CHANGES REQUIRED → fix round 1 (`1cbb64c`) → re-check: APPROVE WITH ADVISORIES.** The reviewer walked all 19 `.or(familyActivityFilter)` sites and the two RPC-id sites (single top-level `.or()` ANDed with the other filters; no sibling/grandparent/`campaign`-scoped parent row can pass), every renamed query key and its invalidations across `src`, every write path, the clear-ratings delete, terminology, scope (only the two snapshots' key lines beyond the plan's files), the tests, telemetry and A5.
+
+| # | Finding | Resolution |
+|---|---|---|
+| F1 (blocking) | The Basics sheet sent `parent_campaign_id` on every save; the trigger is `BEFORE UPDATE OF parent_campaign_id` and fires whenever the column is in the SET list, so a child whose parent had since been archived could not save any edit, and every child save took two advisory locks. | **Fixed (D32):** the column is sent only when changed; jsdom case pins its absence on an unchanged save. |
+| F2 | §9.2 lacked the Stage 3 verifier paste. | **Fixed:** item 3 above. |
+| F3 | The tab test asserted a heading that does not exist, so the ambition-panel guard was untested. | **Fixed (D33):** asserts "Ambition links" present/absent in both directions. |
+| F4 | Basics tests lacked clearing from a set parent, the non-writable current parent, and a trigger error. | **Fixed (D34):** three cases; additive `answerWrite` harness knob (confirmed additive). |
+| F5 | A failed parent load was silent in every gated reader. | **Fixed (D35)** in the Assessments tab, the sheet's Ratings tab and the campaign-level selector (Cumulative stays selectable); the secondary surfaces keep silent-disable. |
+| F6 | First-render empty states while the parent is pending. | **Fixed (D36)** in the sheet history, the import step and the distributions hook; cosmetic `isLoading` on trigger placeholders left. Re-check note: on a *failed* parent load those two surfaces now stay in their loading state (recorded, incidental findings). |
+| F7 | Archived campaigns were offered as parents (the trigger refuses them). | **Fixed (D37):** `.is("archived_at", null)` + client predicate + test. |
+| F8 | `InlineRatingPopover` emits no `family_assessment_rated` when handed an `activityId` by untouched callers (D25). | **Recorded follow-up (D38).** |
+| Re-check advisories | No jsdom assertion that the three events fire (privacy test covers builders); the F6 loading-forever-on-error note. | Recorded in `PROGRESS.md` incidental findings for the next package that opens those files. |
 
 ---
 

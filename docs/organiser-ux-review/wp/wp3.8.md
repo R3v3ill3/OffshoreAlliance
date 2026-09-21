@@ -1201,6 +1201,14 @@ REALISTIC DATA SET yqjkuobcawvigsfpgrcm (no ledger catch-up; WP2.2a/b absent the
 
 Stage 2 remaining: the contract suite (§4.2, §5.2) — needs the `OUX_CONTRACT_*` accounts, which this remote session does not hold (CA).
 
+*Production run sheet (operator, `scripts/data-hygiene/oux-wp3.8/prod/`), outputs pasted by the operator:*
+
+```
+P1 checksums before (2026-09-21): activities_md5 af4609dd76581874d869cf6dbbcf33f6  ratings_md5 f7d15b0751ccddf50a327fe445beba0c
+                                  summary_md5 157ba01837c2303b30b226938aa3bd8b  activities_n 9  summary_rows 472
+                                  (production has moved on from the 12 September snapshot: 9 activities on 61/62/64, 472 summary rows)
+```
+
 **Item 2 — contract tests on dev (run 1 and run 2).**
 _(passed / failed / skipped; the VIEW-a and one-level cases named)_
 

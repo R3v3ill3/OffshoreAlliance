@@ -1213,6 +1213,9 @@ P2 migration + ledger row:        parent_col 1, scope_col 1, helper_present true
 P3 checksums after migration:     activities_md5 46bc4030271911d3f0bb97abf9d1cb0c (changed: scope column)  ratings_md5 f7d15b07… (= P1)
                                   summary_md5 157ba018… (= P1)  activities_n 9  summary_rows 472  children_n 0  family_n 0  → gate to merge #54 met
 PR #54 merged:                    72b259d8 (2026-09-21; origin/main merged into the branch first, clean; merged tree re-verified)
+P4 campaign-64 family:            committed; last result set: 88, 89, 90, 91, 92 → family; 93, 95 → campaign; 96 (new on production
+                                  since the snapshot, never in the set) → campaign. The children result set (61, 62, 69 → parent 64)
+                                  was not pasted; P5's children_n = 3 is the check
 ```
 
 **Item 2 — contract tests on dev (run 1 and run 2).**

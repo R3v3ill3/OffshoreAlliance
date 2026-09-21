@@ -52,6 +52,10 @@ import {
 } from '@/lib/comms/campaign-email-context'
 import { recordEmailSend, tagWorkerEmailed } from '@/lib/comms/send-log'
 import { rewriteLinks } from '@/lib/comms/click-tracker'
+import {
+  loadDraftAttachmentPayloads,
+  toGraphAttachments,
+} from '@/lib/email/load-draft-attachments'
 
 const MAX_BATCH = 200
 const DEBUG = process.env.DEBUG_EMAIL_RESOLVE === '1'
@@ -253,6 +257,20 @@ export async function POST(
     )
   }
 
+  let graphAttachments
+  try {
+    const loaded = await loadDraftAttachmentPayloads(createAdminClient(), draftId)
+    graphAttachments = loaded.length > 0 ? toGraphAttachments(loaded) : undefined
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : 'Could not load email attachments',
+      },
+      { status: 500 },
+    )
+  }
+
   const subjectTpl = body.subject_override ?? draft.subject ?? ''
   const rawBody =
     body.body_html_override ??
@@ -320,6 +338,7 @@ export async function POST(
         const graphMessage = await createAndSendMessage(tokenResult.accessToken, {
           subject: subjectResolved,
           bodyHtml: finalBodyHtml,
+          attachments: graphAttachments,
           toRecipients: [
             {
               emailAddress: {
@@ -419,6 +438,7 @@ export async function POST(
       const graphMessage = await createAndSendMessage(tokenResult.accessToken, {
         subject: subjectResolved,
         bodyHtml: finalBodyHtml,
+        attachments: graphAttachments,
         bccRecipients: bccList,
       })
       sentCount = workers.length

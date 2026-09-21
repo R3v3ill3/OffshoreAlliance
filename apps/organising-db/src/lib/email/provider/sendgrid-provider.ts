@@ -104,7 +104,8 @@ export class SendGridProvider implements EmailProvider {
     };
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timeoutMs = msg.attachments?.length ? 60_000 : FETCH_TIMEOUT_MS;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(`${API_BASE}/mail/send`, {
         method: "POST",
@@ -148,7 +149,7 @@ export class SendGridProvider implements EmailProvider {
         providerMessageId: null,
         error:
           err instanceof Error && err.name === "AbortError"
-            ? `SendGrid request timed out after ${FETCH_TIMEOUT_MS}ms`
+            ? `SendGrid request timed out after ${timeoutMs}ms`
             : err instanceof Error
               ? err.message
               : "SendGrid request failed",

@@ -198,6 +198,37 @@ export interface GraphRecipient {
   emailAddress: { address: string; name?: string }
 }
 
+export interface GraphFileAttachment {
+  name: string
+  contentType: string
+  content: Uint8Array
+}
+
+/**
+ * Graph's JSON fileAttachment is limited to 3 MB. Larger files use an
+ * upload session. Every chunk except the last must be a multiple of 320 KiB.
+ */
+const GRAPH_SIMPLE_ATTACHMENT_MAX_BYTES = 3 * 1024 * 1024
+export const GRAPH_UPLOAD_CHUNK_BYTES = 320 * 1024 * 10
+
+export function graphUploadRanges(
+  totalBytes: number,
+  chunkBytes: number = GRAPH_UPLOAD_CHUNK_BYTES,
+): Array<{ start: number; end: number }> {
+  if (totalBytes <= 0) return []
+  if (chunkBytes <= 0 || chunkBytes % (320 * 1024) !== 0) {
+    throw new Error('Graph upload chunks must be a positive multiple of 320 KiB')
+  }
+  const ranges: Array<{ start: number; end: number }> = []
+  let start = 0
+  while (start < totalBytes) {
+    const end = Math.min(start + chunkBytes, totalBytes) - 1
+    ranges.push({ start, end })
+    start = end + 1
+  }
+  return ranges
+}
+
 export interface CreateDraftInput {
   subject: string
   bodyHtml: string
@@ -206,6 +237,8 @@ export interface CreateDraftInput {
   ccRecipients?: GraphRecipient[]
   /** Optional Reply-To (otherwise inherits from the user's mailbox). */
   replyTo?: GraphRecipient[]
+  /** PDF / document files. Attached after the draft exists so files over 3 MB can upload. */
+  attachments?: GraphFileAttachment[]
 }
 
 export interface GraphMessageResponse {
@@ -248,7 +281,16 @@ export async function createDraft(
     const text = await res.text()
     throw new Error(`Graph createDraft failed (${res.status}): ${text}`)
   }
-  return (await res.json()) as GraphMessageResponse
+  const created = (await res.json()) as GraphMessageResponse
+  if (input.attachments?.length) {
+    try {
+      await addGraphFileAttachments(accessToken, created.id, input.attachments)
+    } catch (err) {
+      await deleteGraphMessage(accessToken, created.id)
+      throw err
+    }
+  }
+  return created
 }
 
 /**
@@ -263,6 +305,13 @@ export async function sendMessage(
   accessToken: string,
   input: CreateDraftInput & { saveToSentItems?: boolean },
 ): Promise<void> {
+  // sendMail cannot take an upload session. Create the draft, attach, then
+  // send so PDFs over 3 MB use the same path as the campaign send.
+  if (input.attachments?.length) {
+    await createAndSendMessage(accessToken, input)
+    return
+  }
+
   const message: Record<string, unknown> = {
     subject: input.subject || '(no subject)',
     body: {
@@ -318,6 +367,121 @@ export async function createAndSendMessage(
     throw new Error(`Graph send draft failed (${res.status}): ${text}`)
   }
   return message
+}
+
+async function deleteGraphMessage(accessToken: string, messageId: string): Promise<void> {
+  await fetchApi(
+    `${MICROSOFT_GRAPH_BASE}/me/messages/${encodeURIComponent(messageId)}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      requestId: false,
+    },
+  ).catch(() => undefined)
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('base64')
+}
+
+/**
+ * Attach files to an existing Graph message. Files of 3 MB or less use the
+ * JSON fileAttachment API. Larger documents use an upload session (up to
+ * the caller's own size cap).
+ */
+export async function addGraphFileAttachments(
+  accessToken: string,
+  messageId: string,
+  files: GraphFileAttachment[],
+): Promise<void> {
+  for (const file of files) {
+    if (file.content.byteLength <= GRAPH_SIMPLE_ATTACHMENT_MAX_BYTES) {
+      await addSmallGraphAttachment(accessToken, messageId, file)
+    } else {
+      await uploadLargeGraphAttachment(accessToken, messageId, file)
+    }
+  }
+}
+
+async function addSmallGraphAttachment(
+  accessToken: string,
+  messageId: string,
+  file: GraphFileAttachment,
+): Promise<void> {
+  const res = await fetchApi(
+    `${MICROSOFT_GRAPH_BASE}/me/messages/${encodeURIComponent(messageId)}/attachments`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: file.name,
+        contentType: file.contentType,
+        contentBytes: bytesToBase64(file.content),
+      }),
+      requestId: false,
+    },
+  )
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Graph add attachment failed (${res.status}): ${text}`)
+  }
+}
+
+async function uploadLargeGraphAttachment(
+  accessToken: string,
+  messageId: string,
+  file: GraphFileAttachment,
+): Promise<void> {
+  const sessionRes = await fetchApi(
+    `${MICROSOFT_GRAPH_BASE}/me/messages/${encodeURIComponent(messageId)}/attachments/createUploadSession`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        AttachmentItem: {
+          attachmentType: 'file',
+          name: file.name,
+          size: file.content.byteLength,
+          contentType: file.contentType,
+        },
+      }),
+      requestId: false,
+    },
+  )
+  if (!sessionRes.ok) {
+    const text = await sessionRes.text()
+    throw new Error(`Graph attachment upload session failed (${sessionRes.status}): ${text}`)
+  }
+  const session = (await sessionRes.json()) as { uploadUrl?: string }
+  if (!session.uploadUrl) {
+    throw new Error('Graph attachment upload session did not return an upload URL')
+  }
+
+  const total = file.content.byteLength
+  for (const range of graphUploadRanges(total)) {
+    const chunk = Buffer.from(file.content.subarray(range.start, range.end + 1))
+    const res = await fetchApi(session.uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': String(chunk.byteLength),
+        'Content-Range': `bytes ${range.start}-${range.end}/${total}`,
+      },
+      body: chunk,
+      requestId: false,
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Graph attachment upload failed (${res.status}): ${text}`)
+    }
+  }
 }
 
 /** PKCE helpers — Node Web Crypto compatible. */

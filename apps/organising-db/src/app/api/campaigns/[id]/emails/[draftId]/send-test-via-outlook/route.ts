@@ -26,6 +26,11 @@ import { stripMergeFieldChips } from '@/lib/comms/chip-html'
 import { sanitiseEmailHtml } from '@/lib/comms/sanitise-email-html'
 import { appendOASignature } from '@/lib/comms/oa-email-signature'
 import { loadCampaignEmailContext } from '@/lib/comms/campaign-email-context'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  loadDraftAttachmentPayloads,
+  toGraphAttachments,
+} from '@/lib/email/load-draft-attachments'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -138,10 +143,25 @@ export async function POST(
     : textToHtml(resolveScriptVariablesIncludingChips(bodySource, previewCtx))
   const finalBodyHtml = appendOASignature(bodyResolvedBase)
 
+  let graphAttachments
+  try {
+    const loaded = await loadDraftAttachmentPayloads(createAdminClient(), draftId)
+    graphAttachments = loaded.length > 0 ? toGraphAttachments(loaded) : undefined
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : 'Could not load email attachments',
+      },
+      { status: 500 },
+    )
+  }
+
   try {
     await sendMessage(tokenResult.accessToken, {
       subject: subjectResolved,
       bodyHtml: finalBodyHtml,
+      attachments: graphAttachments,
       toRecipients: [
         {
           emailAddress: {

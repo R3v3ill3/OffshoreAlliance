@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -8,7 +8,24 @@ import {
   API_FETCH_TIMEOUT_UPLOAD_MS,
 } from "@/lib/api/fetch-api";
 import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
+import { chunkArray, fetchInChunks } from "@/lib/supabase/chunk-in-filter";
+import { loadCampaignProtectedWorkerIds } from "@/lib/workers/campaign-protected-fields";
+import { parseMembershipStatus } from "@/lib/workers/worker-import-membership";
+import {
+  MEMBERSHIP_IMPORT_TYPE_LABELS,
+  WEEKLY_UPDATE_COMBINED_HEADERS,
+  type MembershipImportType,
+} from "@/lib/import/membership-import-types";
+import {
+  MEMBERSHIP_UPDATE_DEFAULT_TYPE_KEY,
+  MEMBERSHIP_UPDATE_KIND_LABELS,
+  computeNetMovement,
+  defaultActionForUnmatched,
+  type MembershipUpdateKind,
+} from "@/lib/membership-updates/kinds";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -47,10 +64,11 @@ import {
   UserCheck,
   UserPlus,
   SkipForward,
+  Users,
 } from "lucide-react";
 import type { Worksite } from "@/types/database";
 import { WORKSITE_TYPES } from "@/types/database";
-import type { MembershipImportType, ParsedMembershipRow } from "@/app/api/membership-import/parse/route";
+import type { ParsedMembershipRow } from "@/app/api/membership-import/parse/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -126,6 +144,8 @@ interface DedupRow {
   existingEmail: string | null;
   existingPhone: string | null;
   existingWorksite: string | null;
+  /** Member of a live campaign — employer / worksite / job title are protected on update. */
+  inCampaign: boolean;
 }
 
 interface ApplyRow extends ParsedMembershipRow {
@@ -212,6 +232,42 @@ function scoreOccupation(query: string, occupations: Occupation[]) {
     .slice(0, 3);
 }
 
+/**
+ * Rows per apply request. The server writes rows sequentially (one update
+ * or insert each, plus the occasional lookup), so this keeps every request
+ * comfortably inside the 120 s client timeout even on a slow connection.
+ */
+const APPLY_BATCH_SIZE = 200;
+
+function weeklyCountsFromRows(rows: ParsedMembershipRow[]) {
+  const counts = { new: 0, recommenced: 0, resigned: 0, unfinancial: 0 };
+  for (const row of rows) {
+    if (row.sourceKind && row.sourceKind in counts) counts[row.sourceKind] += 1;
+  }
+  return counts;
+}
+
+function WeeklyMovementSummary({ rows }: { rows: ParsedMembershipRow[] }) {
+  const counts = weeklyCountsFromRows(rows);
+  const net = computeNetMovement(counts);
+  return (
+    <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+      {(["new", "recommenced", "resigned", "unfinancial"] as const).map((kind) => (
+        <div key={kind} className="rounded-md border bg-background px-2 py-1.5">
+          <p className="text-muted-foreground">{MEMBERSHIP_UPDATE_KIND_LABELS[kind]}</p>
+          <p className="text-sm font-semibold">{counts[kind]}</p>
+        </div>
+      ))}
+      <div className="rounded-md border bg-background px-2 py-1.5">
+        <p className="text-muted-foreground">Net movement</p>
+        <p className={`text-sm font-semibold ${net >= 0 ? "text-green-700" : "text-red-700"}`}>
+          {net > 0 ? `+${net}` : net}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
 const ALL_STEPS: { id: WizardStep; label: string }[] = [
@@ -232,6 +288,12 @@ interface MembershipImportWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete?: () => void;
+  /** Prepared weekly-update rows — skips the file-upload step. */
+  preparedRows?: ParsedMembershipRow[];
+  preparedHeaders?: string[];
+  preparedFileName?: string;
+  preparedType?: MembershipImportType;
+  weeklyBatchId?: number;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -240,6 +302,11 @@ export function MembershipImportWizard({
   open,
   onOpenChange,
   onComplete,
+  preparedRows,
+  preparedHeaders,
+  preparedFileName,
+  preparedType,
+  weeklyBatchId,
 }: MembershipImportWizardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
@@ -262,12 +329,21 @@ export function MembershipImportWizard({
   const [occupationResolutions, setOccupationResolutions] = useState<OccupationResolution[]>([]);
   const [membershipTypeResolutions, setMembershipTypeResolutions] = useState<MembershipTypeResolution[]>([]);
   const [dedupRows, setDedupRows] = useState<DedupRow[]>([]);
+  const [dedupError, setDedupError] = useState<string | null>(null);
+  const [protectCampaignWorkers, setProtectCampaignWorkers] = useState(true);
+  const [applyProgress, setApplyProgress] = useState<{
+    done: number;
+    total: number;
+    rowsDone: number;
+    rowsTotal: number;
+  } | null>(null);
 
   // ── Result ───────────────────────────────────────────────────────────────
   const [result, setResult] = useState<{
     created: number;
     updated: number;
     skipped: number;
+    protectedUpdates: number;
     errors: string[];
   } | null>(null);
 
@@ -363,16 +439,49 @@ export function MembershipImportWizard({
   });
 
   // ── Step visibility ──────────────────────────────────────────────────────
+  const hasValueMapping =
+    importType === "recommencing" || importType === "status_sync" || importType === "weekly_update";
+
   function getVisibleSteps(): { id: WizardStep; label: string }[] {
     return ALL_STEPS.filter((s) => {
+      if (s.id === "upload" && (preparedRows?.length ?? 0) > 0) return false;
       if (s.id === "occupation_matching" && importType === "resignations") return false;
-      if (s.id === "value_mapping" && importType !== "recommencing") return false;
+      if (s.id === "value_mapping" && !hasValueMapping) return false;
       return true;
     });
   }
 
+  function hydratePrepared() {
+    if (!preparedRows?.length) return false;
+    setImportType(preparedType ?? "weekly_update");
+    setRows(preparedRows);
+    setHeaders(preparedHeaders?.length ? preparedHeaders : [...WEEKLY_UPDATE_COMBINED_HEADERS]);
+    setFileName(preparedFileName ?? "Weekly update");
+    setStep("preview");
+    return true;
+  }
+
+  useEffect(() => {
+    if (open && preparedRows?.length) hydratePrepared();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate only when a prepared batch is opened
+  }, [open, preparedRows, preparedFileName, preparedType]);
+
   // ── Reset ────────────────────────────────────────────────────────────────
   function reset() {
+    if (hydratePrepared()) {
+      setIsLoading(false);
+      setParseError(null);
+      setEmployerResolutions([]);
+      setWorksiteResolutions([]);
+      setOccupationResolutions([]);
+      setMembershipTypeResolutions([]);
+      setDedupRows([]);
+      setDedupError(null);
+      setProtectCampaignWorkers(true);
+      setApplyProgress(null);
+      setResult(null);
+      return;
+    }
     setStep("upload");
     setIsLoading(false);
     setParseError(null);
@@ -384,6 +493,9 @@ export function MembershipImportWizard({
     setOccupationResolutions([]);
     setMembershipTypeResolutions([]);
     setDedupRows([]);
+    setDedupError(null);
+    setProtectCampaignWorkers(true);
+    setApplyProgress(null);
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -525,11 +637,30 @@ export function MembershipImportWizard({
 
   function buildMembershipTypeResolutions() {
     const unique = [...new Set(rows.map((r) => r.membershipTypeRaw ?? "").filter(Boolean))];
+    const byTypeName = new Map(unionMembershipTypes.map((t) => [t.type_name, t]));
     return unique.map((raw): MembershipTypeResolution => {
       const lc = raw.toLowerCase().trim();
-      const match = unionMembershipTypes.find(
+      let match = unionMembershipTypes.find(
         (t) => t.display_name.toLowerCase() === lc || t.type_name.toLowerCase() === lc
       );
+      if (!match && importType === "weekly_update") {
+        const kind = rows.find((r) => r.membershipTypeRaw === raw)?.sourceKind as
+          | MembershipUpdateKind
+          | undefined;
+        const typeKey = kind ? MEMBERSHIP_UPDATE_DEFAULT_TYPE_KEY[kind] : null;
+        if (typeKey) match = byTypeName.get(typeKey);
+      }
+      if (!match && importType === "status_sync") {
+        // Account-status exports use their own vocabulary. Only the
+        // unambiguous values are pre-filled; suspended / stopped-payment
+        // states are left for the admin to decide.
+        if (/^active$/i.test(lc)) {
+          match = byTypeName.get("financial_member");
+        } else {
+          const parsed = parseMembershipStatus(raw);
+          if (parsed.membershipKey) match = byTypeName.get(parsed.membershipKey);
+        }
+      }
       return {
         rawValue: raw,
         occurrences: rows.filter((r) => (r.membershipTypeRaw ?? "") === raw).length,
@@ -561,7 +692,7 @@ export function MembershipImportWizard({
   }
 
   function proceedFromOccupationMatching() {
-    if (importType === "recommencing") {
+    if (hasValueMapping) {
       setMembershipTypeResolutions(buildMembershipTypeResolutions());
       setStep("value_mapping");
     } else {
@@ -571,131 +702,141 @@ export function MembershipImportWizard({
 
   async function runDedupCheck() {
     setIsLoading(true);
+    setDedupError(null);
     setStep("dedup_review");
 
     const refIds = rows.map((r) => r.referenceId).filter((x): x is string => !!x);
     const emails = rows.map((r) => r.email).filter((x): x is string => !!x);
     const phones = rows.map((r) => r.phone).filter((x): x is string => !!x);
 
-    const refIdMap = new Map<string, { worker_id: number; first_name: string; last_name: string; email: string | null; phone: string | null; worksite_name: string | null }>();
-    const emailMap = new Map<string, typeof refIdMap extends Map<string, infer V> ? V : never>();
-    const phoneMap = new Map<string, typeof refIdMap extends Map<string, infer V> ? V : never>();
+    type ExistingWorker = {
+      worker_id: number;
+      first_name: string;
+      last_name: string;
+      email: string | null;
+      phone: string | null;
+      reference_id?: string | null;
+      worksite: unknown;
+    };
+    type Existing = {
+      worker_id: number;
+      first_name: string;
+      last_name: string;
+      email: string | null;
+      phone: string | null;
+      worksite_name: string | null;
+    };
+    const refIdMap = new Map<string, Existing>();
+    const emailMap = new Map<string, Existing>();
+    const phoneMap = new Map<string, Existing>();
 
-    // Match by reference_id
-    if (refIds.length > 0) {
-      const { data } = await supabase
-        .from("workers")
-        .select("worker_id, first_name, last_name, email, phone, reference_id, worksite:worksites(worksite_name)")
-        .in("reference_id", refIds);
-      for (const w of data ?? []) {
-        const ws = Array.isArray(w.worksite) ? (w.worksite[0] as { worksite_name: string } | undefined) : (w.worksite as { worksite_name: string } | null);
-        refIdMap.set(w.reference_id!, {
-          worker_id: w.worker_id,
-          first_name: w.first_name,
-          last_name: w.last_name,
-          email: w.email,
-          phone: w.phone,
-          worksite_name: ws?.worksite_name ?? null,
-        });
-      }
-    }
-
-    // Match by email (for rows not matched by reference_id)
-    if (emails.length > 0) {
-      const { data } = await supabase
-        .from("workers")
-        .select("worker_id, first_name, last_name, email, phone, worksite:worksites(worksite_name)")
-        .in("email", emails);
-      for (const w of data ?? []) {
-        if (w.email) {
-          const ws = Array.isArray(w.worksite) ? (w.worksite[0] as { worksite_name: string } | undefined) : (w.worksite as { worksite_name: string } | null);
-          emailMap.set(w.email, {
-            worker_id: w.worker_id,
-            first_name: w.first_name,
-            last_name: w.last_name,
-            email: w.email,
-            phone: w.phone,
-            worksite_name: ws?.worksite_name ?? null,
-          });
-        }
-      }
-    }
-
-    // Match by phone (for rows not yet matched)
-    if (phones.length > 0) {
-      const { data } = await supabase
-        .from("workers")
-        .select("worker_id, first_name, last_name, email, phone, worksite:worksites(worksite_name)")
-        .in("phone", phones);
-      for (const w of data ?? []) {
-        if (w.phone) {
-          const ws = Array.isArray(w.worksite) ? (w.worksite[0] as { worksite_name: string } | undefined) : (w.worksite as { worksite_name: string } | null);
-          phoneMap.set(w.phone, {
-            worker_id: w.worker_id,
-            first_name: w.first_name,
-            last_name: w.last_name,
-            email: w.email,
-            phone: w.phone,
-            worksite_name: ws?.worksite_name ?? null,
-          });
-        }
-      }
-    }
-
-    const dedup: DedupRow[] = rows.map((row) => {
-      const byRef = row.referenceId ? refIdMap.get(row.referenceId) : null;
-      if (byRef) {
-        return {
-          rowIndex: row.rowIndex,
-          action: "update",
-          existingWorkerId: byRef.worker_id,
-          matchReason: "reference_id",
-          existingName: `${byRef.first_name} ${byRef.last_name}`,
-          existingEmail: byRef.email,
-          existingPhone: byRef.phone,
-          existingWorksite: byRef.worksite_name,
-        };
-      }
-      const byEmail = row.email ? emailMap.get(row.email) : null;
-      if (byEmail) {
-        return {
-          rowIndex: row.rowIndex,
-          action: "update",
-          existingWorkerId: byEmail.worker_id,
-          matchReason: "email",
-          existingName: `${byEmail.first_name} ${byEmail.last_name}`,
-          existingEmail: byEmail.email,
-          existingPhone: byEmail.phone,
-          existingWorksite: byEmail.worksite_name,
-        };
-      }
-      const byPhone = row.phone ? phoneMap.get(row.phone) : null;
-      if (byPhone) {
-        return {
-          rowIndex: row.rowIndex,
-          action: "update",
-          existingWorkerId: byPhone.worker_id,
-          matchReason: "phone",
-          existingName: `${byPhone.first_name} ${byPhone.last_name}`,
-          existingEmail: byPhone.email,
-          existingPhone: byPhone.phone,
-          existingWorksite: byPhone.worksite_name,
-        };
-      }
+    function toExisting(w: ExistingWorker): Existing {
+      const ws = Array.isArray(w.worksite)
+        ? (w.worksite[0] as { worksite_name: string } | undefined)
+        : (w.worksite as { worksite_name: string } | null);
       return {
-        rowIndex: row.rowIndex,
-        action: importType === "resignations" ? "skip" : "create",
-        existingWorkerId: null,
-        matchReason: null,
-        existingName: null,
-        existingEmail: null,
-        existingPhone: null,
-        existingWorksite: null,
+        worker_id: w.worker_id,
+        first_name: w.first_name,
+        last_name: w.last_name,
+        email: w.email,
+        phone: w.phone,
+        worksite_name: ws?.worksite_name ?? null,
       };
-    });
+    }
 
-    setDedupRows(dedup);
-    setIsLoading(false);
+    const select =
+      "worker_id, first_name, last_name, email, phone, reference_id, worksite:worksites(worksite_name)";
+
+    // Lookups are chunked and error-checked: one unbounded `.in()` on a
+    // several-thousand-row member list would exceed the URL limit or be
+    // capped by PostgREST max-rows, and a swallowed error would turn every
+    // row into a create.
+    try {
+      if (refIds.length > 0) {
+        const data = await fetchInChunks<string, ExistingWorker>(refIds, (chunk) =>
+          supabase.from("workers").select(select).in("reference_id", chunk)
+        );
+        for (const w of data) {
+          if (w.reference_id) refIdMap.set(w.reference_id, toExisting(w));
+        }
+      }
+
+      // Emails are compared case-insensitively; both spellings are sent so
+      // the DB filter hits whichever casing the record was saved with.
+      if (emails.length > 0) {
+        const variants = [...new Set(emails.flatMap((e) => [e, e.toLowerCase()]))];
+        const data = await fetchInChunks<string, ExistingWorker>(variants, (chunk) =>
+          supabase.from("workers").select(select).in("email", chunk)
+        );
+        for (const w of data) {
+          if (w.email) emailMap.set(w.email.toLowerCase(), toExisting(w));
+        }
+      }
+
+      if (phones.length > 0) {
+        const data = await fetchInChunks<string, ExistingWorker>(phones, (chunk) =>
+          supabase.from("workers").select(select).in("phone", chunk)
+        );
+        for (const w of data) {
+          if (w.phone) phoneMap.set(w.phone, toExisting(w));
+        }
+      }
+
+      const dedup: DedupRow[] = rows.map((row) => {
+        const matched = (existing: Existing, matchReason: DedupRow["matchReason"]): DedupRow => ({
+          rowIndex: row.rowIndex,
+          action: "update",
+          existingWorkerId: existing.worker_id,
+          matchReason,
+          existingName: `${existing.first_name} ${existing.last_name}`,
+          existingEmail: existing.email,
+          existingPhone: existing.phone,
+          existingWorksite: existing.worksite_name,
+          inCampaign: false,
+        });
+        const byRef = row.referenceId ? refIdMap.get(row.referenceId) : null;
+        if (byRef) return matched(byRef, "reference_id");
+        const byEmail = row.email ? emailMap.get(row.email.toLowerCase()) : null;
+        if (byEmail) return matched(byEmail, "email");
+        const byPhone = row.phone ? phoneMap.get(row.phone) : null;
+        if (byPhone) return matched(byPhone, "phone");
+        return {
+          rowIndex: row.rowIndex,
+          action:
+            importType === "weekly_update" && row.sourceKind
+              ? defaultActionForUnmatched(row.sourceKind)
+              : importType === "resignations"
+                ? "skip"
+                : "create",
+          existingWorkerId: null,
+          matchReason: null,
+          existingName: null,
+          existingEmail: null,
+          existingPhone: null,
+          existingWorksite: null,
+          inCampaign: false,
+        };
+      });
+
+      const protectedIds = await loadCampaignProtectedWorkerIds(
+        supabase,
+        dedup.map((d) => d.existingWorkerId).filter((id): id is number => id != null)
+      );
+      for (const d of dedup) {
+        if (d.existingWorkerId != null) d.inCampaign = protectedIds.has(d.existingWorkerId);
+      }
+
+      setDedupRows(dedup);
+    } catch (error) {
+      setDedupRows([]);
+      setDedupError(
+        `Could not check for existing workers: ${
+          error instanceof Error ? error.message : String(error)
+        }. Nothing has been imported — go back and try again.`
+      );
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   // ── Apply ────────────────────────────────────────────────────────────────
@@ -709,66 +850,110 @@ export function MembershipImportWizard({
     const mtMap = new Map(membershipTypeResolutions.map((r) => [r.rawValue, r.resolvedId]));
     const dedupMap = new Map(dedupRows.map((d) => [d.rowIndex, d]));
 
+    const setupErrors: string[] = [];
+
+    // Names are unique on employers / worksites / occupations. "Create new"
+    // for a name that already exists (typically an inactive record the
+    // matching step did not list) returns 409; reuse that record instead of
+    // silently leaving the workers without one.
+    async function insertOrReuse(
+      table: "employers" | "worksites" | "occupations",
+      idColumn: string,
+      nameColumn: string,
+      name: string,
+      insertRow: Record<string, unknown>
+    ): Promise<number | null> {
+      const { data, error } = await supabase
+        .from(table)
+        .insert(insertRow)
+        .select(idColumn)
+        .single();
+      if (!error && data) return Number((data as unknown as Record<string, unknown>)[idColumn]);
+      if (error && error.code === "23505") {
+        const { data: existing, error: lookupError } = await supabase
+          .from(table)
+          .select(idColumn)
+          .ilike(nameColumn, name)
+          .limit(1)
+          .maybeSingle();
+        if (!lookupError && existing) {
+          return Number((existing as unknown as Record<string, unknown>)[idColumn]);
+        }
+        setupErrors.push(
+          `${table}: "${name}" already exists but could not be looked up${
+            lookupError ? ` — ${lookupError.message}` : ""
+          }`
+        );
+        return null;
+      }
+      setupErrors.push(`${table}: failed to create "${name}" — ${error?.message ?? "unknown error"}`);
+      return null;
+    }
+
     // Create new employers first
     const newEmployers = employerResolutions.filter((r) => r.createNew && r.newEmployerName.trim());
     for (const res of newEmployers) {
-      const { data } = await supabase
-        .from("employers")
-        .insert({
-          employer_name: res.newEmployerName.trim(),
-          trading_name: res.newTradingName.trim() || null,
-          employer_category: res.newCategory || null,
-          is_active: true,
-        })
-        .select("employer_id, employer_name")
-        .single();
-      if (data) {
-        empMap.set(res.rawValue, data.employer_id);
-      }
+      const name = res.newEmployerName.trim();
+      const id = await insertOrReuse("employers", "employer_id", "employer_name", name, {
+        employer_name: name,
+        trading_name: res.newTradingName.trim() || null,
+        employer_category: res.newCategory || null,
+        is_active: true,
+      });
+      if (id != null) empMap.set(res.rawValue, id);
     }
 
     // Create new worksites
     const newWorksites = worksiteResolutions.filter((r) => r.createNew && r.newWorksiteName.trim());
     for (const res of newWorksites) {
-      const { data } = await supabase
-        .from("worksites")
-        .insert({
-          worksite_name: res.newWorksiteName.trim(),
-          worksite_type: res.newWorksiteType || "Other",
-          is_active: true,
-          is_offshore: false,
-        })
-        .select("worksite_id, worksite_name")
-        .single();
-      if (data) {
-        wsMap.set(res.rawValue, data.worksite_id);
-      }
+      const name = res.newWorksiteName.trim();
+      const id = await insertOrReuse("worksites", "worksite_id", "worksite_name", name, {
+        worksite_name: name,
+        worksite_type: res.newWorksiteType || "Other",
+        is_active: true,
+        is_offshore: false,
+      });
+      if (id != null) wsMap.set(res.rawValue, id);
     }
 
     // Handle "create new occupations" — create them first before bulk apply
     const newOccupations = occupationResolutions.filter((r) => r.createNew && !r.resolvedOccupationId);
     for (const res of newOccupations) {
-      const { data } = await supabase
-        .from("occupations")
-        .insert({
-          canonical_name: res.newCanonicalName.trim(),
-          occupation_group_id: res.newGroupId || null,
-        })
-        .select("occupation_id")
-        .single();
-      if (data) {
-        // Register raw value as an alias
-        if (res.rawValue.toLowerCase() !== res.newCanonicalName.toLowerCase()) {
-          const { error: aliasErr } = await supabase.from("occupation_aliases").insert({
-            occupation_id: data.occupation_id,
-            alias_name: res.rawValue,
-            source: "import",
-          });
-          // Unique index is on (occupation_id, lower(trim(alias_name))); duplicates are safe to skip.
-          if (aliasErr && aliasErr.code !== "23505") throw aliasErr;
+      const name = res.newCanonicalName.trim();
+      const id = await insertOrReuse("occupations", "occupation_id", "canonical_name", name, {
+        canonical_name: name,
+        occupation_group_id: res.newGroupId || null,
+      });
+      if (id == null) continue;
+      // Register raw value as an alias
+      if (res.rawValue.toLowerCase() !== name.toLowerCase()) {
+        const { error: aliasErr } = await supabase.from("occupation_aliases").insert({
+          occupation_id: id,
+          alias_name: res.rawValue,
+          source: "import",
+        });
+        // Unique index is on (occupation_id, lower(trim(alias_name))); duplicates are safe to skip.
+        if (aliasErr && aliasErr.code !== "23505") {
+          setupErrors.push(`occupation alias "${res.rawValue}": ${aliasErr.message}`);
         }
-        occMap.set(res.rawValue, data.occupation_id);
       }
+      occMap.set(res.rawValue, id);
+    }
+
+    if (setupErrors.length > 0) {
+      setResult({
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        protectedUpdates: 0,
+        errors: [
+          "Import not started — fix these before applying (no worker rows were written):",
+          ...setupErrors,
+        ],
+      });
+      setStep("done");
+      setIsLoading(false);
+      return;
     }
 
     const applyRows: ApplyRow[] = rows.map((row) => {
@@ -784,32 +969,96 @@ export function MembershipImportWizard({
       };
     });
 
+    // Rows go to the server in batches: one request for a several-thousand
+    // row file outruns the client timeout, and a timed-out request reports
+    // nothing even though the server may have kept writing. Each batch is
+    // small enough to finish well inside the limit, and totals accumulate
+    // as batches complete so a failure part-way is reported truthfully.
+    const batches = chunkArray(
+      applyRows.filter((r) => r.dedupAction !== "skip"),
+      APPLY_BATCH_SIZE
+    );
+    const skippedUpFront = applyRows.length - batches.reduce((n, b) => n + b.length, 0);
+    const totals = { created: 0, updated: 0, skipped: skippedUpFront, protectedUpdates: 0 };
+    const errors: string[] = [];
+    setApplyProgress({ done: 0, total: batches.length, rowsDone: 0, rowsTotal: applyRows.length });
+
     try {
-      const res = await fetchApi(`/api/membership-import/apply?type=${importType}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rows: applyRows,
-          createMissingDimensionOptions,
-        }),
-        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
-      });
-      const json = await res.json();
-      setResult({
-        created: json.created ?? 0,
-        updated: json.updated ?? 0,
-        skipped: json.skipped ?? 0,
-        errors: json.errors ?? [],
-      });
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        try {
+          const res = await fetchApi(`/api/membership-import/apply?type=${importType}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              rows: batch,
+              createMissingDimensionOptions,
+              protectCampaignWorkers,
+              fileName,
+              batchIndex: i + 1,
+              batchCount: batches.length,
+            }),
+            timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+          });
+          const json = await res.json();
+          if (!res.ok || json.success === false) {
+            errors.push(
+              `Batch ${i + 1}/${batches.length} failed: ${json.error ?? `HTTP ${res.status}`}`
+            );
+            break;
+          }
+          totals.created += json.created ?? 0;
+          totals.updated += json.updated ?? 0;
+          totals.skipped += json.skipped ?? 0;
+          totals.protectedUpdates += json.protectedUpdates ?? 0;
+          errors.push(...(json.errors ?? []));
+        } catch (e) {
+          const isAbort = e instanceof DOMException && e.name === "AbortError";
+          errors.push(
+            isAbort
+              ? `Batch ${i + 1}/${batches.length} timed out after ${
+                  API_FETCH_TIMEOUT_UPLOAD_MS / 1000
+                }s. Earlier batches were applied; check Import History before re-running (re-running is safe — matched rows update in place).`
+              : `Batch ${i + 1}/${batches.length}: ${e instanceof Error ? e.message : "Unknown error"}`
+          );
+          break;
+        }
+        setApplyProgress({
+          done: i + 1,
+          total: batches.length,
+          rowsDone: skippedUpFront + batches.slice(0, i + 1).reduce((n, b) => n + b.length, 0),
+          rowsTotal: applyRows.length,
+        });
+      }
+      if (
+        weeklyBatchId &&
+        (totals.created + totals.updated > 0 || errors.length === 0)
+      ) {
+        try {
+          const completeRes = await fetchApi(`/api/membership-updates/${weeklyBatchId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "complete",
+              importSummary: { ...totals, errors, fileName },
+            }),
+          });
+          if (!completeRes.ok) {
+            errors.push(
+              "Rows were imported, but the weekly update could not be marked complete. Open Weekly Updates to close it."
+            );
+          }
+        } catch {
+          errors.push(
+            "Rows were imported, but the weekly update could not be marked complete. Open Weekly Updates to close it."
+          );
+        }
+      }
+      setResult({ ...totals, errors });
       setStep("done");
       if (onComplete) onComplete();
-    } catch (e) {
-      setResult({
-        created: 0, updated: 0, skipped: 0,
-        errors: [e instanceof Error ? e.message : "Unknown error"],
-      });
-      setStep("done");
     } finally {
+      setApplyProgress(null);
       setIsLoading(false);
     }
   }
@@ -861,14 +1110,19 @@ export function MembershipImportWizard({
         label: "Recommencing Members",
         desc: "Reference ID, First/Last Name, Employer, Worksite, Job Title, Membership Type, Email, Phone, Date",
       },
+      {
+        value: "status_sync",
+        label: MEMBERSHIP_IMPORT_TYPE_LABELS.status_sync,
+        desc: "Reference ID, First/Last Name, Member Account Status, Company Name, Employee Worksite, Job Title, Phone, Email. Updates membership status on every matched member; workers in campaigns keep their campaign employer, worksite and job title.",
+      },
     ];
 
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Select the import type, then upload the corresponding monthly membership file.
+          Select the import type, then upload the corresponding membership file.
         </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {types.map((t) => (
             <button
               key={t.value}
@@ -922,11 +1176,9 @@ export function MembershipImportWizard({
   // ── Render: Preview ──────────────────────────────────────────────────────
   function renderPreview() {
     const preview = rows.slice(0, 5);
-    const typeLabels: Record<MembershipImportType, string> = {
-      new_joins: "New Joins",
-      resignations: "Resignations",
-      recommencing: "Recommencing Members",
-    };
+    const typeLabels = MEMBERSHIP_IMPORT_TYPE_LABELS;
+    const weeklyNet =
+      importType === "weekly_update" ? computeNetMovement(weeklyCountsFromRows(rows)) : null;
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
@@ -935,9 +1187,11 @@ export function MembershipImportWizard({
             <p className="text-sm font-medium">{fileName}</p>
             <p className="text-xs text-muted-foreground">
               {rows.length} rows — {typeLabels[importType]}
+              {weeklyNet != null ? ` · net movement ${weeklyNet > 0 ? `+${weeklyNet}` : weeklyNet}` : ""}
             </p>
           </div>
         </div>
+        {importType === "weekly_update" && <WeeklyMovementSummary rows={rows} />}
 
         <div className="border rounded-lg overflow-auto max-h-[260px]">
           <Table>
@@ -970,9 +1224,11 @@ export function MembershipImportWizard({
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => { setStep("upload"); setRows([]); }}>
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
+          {(preparedRows?.length ?? 0) === 0 && (
+            <Button variant="outline" onClick={() => { setStep("upload"); setRows([]); }}>
+              <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+          )}
           <Button onClick={proceedFromPreview}>
             Match Employers <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
@@ -992,12 +1248,36 @@ export function MembershipImportWizard({
           )
         : [];
 
+    const unresolvedEmployers = employerResolutions.filter((r) => !r.confirmed && !r.createNew).length;
+
     return (
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          {employerResolutions.length} unique employer{employerResolutions.length !== 1 ? "s" : ""} found.
-          Match each to an existing employer record.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {employerResolutions.length} unique employer{employerResolutions.length !== 1 ? "s" : ""} found.
+            Match each to an existing employer record.
+            {unresolvedEmployers > 0 ? ` ${unresolvedEmployers} still need review.` : ""}
+          </p>
+          {unresolvedEmployers > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 shrink-0"
+              onClick={() =>
+                setEmployerResolutions((prev) =>
+                  prev.map((r) =>
+                    r.confirmed || r.createNew
+                      ? r
+                      : { ...r, resolvedId: null, resolvedName: null, confirmed: true }
+                  )
+                )
+              }
+            >
+              <X className="h-3 w-3 mr-1" />
+              Leave {unresolvedEmployers} unmatched
+            </Button>
+          )}
+        </div>
         <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
           {employerResolutions.map((res) => (
             <div key={res.rawValue} className="border rounded-lg p-4 space-y-3">
@@ -1195,12 +1475,36 @@ export function MembershipImportWizard({
   function renderWorksiteMatching() {
     const allConfirmed = worksiteResolutions.every((r) => r.confirmed || (r.createNew && r.newWorksiteName.trim().length > 0));
 
+    const unresolvedWorksites = worksiteResolutions.filter((r) => !r.confirmed && !r.createNew).length;
+
     return (
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          {worksiteResolutions.length} unique worksite{worksiteResolutions.length !== 1 ? "s" : ""} found.
-          Confirm or override the mapping for each.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {worksiteResolutions.length} unique worksite{worksiteResolutions.length !== 1 ? "s" : ""} found.
+            Confirm or override the mapping for each.
+            {unresolvedWorksites > 0 ? ` ${unresolvedWorksites} still need review.` : ""}
+          </p>
+          {unresolvedWorksites > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 shrink-0"
+              onClick={() =>
+                setWorksiteResolutions((prev) =>
+                  prev.map((r) =>
+                    r.confirmed || r.createNew
+                      ? r
+                      : { ...r, resolvedId: null, resolvedName: null, confirmed: true }
+                  )
+                )
+              }
+            >
+              <X className="h-3 w-3 mr-1" />
+              Leave {unresolvedWorksites} unmatched
+            </Button>
+          )}
+        </div>
         <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
           {worksiteResolutions.map((res) => {
             const searchResults = res.search
@@ -1392,12 +1696,36 @@ export function MembershipImportWizard({
   function renderOccupationMatching() {
     const allConfirmed = occupationResolutions.every((r) => r.confirmed || r.createNew);
 
+    const unresolvedOccupations = occupationResolutions.filter((r) => !r.confirmed && !r.createNew).length;
+
     return (
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          {occupationResolutions.length} unique job title{occupationResolutions.length !== 1 ? "s" : ""} found.
-          Match each to a canonical occupation, or create a new one.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {occupationResolutions.length} unique job title{occupationResolutions.length !== 1 ? "s" : ""} found.
+            Match each to a canonical occupation, or create a new one.
+            {unresolvedOccupations > 0 ? ` ${unresolvedOccupations} still need review.` : ""}
+          </p>
+          {unresolvedOccupations > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 shrink-0"
+              onClick={() =>
+                setOccupationResolutions((prev) =>
+                  prev.map((r) =>
+                    r.confirmed || r.createNew
+                      ? r
+                      : { ...r, resolvedOccupationId: null, resolvedCanonicalName: null, confirmed: true }
+                  )
+                )
+              }
+            >
+              <X className="h-3 w-3 mr-1" />
+              Skip {unresolvedOccupations} unmatched
+            </Button>
+          )}
+        </div>
         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
           {occupationResolutions.map((res) => {
             const searchResults = res.search
@@ -1589,7 +1917,7 @@ export function MembershipImportWizard({
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           <Button onClick={proceedFromOccupationMatching} disabled={!allConfirmed}>
-            {importType === "recommencing" ? "Map Membership Types" : "Check Duplicates"} <ArrowRight className="h-4 w-4 ml-1" />
+            {hasValueMapping ? "Map Membership Status" : "Check Duplicates"} <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
         </DialogFooter>
       </div>
@@ -1602,7 +1930,11 @@ export function MembershipImportWizard({
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Map the raw Membership Type values to recognised membership types.
+          {importType === "status_sync"
+            ? "Map each Member Account Status value to a membership type. Rows mapped to “Ignore” keep the worker's current status."
+            : importType === "weekly_update"
+              ? "Each row's membership status comes from which weekly file it was in (New, Recommenced, Resigned, Unfinancial). Confirm the mapped type — Unfinancial defaults to On hold."
+              : "Map the raw Membership Type values to recognised membership types."}
         </p>
         <div className="border rounded-lg overflow-hidden">
           <Table>
@@ -1680,9 +2012,34 @@ export function MembershipImportWizard({
       );
     }
 
+    if (dedupError) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            {dedupError}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (hasValueMapping) setStep("value_mapping");
+                else if (importType !== "resignations") setStep("occupation_matching");
+                else setStep("worksite_matching");
+              }}
+            >
+              <ArrowLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+            <Button onClick={() => runDedupCheck()}>Retry check</Button>
+          </DialogFooter>
+        </div>
+      );
+    }
+
     const createCount = dedupRows.filter((d) => d.action === "create").length;
     const updateCount = dedupRows.filter((d) => d.action === "update").length;
     const skipCount = dedupRows.filter((d) => d.action === "skip").length;
+    const inCampaignCount = dedupRows.filter((d) => d.action === "update" && d.inCampaign).length;
 
     const matchBadge = (reason: DedupRow["matchReason"]) => {
       if (!reason) return null;
@@ -1702,6 +2059,18 @@ export function MembershipImportWizard({
           <span className="flex items-center gap-1.5"><UserCheck className="h-4 w-4 text-blue-600" />{updateCount} update</span>
           <span className="flex items-center gap-1.5"><SkipForward className="h-4 w-4 text-muted-foreground" />{skipCount} skip</span>
         </div>
+
+        {inCampaignCount > 0 && (
+          <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/40 text-xs">
+            <Users className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+            <p className="text-muted-foreground">
+              <span className="font-medium text-foreground">{inCampaignCount}</span> of the
+              matched workers {inCampaignCount === 1 ? "is" : "are"} in a live campaign. On
+              update, their employer, worksite and job title are kept from the campaign;
+              membership status and contact details are taken from the file.
+            </p>
+          </div>
+        )}
 
         <div className="border rounded-lg overflow-auto max-h-[380px]">
           <Table>
@@ -1727,6 +2096,11 @@ export function MembershipImportWizard({
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {matchBadge(dedup.matchReason)}
                           <span className="text-muted-foreground">{dedup.existingName}</span>
+                          {dedup.inCampaign && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 h-4 gap-1">
+                              <Users className="h-3 w-3" /> In campaign
+                            </Badge>
+                          )}
                         </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -1761,7 +2135,7 @@ export function MembershipImportWizard({
           <Button
             variant="outline"
             onClick={() => {
-              if (importType === "recommencing") setStep("value_mapping");
+              if (hasValueMapping) setStep("value_mapping");
               else if (importType !== "resignations") setStep("occupation_matching");
               else setStep("worksite_matching");
             }}
@@ -1781,11 +2155,10 @@ export function MembershipImportWizard({
     const createCount = dedupRows.filter((d) => d.action === "create").length;
     const updateCount = dedupRows.filter((d) => d.action === "update").length;
     const skipCount = dedupRows.filter((d) => d.action === "skip").length;
-    const typeLabels: Record<MembershipImportType, string> = {
-      new_joins: "New Joins",
-      resignations: "Resignations",
-      recommencing: "Recommencing Members",
-    };
+    const protectedUpdateCount = dedupRows.filter(
+      (d) => d.action === "update" && d.inCampaign
+    ).length;
+    const typeLabels = MEMBERSHIP_IMPORT_TYPE_LABELS;
 
     // Detect whether the file carries any shift / work area / roster panel
     // columns so we can show the "create missing options" toggle.
@@ -1797,6 +2170,9 @@ export function MembershipImportWizard({
       <div className="space-y-4">
         <div className="rounded-lg border p-4 space-y-3">
           <p className="font-medium text-sm">{typeLabels[importType]} — {fileName}</p>
+          {importType === "weekly_update" && (
+            <WeeklyMovementSummary rows={rows} />
+          )}
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div className="text-center p-3 rounded-md bg-green-50 border border-green-200">
               <p className="text-2xl font-bold text-green-700">{createCount}</p>
@@ -1851,13 +2227,56 @@ export function MembershipImportWizard({
             </label>
           </div>
         )}
+
+        {updateCount > 0 && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="membership-protect-campaign-workers"
+                checked={protectCampaignWorkers}
+                onCheckedChange={(v) => setProtectCampaignWorkers(v === true)}
+                className="mt-0.5"
+              />
+              <div className="space-y-1">
+                <Label
+                  htmlFor="membership-protect-campaign-workers"
+                  className="text-sm font-medium cursor-pointer"
+                >
+                  Keep employer, worksite and job title for workers in campaigns
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {protectedUpdateCount > 0 ? (
+                    <>
+                      <span className="font-medium text-foreground">{protectedUpdateCount}</span> of
+                      the {updateCount} updates {protectedUpdateCount === 1 ? "is" : "are"} for
+                      workers in a live campaign.{" "}
+                    </>
+                  ) : null}
+                  Campaign records are more current for those fields; the file still sets
+                  membership status and contact details.
+                </p>
+                {!protectCampaignWorkers && protectedUpdateCount > 0 && (
+                  <p className="text-xs text-amber-700 flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Protection off: campaign
+                    workers&apos; employer, worksite and job title will be overwritten by the file.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => setStep("dedup_review")} disabled={isLoading}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           <Button onClick={applyImport} disabled={isLoading}>
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Import {createCount + updateCount} records
+            {applyProgress
+              ? `Importing… ${applyProgress.rowsDone}/${applyProgress.rowsTotal} rows (batch ${Math.min(
+                  applyProgress.done + 1,
+                  applyProgress.total
+                )} of ${applyProgress.total})`
+              : `Import ${createCount + updateCount} records`}
           </Button>
         </DialogFooter>
       </div>
@@ -1875,6 +2294,9 @@ export function MembershipImportWizard({
             <p className="font-medium text-sm text-green-800">Import complete</p>
             <p className="text-xs text-green-700 mt-0.5">
               {result.created} created · {result.updated} updated · {result.skipped} skipped
+              {result.protectedUpdates > 0
+                ? ` · ${result.protectedUpdates} kept campaign employer/worksite/job title`
+                : ""}
             </p>
           </div>
         </div>
@@ -1893,27 +2315,25 @@ export function MembershipImportWizard({
           <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>
             Close
           </Button>
-          <Button onClick={reset}>
-            Import another file
-          </Button>
+          {!weeklyBatchId && (
+            <Button onClick={reset}>
+              Import another file
+            </Button>
+          )}
         </DialogFooter>
       </div>
     );
   }
 
   // ── Main render ───────────────────────────────────────────────────────────
-  const typeLabels: Record<MembershipImportType, string> = {
-    new_joins: "New Joins",
-    resignations: "Resignations",
-    recommencing: "Recommencing Members",
-  };
+  const typeLabels = MEMBERSHIP_IMPORT_TYPE_LABELS;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            Monthly Membership Import
+            Membership Import
             {step !== "upload" && (
               <span className="ml-2 text-base font-normal text-muted-foreground">
                 — {typeLabels[importType]}

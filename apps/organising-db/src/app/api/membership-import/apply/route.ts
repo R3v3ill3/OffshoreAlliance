@@ -1,7 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { toE164 } from "@/lib/phone/normalise-phone";
-import type { MembershipImportType, ParsedMembershipRow } from "../parse/route";
+import {
+  isMembershipImportType,
+  MEMBERSHIP_IMPORT_TYPES,
+} from "@/lib/import/membership-import-types";
+import {
+  describeProtectedFields,
+  loadCampaignProtectedWorkerIds,
+  stripCampaignProtectedFields,
+} from "@/lib/workers/campaign-protected-fields";
+import type { ParsedMembershipRow } from "../parse/route";
+import type { MembershipImportType } from "@/lib/import/membership-import-types";
+
+/** A weekly-update row applies the rules of the file it came from. */
+function applyBranch(
+  importType: MembershipImportType,
+  sourceKind: ParsedMembershipRow["sourceKind"]
+): MembershipImportType {
+  if (importType !== "weekly_update") return importType;
+  if (sourceKind === "new") return "new_joins";
+  if (sourceKind === "recommenced") return "recommencing";
+  if (sourceKind === "resigned") return "resignations";
+  return "status_sync";
+}
+
+/**
+ * Rows are written one at a time; the wizard sends them in batches of a few
+ * hundred, but give a slow batch room rather than the platform default.
+ */
+export const maxDuration = 300;
 
 interface ApplyRow extends ParsedMembershipRow {
   resolvedEmployerId: number | null;
@@ -24,6 +52,27 @@ interface ApplyRequest {
    *  area / roster panel string values are inserted into the corresponding
    *  worker_*_options table on the fly and their new id is used. */
   createMissingDimensionOptions?: boolean;
+  /**
+   * When true (the default), an update to a worker who is in a live campaign
+   * keeps its employer, worksite and job title: the campaign is the more
+   * current source for those, the membership system for status.
+   */
+  protectCampaignWorkers?: boolean;
+  /** Original upload name, for Import History. */
+  fileName?: string;
+  /** 1-based batch position when the wizard splits a large file. */
+  batchIndex?: number;
+  batchCount?: number;
+}
+
+export interface MembershipImportApplyResponse {
+  success: boolean;
+  created: number;
+  updated: number;
+  skipped: number;
+  /** Updated rows where employer / worksite / job title were kept from the campaign. */
+  protectedUpdates: number;
+  errors: string[];
 }
 
 export async function POST(request: NextRequest) {
@@ -35,10 +84,17 @@ export async function POST(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const importType = searchParams.get("type") as MembershipImportType | null;
-  if (!importType) {
-    return NextResponse.json({ success: false, error: "Missing ?type= param" }, { status: 400 });
+  const importTypeParam = searchParams.get("type");
+  if (!isMembershipImportType(importTypeParam)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Missing or invalid ?type= param (${MEMBERSHIP_IMPORT_TYPES.join(" | ")})`,
+      },
+      { status: 400 }
+    );
   }
+  const importType = importTypeParam;
 
   let body: ApplyRequest;
   try {
@@ -47,9 +103,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { rows, createMissingDimensionOptions } = body;
+  const {
+    rows,
+    createMissingDimensionOptions,
+    protectCampaignWorkers = true,
+    fileName,
+    batchIndex,
+    batchCount,
+  } = body;
   if (!rows || !Array.isArray(rows)) {
     return NextResponse.json({ success: false, error: "rows array is required" }, { status: 400 });
+  }
+
+  let protectedWorkerIds = new Set<number>();
+  if (protectCampaignWorkers) {
+    try {
+      protectedWorkerIds = await loadCampaignProtectedWorkerIds(
+        supabase,
+        rows
+          .filter((r) => r.dedupAction === "update" && r.existingWorkerId != null)
+          .map((r) => r.existingWorkerId as number)
+      );
+    } catch (error) {
+      // Refuse to run rather than silently overwrite campaign data.
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : String(error) },
+        { status: 500 }
+      );
+    }
   }
 
   // ── Resolve shift / work_area / roster_panel raw values to option ids. ──
@@ -153,6 +234,7 @@ export async function POST(request: NextRequest) {
   let created = 0;
   let updated = 0;
   let skipped = 0;
+  let protectedUpdates = 0;
   const errors: string[] = [];
 
   // Pre-load resigned member type id (for resignations import)
@@ -175,7 +257,8 @@ export async function POST(request: NextRequest) {
     try {
       if (row.dedupAction === "update" && row.existingWorkerId) {
         // ── UPDATE existing worker ─────────────────────────────────────────
-        const patch: Record<string, unknown> = {
+        const isProtected = protectedWorkerIds.has(row.existingWorkerId);
+        let patch: Record<string, unknown> = {
           updated_at: new Date().toISOString(),
         };
 
@@ -202,7 +285,9 @@ export async function POST(request: NextRequest) {
         if (resolvedWorkArea != null) patch.work_area_id = resolvedWorkArea;
         if (resolvedRosterPanel != null) patch.roster_panel_id = resolvedRosterPanel;
 
-        if (importType === "new_joins") {
+        const branch = applyBranch(importType, row.sourceKind);
+
+        if (branch === "new_joins") {
           if (row.joinDate) patch.join_date = row.joinDate;
           // Only update rejoin_date if the new value is more recent
           if (row.rejoinDate) {
@@ -220,7 +305,7 @@ export async function POST(request: NextRequest) {
           if (financialMemberTypeId) patch.union_membership_type_id = financialMemberTypeId;
         }
 
-        if (importType === "resignations") {
+        if (branch === "resignations") {
           patch.resignation_date = row.resignationDate;
           if (row.resignationReason) patch.resignation_reason = row.resignationReason;
           patch.is_active = false;
@@ -238,7 +323,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (importType === "recommencing") {
+        if (branch === "recommencing") {
           // Only update rejoin_date if more recent
           if (row.rejoinDate) {
             const { data: existing } = await supabase
@@ -257,6 +342,18 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        if (branch === "status_sync") {
+          // Status is the one thing the member list is authoritative for. A
+          // row whose status was mapped to "ignore" leaves it unchanged.
+          if (row.resolvedMembershipTypeId) {
+            patch.union_membership_type_id = row.resolvedMembershipTypeId;
+            patch.is_active = row.resolvedMembershipTypeId !== resignedTypeId;
+          }
+        }
+
+        const stripped = stripCampaignProtectedFields(patch, isProtected);
+        patch = stripped.patch;
+
         const { error } = await supabase
           .from("workers")
           .update(patch)
@@ -266,10 +363,13 @@ export async function POST(request: NextRequest) {
           errors.push(`Row ${row.rowIndex}: Failed to update ${fullName} — ${error.message}`);
         } else {
           updated++;
+          if (stripped.protectedFields.length > 0) protectedUpdates++;
         }
       } else if (row.dedupAction === "create") {
         // ── CREATE new worker ──────────────────────────────────────────────
-        if (importType === "resignations") {
+        const branch = applyBranch(importType, row.sourceKind);
+
+        if (branch === "resignations") {
           // For resignations, only create if we have enough info (name + reference_id or email)
           if (!row.referenceId && !row.email) {
             errors.push(
@@ -305,14 +405,14 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         };
 
-        if (importType === "new_joins") {
+        if (branch === "new_joins") {
           workerData.join_date = row.joinDate || null;
           workerData.rejoin_date = row.rejoinDate || null;
           workerData.is_active = true;
           workerData.union_membership_type_id = financialMemberTypeId;
         }
 
-        if (importType === "resignations") {
+        if (branch === "resignations") {
           workerData.join_date = row.joinDate || null;
           workerData.resignation_date = row.resignationDate || null;
           workerData.resignation_reason = row.resignationReason || null;
@@ -320,10 +420,16 @@ export async function POST(request: NextRequest) {
           workerData.union_membership_type_id = resignedTypeId;
         }
 
-        if (importType === "recommencing") {
+        if (branch === "recommencing") {
           workerData.rejoin_date = row.rejoinDate || null;
           workerData.is_active = true;
           workerData.union_membership_type_id = row.resolvedMembershipTypeId || financialMemberTypeId;
+        }
+
+        if (branch === "status_sync") {
+          const typeId = row.resolvedMembershipTypeId || financialMemberTypeId;
+          workerData.union_membership_type_id = typeId;
+          workerData.is_active = typeId !== resignedTypeId;
         }
 
         const { error } = await supabase.from("workers").insert(workerData);
@@ -341,13 +447,30 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const protectedNote =
+    protectedUpdates > 0
+      ? `${protectedUpdates} campaign worker${protectedUpdates === 1 ? "" : "s"}: ${describeProtectedFields([
+          "employer_id",
+          "worksite_id",
+          "canonical_occupation_id",
+        ])}`
+      : null;
+
+  const batchSuffix =
+    batchIndex != null && batchCount != null && batchCount > 1
+      ? ` (batch ${batchIndex}/${batchCount})`
+      : "";
+
   // Log to import_logs
   await supabase.from("import_logs").insert({
-    file_name: `membership_${importType}`,
+    file_name: `${fileName?.trim() || `membership_${importType}`}${batchSuffix}`,
     import_type: `membership_${importType}`,
     records_created: created,
     records_updated: updated,
-    errors: errors.length > 0 ? errors.join("\n") : null,
+    errors:
+      errors.length > 0 || protectedNote
+        ? [...(protectedNote ? [protectedNote] : []), ...errors].join("\n")
+        : null,
     imported_by: user.id,
   });
 
@@ -356,6 +479,7 @@ export async function POST(request: NextRequest) {
     created,
     updated,
     skipped,
+    protectedUpdates,
     errors,
-  });
+  } satisfies MembershipImportApplyResponse);
 }

@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Monitor, Smartphone, Moon, Sun } from 'lucide-react'
+import { Monitor, Smartphone, Moon, Sun, Paperclip } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { resolveScriptVariables, SAMPLE_DATA } from '@/lib/comms/template-variables'
 import DOMPurify from 'isomorphic-dompurify'
@@ -35,6 +35,8 @@ interface Props {
   fromName?: string
   fromEmail?: string
   sampleContacts?: PreviewSampleContact[]
+  /** Filenames attached to this draft. Shown in the preview chrome, not the body. */
+  attachmentNames?: string[]
 }
 
 export function EmailPreviewPane({
@@ -46,6 +48,7 @@ export function EmailPreviewPane({
   fromName = 'Offshore Alliance',
   fromEmail = 'info@offshorealliance.org.au',
   sampleContacts,
+  attachmentNames = [],
 }: Props) {
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
   const [dark, setDark] = useState(false)
@@ -160,6 +163,7 @@ export function EmailPreviewPane({
           subject={resolvedSubject}
           preheader={resolvedPreheader}
           bodyHtml={resolvedBodyHtml}
+          attachmentNames={attachmentNames}
         />
       </div>
     </div>
@@ -209,6 +213,7 @@ function PreviewFrame({
   subject,
   preheader,
   bodyHtml,
+  attachmentNames,
 }: {
   device: 'desktop' | 'mobile'
   dark: boolean
@@ -217,6 +222,7 @@ function PreviewFrame({
   subject: string
   preheader: string
   bodyHtml: string
+  attachmentNames: string[]
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [debounced, setDebounced] = useState({ subject, preheader, bodyHtml })
@@ -253,6 +259,12 @@ function PreviewFrame({
         {debounced.preheader && (
           <p className="text-[11px] text-muted-foreground truncate">
             {debounced.preheader}
+          </p>
+        )}
+        {attachmentNames.length > 0 && (
+          <p className="mt-1 flex items-center gap-1 truncate text-[11px]">
+            <Paperclip className="h-3 w-3 shrink-0" />
+            <span className="truncate">{attachmentNames.join(', ')}</span>
           </p>
         )}
       </div>

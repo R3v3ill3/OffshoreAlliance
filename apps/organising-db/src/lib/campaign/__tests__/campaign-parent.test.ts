@@ -68,18 +68,20 @@ function fakeClient(result: CampaignParentQueryResult): { client: CampaignParent
 }
 
 describe("loadCampaignParent (wp3.8.md §3.5)", () => {
-  it("selects parent_campaign_id and the embed through campaigns_parent_campaign_id_fkey, by campaign_id, maybeSingle", async () => {
+  it("selects parent_campaign_id and the embed through the parent_campaign_id column hint, by campaign_id, maybeSingle", async () => {
     const { client, calls } = fakeClient({ data: { parent_campaign_id: null, parent: null }, error: null });
     await loadCampaignParent(client, 61);
     expect(calls).toEqual([
       {
         table: "campaigns",
-        select: "parent_campaign_id, parent:campaigns!campaigns_parent_campaign_id_fkey(campaign_id, name)",
+        select: "parent_campaign_id, parent:campaigns!parent_campaign_id(campaign_id, name)",
         eq: ["campaign_id", 61],
         maybeSingle: true,
       },
     ]);
-    expect(CAMPAIGN_PARENT_SELECT).toContain("campaigns!campaigns_parent_campaign_id_fkey");
+    expect(CAMPAIGN_PARENT_SELECT).toContain("campaigns!parent_campaign_id(");
+    // PostgREST rejects the constraint-name hint on a self-referencing FK (PGRST200); pin the column hint.
+    expect(CAMPAIGN_PARENT_SELECT).not.toContain("_fkey");
   });
 
   it("no parent → { null, null }", async () => {

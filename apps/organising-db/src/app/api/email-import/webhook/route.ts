@@ -6,6 +6,10 @@ import {
   finaliseBatchIfComplete,
   ingestMembershipUpdateFile,
 } from '@/lib/membership-updates/ingest'
+import {
+  hasDedicatedMembershipInbox,
+  shouldFileAsMembershipUpdate,
+} from '@/lib/membership-updates/inbox'
 
 // Attachment downloads for the weekly membership files can take a while.
 export const maxDuration = 120
@@ -141,30 +145,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, deduplicated: true })
     }
 
-    // Weekly membership files take precedence over the template pipeline.
-    try {
-      const membership = await fileMembershipUpdateAttachments(resend, supabase, {
-        email_id,
-        from,
-        subject,
-      })
-      if (membership) {
-        if (membership.errors.length > 0) {
-          console.error('Membership update attachments had errors:', membership.errors)
-        }
-        return NextResponse.json({
-          ok: true,
+    // Dedicated inbox (NEXT_PUBLIC_MEMBERSHIP_UPDATE_INBOX different from
+    // templates@): only mail To: that address is filed as a weekly update.
+    // While they still share templates@, filename routing stays on.
+    if (shouldFileAsMembershipUpdate(to)) {
+      try {
+        const membership = await fileMembershipUpdateAttachments(resend, supabase, {
           email_id,
-          membership_update: {
-            filed: membership.filed,
-            batch_ids: membership.batchIds,
-            errors: membership.errors,
-          },
+          from,
+          subject,
         })
+        if (membership) {
+          if (membership.errors.length > 0) {
+            console.error('Membership update attachments had errors:', membership.errors)
+          }
+          return NextResponse.json({
+            ok: true,
+            email_id,
+            membership_update: {
+              filed: membership.filed,
+              batch_ids: membership.batchIds,
+              errors: membership.errors,
+            },
+          })
+        }
+        // Mail addressed to a dedicated membership inbox is never a template
+        // forward, even when the attachments did not match the weekly names.
+        if (hasDedicatedMembershipInbox()) {
+          return NextResponse.json({
+            ok: true,
+            email_id,
+            membership_update: { filed: 0, batch_ids: [], errors: [] },
+          })
+        }
+      } catch (membershipErr) {
+        // Fall through to the template import so the email is not lost.
+        console.error('Membership update attachment check failed:', membershipErr)
       }
-    } catch (membershipErr) {
-      // Fall through to the template import so the email is not lost.
-      console.error('Membership update attachment check failed:', membershipErr)
     }
 
     let bodyHtml: string | null = null

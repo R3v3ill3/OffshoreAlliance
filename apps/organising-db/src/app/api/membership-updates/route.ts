@@ -7,6 +7,7 @@ import {
   NOTIFY_USER_IDS_SETTING,
 } from "@/lib/membership-updates/ingest";
 import { parseMembershipUpdateFilename } from "@/lib/membership-updates/kinds";
+import { membershipUpdateInbox } from "@/lib/membership-updates/inbox";
 
 export const maxDuration = 120;
 
@@ -56,8 +57,7 @@ export async function GET() {
     snapshots: snapshots ?? [],
     notifyUserIds,
     admins: admins ?? [],
-    inboundAddress:
-      process.env.NEXT_PUBLIC_MEMBERSHIP_UPDATE_INBOX ?? "templates@mail.oa.uconstruct.app",
+    inboundAddress: membershipUpdateInbox(),
     effectiveRecipients: await loadNotificationRecipients(admin),
   });
 }

@@ -1207,6 +1207,9 @@ Stage 2 remaining: the contract suite (§4.2, §5.2) — needs the `OUX_CONTRACT
 P1 checksums before (2026-09-21): activities_md5 af4609dd76581874d869cf6dbbcf33f6  ratings_md5 f7d15b0751ccddf50a327fe445beba0c
                                   summary_md5 157ba01837c2303b30b226938aa3bd8b  activities_n 9  summary_rows 472
                                   (production has moved on from the 12 September snapshot: 9 activities on 61/62/64, 472 summary rows)
+P2 migration + ledger row:        parent_col 1, scope_col 1, helper_present true, trigger_present 1, policy_present 1,
+                                  view_reloptions [security_invoker=true], view_columns = the baseline six, children_now 0, family_now 0, ledger_row 1
+                                  (= expected row; the migration's post-assertions passed, incl. the byte-identical summary-view checksum)
 ```
 
 **Item 2 — contract tests on dev (run 1 and run 2).**

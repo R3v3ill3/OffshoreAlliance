@@ -4769,6 +4769,7 @@ export type Database = {
           is_custom: boolean
           is_perception: boolean
           rating_labels: Json | null
+          scope: string
           section_plan_id: number | null
           supporter_outcome_value: string | null
           template_key: string | null
@@ -4789,6 +4790,7 @@ export type Database = {
           is_custom?: boolean
           is_perception?: boolean
           rating_labels?: Json | null
+          scope?: string
           section_plan_id?: number | null
           supporter_outcome_value?: string | null
           template_key?: string | null
@@ -4809,6 +4811,7 @@ export type Database = {
           is_custom?: boolean
           is_perception?: boolean
           rating_labels?: Json | null
+          scope?: string
           section_plan_id?: number | null
           supporter_outcome_value?: string | null
           template_key?: string | null
@@ -9649,6 +9652,7 @@ export type Database = {
           name: string
           notes: string | null
           organiser_id: number | null
+          parent_campaign_id: number | null
           plan_timeframe_weeks: number | null
           replaced_agreement_id: number | null
           sector_wide: boolean
@@ -9676,6 +9680,7 @@ export type Database = {
           name: string
           notes?: string | null
           organiser_id?: number | null
+          parent_campaign_id?: number | null
           plan_timeframe_weeks?: number | null
           replaced_agreement_id?: number | null
           sector_wide?: boolean
@@ -9703,6 +9708,7 @@ export type Database = {
           name?: string
           notes?: string | null
           organiser_id?: number | null
+          parent_campaign_id?: number | null
           plan_timeframe_weeks?: number | null
           replaced_agreement_id?: number | null
           sector_wide?: boolean
@@ -9719,6 +9725,83 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaigns_parent_campaign_id_fkey"
+            columns: ["parent_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
           },
           {
             foreignKeyName: "campaigns_replaced_agreement_id_fkey"
@@ -27679,6 +27762,10 @@ export type Database = {
       campaign_fact_enum_values: {
         Args: { p_options: Json }
         Returns: string[]
+      }
+      campaign_family_activity_ids: {
+        Args: { p_campaign_id: number }
+        Returns: number[]
       }
       campaign_group_ensure: {
         Args: {

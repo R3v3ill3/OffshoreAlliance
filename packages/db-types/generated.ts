@@ -12728,6 +12728,204 @@ export type Database = {
         }
         Relationships: []
       }
+      membership_movement_snapshots: {
+        Row: {
+          as_of: string
+          batch_id: number | null
+          created_at: string
+          created_by: string | null
+          net_movement: number | null
+          new_members: number
+          notes: string | null
+          recommenced_members: number
+          resigned_members: number
+          snapshot_id: number
+          source: string
+          tags: string[]
+          unfinancial_members: number
+          updated_at: string
+        }
+        Insert: {
+          as_of: string
+          batch_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          net_movement?: number | null
+          new_members?: number
+          notes?: string | null
+          recommenced_members?: number
+          resigned_members?: number
+          snapshot_id?: number
+          source?: string
+          tags?: string[]
+          unfinancial_members?: number
+          updated_at?: string
+        }
+        Update: {
+          as_of?: string
+          batch_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          net_movement?: number | null
+          new_members?: number
+          notes?: string | null
+          recommenced_members?: number
+          resigned_members?: number
+          snapshot_id?: number
+          source?: string
+          tags?: string[]
+          unfinancial_members?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "membership_movement_snapshots_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "membership_update_batches"
+            referencedColumns: ["batch_id"]
+          },
+        ]
+      }
+      membership_update_batches: {
+        Row: {
+          batch_id: number
+          created_at: string
+          dismissed_at: string | null
+          dismissed_by: string | null
+          import_summary: Json | null
+          imported_at: string | null
+          imported_by: string | null
+          ready_at: string | null
+          received_at: string
+          source: string
+          source_email_id: string | null
+          source_from: string | null
+          source_subject: string | null
+          status: string
+          updated_at: string
+          week_ending: string
+        }
+        Insert: {
+          batch_id?: number
+          created_at?: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          import_summary?: Json | null
+          imported_at?: string | null
+          imported_by?: string | null
+          ready_at?: string | null
+          received_at?: string
+          source?: string
+          source_email_id?: string | null
+          source_from?: string | null
+          source_subject?: string | null
+          status?: string
+          updated_at?: string
+          week_ending: string
+        }
+        Update: {
+          batch_id?: number
+          created_at?: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          import_summary?: Json | null
+          imported_at?: string | null
+          imported_by?: string | null
+          ready_at?: string | null
+          received_at?: string
+          source?: string
+          source_email_id?: string | null
+          source_from?: string | null
+          source_subject?: string | null
+          status?: string
+          updated_at?: string
+          week_ending?: string
+        }
+        Relationships: []
+      }
+      membership_update_files: {
+        Row: {
+          batch_id: number
+          byte_size: number | null
+          file_id: number
+          filename: string
+          kind: string
+          received_at: string
+          resend_attachment_id: string | null
+          row_count: number | null
+          storage_bucket: string
+          storage_path: string
+        }
+        Insert: {
+          batch_id: number
+          byte_size?: number | null
+          file_id?: number
+          filename: string
+          kind: string
+          received_at?: string
+          resend_attachment_id?: string | null
+          row_count?: number | null
+          storage_bucket?: string
+          storage_path: string
+        }
+        Update: {
+          batch_id?: number
+          byte_size?: number | null
+          file_id?: number
+          filename?: string
+          kind?: string
+          received_at?: string
+          resend_attachment_id?: string | null
+          row_count?: number | null
+          storage_bucket?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "membership_update_files_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "membership_update_batches"
+            referencedColumns: ["batch_id"]
+          },
+        ]
+      }
+      membership_update_notifications: {
+        Row: {
+          batch_id: number
+          created_at: string
+          dismissed_at: string | null
+          notification_id: number
+          seen_at: string | null
+          user_id: string
+        }
+        Insert: {
+          batch_id: number
+          created_at?: string
+          dismissed_at?: string | null
+          notification_id?: number
+          seen_at?: string | null
+          user_id: string
+        }
+        Update: {
+          batch_id?: number
+          created_at?: string
+          dismissed_at?: string | null
+          notification_id?: number
+          seen_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "membership_update_notifications_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "membership_update_batches"
+            referencedColumns: ["batch_id"]
+          },
+        ]
+      }
       non_oa_union_options: {
         Row: {
           badge_initials: string

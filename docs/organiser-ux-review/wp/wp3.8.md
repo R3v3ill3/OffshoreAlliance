@@ -1216,6 +1216,9 @@ PR #54 merged:                    72b259d8 (2026-09-21; origin/main merged into 
 P4 campaign-64 family:            committed; last result set: 88, 89, 90, 91, 92 → family; 93, 95 → campaign; 96 (new on production
                                   since the snapshot, never in the set) → campaign. The children result set (61, 62, 69 → parent 64)
                                   was not pasted; P5's children_n = 3 is the check
+P5 checksums after data:          activities_md5 01408c6f9405efccfd4dedd13730f4ea (changed: five scope values)  ratings_md5 f7d15b07… (= P1/P3: no rating touched)
+                                  summary_md5 dac3eb12d94ae93685c2bd1c81a89126 (changed: 61/62 now count the shared ratings)  activities_n 9  summary_rows 472
+                                  children_n 3  family_n 5  → production run sheet complete
 ```
 
 **Item 2 — contract tests on dev (run 1 and run 2).**

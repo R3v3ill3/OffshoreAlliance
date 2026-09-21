@@ -1210,6 +1210,8 @@ P1 checksums before (2026-09-21): activities_md5 af4609dd76581874d869cf6dbbcf33f
 P2 migration + ledger row:        parent_col 1, scope_col 1, helper_present true, trigger_present 1, policy_present 1,
                                   view_reloptions [security_invoker=true], view_columns = the baseline six, children_now 0, family_now 0, ledger_row 1
                                   (= expected row; the migration's post-assertions passed, incl. the byte-identical summary-view checksum)
+P3 checksums after migration:     activities_md5 46bc4030271911d3f0bb97abf9d1cb0c (changed: scope column)  ratings_md5 f7d15b07… (= P1)
+                                  summary_md5 157ba018… (= P1)  activities_n 9  summary_rows 472  children_n 0  family_n 0  → gate to merge #54 met
 ```
 
 **Item 2 — contract tests on dev (run 1 and run 2).**

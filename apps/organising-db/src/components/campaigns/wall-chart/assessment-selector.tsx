@@ -211,7 +211,8 @@ export function AssessmentSelector({
   triggerAriaLabel,
 }: AssessmentSelectorProps) {
   const { data: options = [], isLoading, isPending, refetch } = useWallChartAssessmentOptions(campaignId);
-  const { data: parent } = useCampaignParent(campaignId);
+  const parentQuery = useCampaignParent(campaignId);
+  const parent = parentQuery.data;
   const parentId = parent?.parentId ?? null;
 
   const handleSelectOpenChange = useCallback(
@@ -272,7 +273,14 @@ export function AssessmentSelector({
           <SelectValue placeholder={isLoading ? "Loading…" : "Select assessment view…"} />
         </SelectTrigger>
         <SelectContent>
-          {options.length === 0 ? (
+          {parentQuery.isError ? (
+            <SelectGroup>
+              <SelectLabel className="text-[10px] text-destructive">
+                Couldn&apos;t load this campaign&apos;s family: {parentQuery.error.message}
+              </SelectLabel>
+              <SelectItem value={CUMULATIVE_VALUE}>Cumulative</SelectItem>
+            </SelectGroup>
+          ) : options.length === 0 ? (
             <SelectGroup>
               <SelectLabel className="text-[10px]">No assessments in this campaign</SelectLabel>
               <SelectItem value={CUMULATIVE_VALUE}>Cumulative</SelectItem>

@@ -1340,7 +1340,7 @@ export function RatingsTab({
     [assessments, campaignId, parentId]
   );
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isPending: historyPending } = useQuery({
     queryKey: ["worker-activity-ratings", campaignId, workerId, parentId ?? 0],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -1460,12 +1460,18 @@ export function RatingsTab({
         </div>
       )}
 
+      {parent.isError && (
+        <p className="text-xs text-destructive" role="alert">
+          Couldn&apos;t load this campaign&apos;s family: {parent.error.message}
+        </p>
+      )}
+
       {canWrite && (
         <div className="rounded border p-3 space-y-2 bg-muted/30">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Record rating
           </p>
-          {assessments.length === 0 ? (
+          {parent.isError ? null : assessments.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               No assessments exist for this campaign yet. Use &quot;Add assessment&quot; on the
               wall chart header to create one.
@@ -1558,7 +1564,7 @@ export function RatingsTab({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Rating history
         </p>
-        {isLoading ? (
+        {parent.isError ? null : historyPending ? (
           <p className="text-sm text-muted-foreground">Loading ratings…</p>
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">

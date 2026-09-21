@@ -113,10 +113,18 @@ describe("Assessments tab — campaign families", () => {
     // No sharing toggle in a child.
     expect(container.querySelector('button[role="switch"]')).toBeNull();
 
+    // The ambition-links panel ("Ambition links", activity-ambition-links-panel.tsx)
+    // is the owner's: shown for the owned pill, never for a family pill.
+    expect(container.textContent).toContain("Ambition links");
     await click(familyPill);
     await flush();
-    // The ambition-links panel is the owner's; a family selection shows none.
-    expect(container.textContent).not.toContain("Linked ambitions");
+    expect(container.textContent).not.toContain("Ambition links");
+    await click(pillButton(container, "Petition ask"));
+    await flush();
+    expect(container.textContent).toContain("Ambition links");
+    await click(familyPill);
+    await flush();
+    expect(container.textContent).not.toContain("Ambition links");
 
     // Rate Ada Adams (101) 2 on the selected (family) assessment (the fake
     // serves every rating row, so her existing 1 is already shown; a new

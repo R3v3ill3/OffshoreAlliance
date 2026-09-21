@@ -66,6 +66,8 @@ type ParentCandidateRow = {
   parent_campaign_id?: number | null;
   is_sms_episode?: boolean | null;
   is_standing?: boolean | null;
+  /** The trigger refuses an archived parent; the list does not offer one (fix round 1, F7). */
+  archived_at?: string | null;
 };
 
 const NO_PARENT_VALUE = "__none__";
@@ -229,10 +231,11 @@ export function CampaignBasicsEditSheet({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaigns")
-        .select("campaign_id, name, parent_campaign_id, is_sms_episode, is_standing")
+        .select("campaign_id, name, parent_campaign_id, is_sms_episode, is_standing, archived_at")
         .is("parent_campaign_id", null)
         .eq("is_sms_episode", false)
         .eq("is_standing", false)
+        .is("archived_at", null)
         .neq("campaign_id", campaignId)
         .order("name");
       if (error) throw error;
@@ -241,7 +244,8 @@ export function CampaignBasicsEditSheet({
           Number(c.campaign_id) !== campaignId &&
           c.parent_campaign_id == null &&
           !c.is_sms_episode &&
-          !c.is_standing
+          !c.is_standing &&
+          c.archived_at == null
       );
     },
     enabled: !!user && open,
@@ -335,8 +339,16 @@ export function CampaignBasicsEditSheet({
           ? Number(form.total_worker_estimate)
           : null,
         organiser_id: resolvedOrganiserId,
-        parent_campaign_id: nextParentId,
       };
+      // Fix round 1 (F1): the one-level trigger is `BEFORE UPDATE OF
+      // parent_campaign_id` and fires whenever the column is in the SET list,
+      // so it goes in the payload only when it actually changed — a rename or
+      // a date change on a child must not re-run the parent checks (or take
+      // the advisory locks), and must still save when the parent has since
+      // become ineligible.
+      if (nextParentId !== (campaign.parent_campaign_id ?? null)) {
+        payload.parent_campaign_id = nextParentId;
+      }
 
       const { error } = await supabase
         .from("campaigns")

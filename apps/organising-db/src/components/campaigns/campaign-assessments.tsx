@@ -704,7 +704,11 @@ export function CampaignAssessmentsSection({
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {assessmentActivities.length === 0 ? (
+          {parent.isError ? (
+            <p className="text-sm text-destructive" role="alert">
+              Couldn&apos;t load this campaign&apos;s family: {parent.error.message}
+            </p>
+          ) : assessmentActivities.length === 0 ? (
             <p className="text-sm text-muted-foreground">No assessments yet.</p>
           ) : (
             <div className="flex flex-wrap gap-2">

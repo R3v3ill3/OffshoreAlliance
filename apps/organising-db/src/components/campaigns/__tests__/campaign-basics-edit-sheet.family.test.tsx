@@ -21,6 +21,7 @@ import {
 } from "../wall-chart/__tests__/harness/mocks";
 import {
   answerRpc,
+  answerWrite,
   resetBackend,
   rpcInvocations,
   writeInvocations,
@@ -47,6 +48,8 @@ import { CampaignBasicsEditSheet } from "../campaign-basics-edit-sheet";
 
 const CAMPAIGN = 1;
 const onSaved = vi.fn();
+/** The campaign row the sheet is opened on; a test sets `parent_campaign_id` before mounting. */
+let currentParentId: number | null = null;
 
 function Wrapper({ campaignId }: { campaignId: string; canWrite: boolean }) {
   return (
@@ -61,7 +64,7 @@ function Wrapper({ campaignId }: { campaignId: string; canWrite: boolean }) {
         plan_timeframe_weeks: null,
         total_worker_estimate: 20,
         organiser_id: null,
-        parent_campaign_id: null,
+        parent_campaign_id: currentParentId,
       }}
       campaignId={Number(campaignId)}
       onSaved={onSaved}
@@ -83,6 +86,7 @@ function buildSheetFixture(opts: { children?: boolean } = {}): WallChartFixture 
     { campaign_id: 12, name: "Not mine", parent_campaign_id: null, is_sms_episode: false, is_standing: false },
     { campaign_id: 13, name: "SMS episode", parent_campaign_id: null, is_sms_episode: true, is_standing: false },
     { campaign_id: 14, name: "Already a child", parent_campaign_id: 9, is_sms_episode: false, is_standing: false },
+    { campaign_id: 15, name: "Archived", parent_campaign_id: null, is_sms_episode: false, is_standing: false, archived_at: "2026-01-01T00:00:00.000Z" },
   ];
   if (opts.children) {
     campaigns.push(
@@ -128,6 +132,7 @@ describe("Basics sheet — Part of (campaign families)", () => {
   beforeEach(() => {
     resetSpies();
     onSaved.mockReset();
+    currentParentId = null;
   });
 
   afterEach(() => {
@@ -177,7 +182,7 @@ describe("Basics sheet — Part of (campaign families)", () => {
     );
   });
 
-  it("clearing is always allowed: None saves parent_campaign_id null", async () => {
+  it("F1: an unchanged parent is left out of the update payload (the trigger fires on any SET of the column)", async () => {
     answerRpc("campaigns_i_can_write", { data: [9], error: null });
     mounted = await mountWallChart({ Component: Wrapper, fixture: buildSheetFixture() });
 
@@ -186,6 +191,73 @@ describe("Basics sheet — Part of (campaign families)", () => {
 
     const updates = writeInvocations().filter((w) => w.table === "campaigns" && w.op === "update");
     expect(updates).toHaveLength(1);
+    expect(updates[0].payload).toMatchObject({ name: "Test Campaign" });
+    expect(Object.keys(updates[0].payload as object)).not.toContain("parent_campaign_id");
+  });
+
+  it("F4a: clearing is always allowed — with a parent, choosing None saves parent_campaign_id null", async () => {
+    currentParentId = 9;
+    answerRpc("campaigns_i_can_write", { data: [9], error: null });
+    mounted = await mountWallChart({ Component: Wrapper, fixture: buildSheetFixture() });
+
+    await click(partOfTrigger());
+    const none = [...document.body.querySelectorAll('[role="option"]')].find(
+      (o) => (o.textContent ?? "").trim() === "None"
+    );
+    if (!none) throw new Error("No None option");
+    await click(none);
+    await flush();
+    await click(button(document.body, "Save changes"));
+    await flush();
+
+    const updates = writeInvocations().filter((w) => w.table === "campaigns" && w.op === "update");
+    expect(updates).toHaveLength(1);
     expect(updates[0].payload).toMatchObject({ parent_campaign_id: null });
+  });
+
+  it("F4b: the current parent stays selectable when the organiser cannot write to it (D22)", async () => {
+    currentParentId = 9;
+    // 9 is not writable by this organiser (an admin set it); 12 is.
+    answerRpc("campaigns_i_can_write", { data: [12], error: null });
+    mounted = await mountWallChart({ Component: Wrapper, fixture: buildSheetFixture() });
+
+    expect(partOfTrigger().textContent).toContain("ROV sector wide");
+    await click(partOfTrigger());
+    expect(optionLabels()).toEqual(["None", "ROV sector wide", "Not mine"]);
+  });
+
+  it("F7: an archived campaign is never offered as a parent", async () => {
+    answerRpc("campaigns_i_can_write", { data: [9, 15], error: null });
+    mounted = await mountWallChart({ Component: Wrapper, fixture: buildSheetFixture() });
+
+    const access = rpcInvocations().filter((c) => c.name === "campaigns_i_can_write");
+    expect(access[0].args).toEqual({ p_campaign_ids: [9, 12] });
+    await click(partOfTrigger());
+    expect(optionLabels()).toEqual(["None", "ROV sector wide"]);
+  });
+
+  it("F4c: a campaign_family_* refusal from the trigger renders as its sentence", async () => {
+    answerRpc("campaigns_i_can_write", { data: [9], error: null });
+    answerWrite("campaigns", "update", {
+      code: "23514",
+      message: "campaign_family_parent_has_parent",
+      details: "The chosen parent is itself part of a campaign (one level).",
+    });
+    mounted = await mountWallChart({ Component: Wrapper, fixture: buildSheetFixture() });
+
+    await click(partOfTrigger());
+    const option = [...document.body.querySelectorAll('[role="option"]')].find(
+      (o) => (o.textContent ?? "").trim() === "ROV sector wide"
+    );
+    if (!option) throw new Error("No ROV option");
+    await click(option);
+    await flush();
+    await click(button(document.body, "Save changes"));
+    await flush();
+
+    expect(document.body.textContent).toContain(
+      "Failed to save: The chosen parent is itself part of a campaign (one level)."
+    );
+    expect(onSaved).not.toHaveBeenCalled();
   });
 });

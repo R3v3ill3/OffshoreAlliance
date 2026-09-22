@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contractor linkages — OA Universe</title>
+<meta name="description" content="The research file behind every contractor: identified legal entity, scopes, assets, clients, evidence and sources.">
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.05);
+  --track: #f0efec;
+  --seq-1: #104281;
+  --seq-2: #1c5cab;
+  --seq-3: #2a78d6;
+  --seq-4: #5598e7;
+  --seq-5: #86b6ef;
+  --seq-0: #cde2fb;
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --shadow: none;
+    --track: #232322;
+    --seq-1: #9ec5f4;
+    --seq-2: #6da7ec;
+    --seq-3: #3987e5;
+    --seq-4: #256abf;
+    --seq-5: #184f95;
+    --seq-0: #12345f;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --neutral: #383835;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --shadow: none;
+  --track: #232322;
+  --seq-1: #9ec5f4;
+  --seq-2: #6da7ec;
+  --seq-3: #3987e5;
+  --seq-4: #256abf;
+  --seq-5: #184f95;
+  --seq-0: #12345f;
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+  --neutral: #383835;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 72px; }
+
+/* ---- masthead ---- */
+.masthead { border-bottom: 1px solid var(--border); background: var(--surface); }
+.masthead-in {
+  max-width: 1180px; margin: 0 auto; padding: 14px 16px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.brand { font-weight: 640; letter-spacing: -0.01em; text-decoration: none; }
+.brand span { color: var(--muted); font-weight: 400; }
+.masthead nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.masthead nav a {
+  text-decoration: none; color: var(--ink-2); font-size: 13px;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid transparent;
+}
+.masthead nav a:hover { background: var(--track); }
+.masthead nav a[aria-current="page"] { border-color: var(--border); color: var(--ink); font-weight: 560; }
+.theme-toggle {
+  font: inherit; font-size: 13px; cursor: pointer; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+}
+.theme-toggle:hover { background: var(--track); }
+
+/* ---- page head ---- */
+header.page { padding: 34px 0 10px; }
+header.page h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+header.page .blurb { margin: 0; color: var(--ink-2); max-width: 74ch; }
+.crumbs { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.crumbs a { color: var(--ink-2); }
+.srcline { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.srcline code { font-size: 12px; background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+/* ---- stat tiles ---- */
+.stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); margin: 26px 0 8px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; box-shadow: var(--shadow);
+}
+.stat .v { font-size: 30px; line-height: 1.05; letter-spacing: -0.02em; font-weight: 600; }
+.stat .k { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.stat .h { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ---- sections & charts ---- */
+section { margin-top: 34px; }
+section > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px; font-weight: 620; }
+.chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.chart-grid.one { grid-template-columns: 1fr; }
+.chart-grid.one .bar-row { grid-template-columns: minmax(84px, 230px) 1fr auto; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px 18px; box-shadow: var(--shadow); min-width: 0;
+}
+.card h3 { font-size: 15px; margin: 0 0 3px; letter-spacing: -0.01em; }
+.card .sub { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 12px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: minmax(84px, 38%) 1fr auto; gap: 10px; align-items: center; }
+.bar-label { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.bar-track { height: 14px; background: var(--track); border-radius: 0 4px 4px 0; display: flex; }
+.bar-fill { background: var(--seq-3); border-radius: 0 4px 4px 0; min-width: 2px; height: 100%; }
+.bar-track .seg { height: 100%; min-width: 2px; margin-right: 2px; border-radius: 0; }
+.bar-track .seg:last-child { margin-right: 0; border-radius: 0 4px 4px 0; }
+.bar-value { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; }
+.bar-row:hover .bar-label, .bar-row:hover .bar-value { color: var(--ink); }
+
+/* ---- heatmap ---- */
+.heat-tools { display: flex; gap: 10px; align-items: center; margin: 0 0 12px; flex-wrap: wrap; }
+.heat-scroll { overflow: auto; max-height: 620px; border: 1px solid var(--border); border-radius: 8px; }
+.heat { display: grid; gap: 2px; padding: 2px; background: var(--surface); }
+.heat .hh, .heat .rh {
+  position: sticky; background: var(--surface); z-index: 2; font-size: 11.5px; color: var(--ink-2);
+}
+.heat .hh { top: 0; padding: 6px 4px; text-align: center; line-height: 1.25; align-self: stretch; border-bottom: 1px solid var(--grid); overflow-wrap: break-word; hyphens: none; }
+.heat .rh { left: 0; z-index: 1; padding: 4px 8px 4px 6px; display: flex; align-items: center; border-right: 1px solid var(--grid); overflow-wrap: break-word; }
+.heat .corner { position: sticky; top: 0; left: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid); }
+.heat .cell { min-height: 22px; border-radius: 3px; background: var(--track); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; }
+.heat .cell.empty { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); }
+.heat .cell:hover { outline: 2px solid var(--ink); outline-offset: -2px; }
+.heat.dim .row-off { display: none; }
+
+/* ---- table ---- */
+.table-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+input[type="search"], input[type="text"] {
+  font: inherit; font-size: 13px; padding: 6px 10px; min-width: 220px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink);
+}
+.toolbtn {
+  font: inherit; font-size: 13px; cursor: pointer; padding: 6px 11px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink-2);
+}
+.toolbtn:hover { background: var(--track); }
+.toolnote { font-size: 13px; color: var(--muted); }
+.table-scroll { overflow: auto; max-height: 720px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface); text-align: left; font-weight: 600;
+  padding: 9px 12px; border-bottom: 1px solid var(--axis); white-space: nowrap; cursor: pointer; color: var(--ink-2);
+}
+thead th:hover { color: var(--ink); }
+thead th .ind { color: var(--muted); font-weight: 400; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid var(--grid); vertical-align: top; color: var(--ink-2); }
+tbody td:first-child { color: var(--ink); font-weight: 560; }
+tbody tr:hover td { background: var(--track); }
+tbody td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+.chip { display: inline-block; font-size: 11px; font-weight: 640; line-height: 1.6; padding: 0 6px; border-radius: 4px; color: #fff; vertical-align: 1px; }
+.chip-h { background: var(--seq-2); }
+.chip-m { background: var(--seq-3); }
+.chip-l { background: var(--seq-5); color: #0b0b0b; }
+:root[data-theme="dark"] .chip-l, :root:where(:not([data-theme="light"])) .chip-l { color: #0b0b0b; }
+.tag { display: inline-block; font-size: 10.5px; letter-spacing: 0.04em; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.status i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ---- notes ---- */
+.notes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px 14px; }
+.notes li { margin: 8px 0; color: var(--ink-2); font-size: 13.5px; }
+
+/* ---- index cards ---- */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.tabcard {
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px 20px; box-shadow: var(--shadow);
+}
+.tabcard:hover { border-color: var(--axis); }
+.tabcard h3 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.tabcard p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.tabcard .meta { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.tabcard .go { font-size: 13px; color: var(--seq-3); font-weight: 560; }
+
+/* ---- tooltip ---- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .09s;
+  max-width: 320px; background: var(--ink); color: var(--plane); font-size: 12.5px; line-height: 1.45;
+  padding: 7px 10px; border-radius: 7px; white-space: pre-line;
+}
+#tip.on { opacity: 1; }
+
+footer.page { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+footer.page code { background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+@media (max-width: 640px) {
+  header.page h1 { font-size: 24px; }
+  .bar-row { grid-template-columns: minmax(70px, 44%) 1fr auto; }
+}
+@media print {
+  .masthead nav, .theme-toggle, .table-tools, .heat-tools { display: none; }
+  .table-scroll, .heat-scroll { max-height: none; }
+  .card, .stat { break-inside: avoid; }
+}
+
+.cell.s1 { background: #104281; color: #fff; }
+.cell.s2 { background: #1c5cab; color: #fff; }
+.cell.s3 { background: #2a78d6; color: #fff; }
+.cell.s4 { background: #5598e7; color: #0b0b0b; }
+.cell.s5 { background: #86b6ef; color: #0b0b0b; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s3 { background: #3987e5; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s4 { background: #256abf; color: #fff; }
+  :root:where(:not([data-theme="light"])) .cell.s5 { background: #184f95; color: #fff; }
+}
+:root[data-theme="dark"] .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s3 { background: #3987e5; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s4 { background: #256abf; color: #fff; }
+:root[data-theme="dark"] .cell.s5 { background: #184f95; color: #fff; }
+</style>
+</head>
+<body>
+<div class="masthead"><div class="masthead-in">
+  <a class="brand" href="index.html">OA Universe <span>&middot; tab visualisations</span></a>
+  <nav><a href="index.html">Index</a><a href="key-assets.html">Key assets</a><a href="asset-contractors.html">Asset → contractors</a><a href="contractor-linkages.html" aria-current="page">Contractor linkages</a><a href="contractor-x-tier-1.html">Contractor × Tier-1</a><a href="contractors.html">Contractors by scope</a><a href="facility-x-scope.html">Facility × scope</a><a href="key-clients.html">Marine key clients</a><a href="operator-companies.html">Operator → companies</a><a href="reconciliation.html">Reconciliation</a><a href="onshore.html">Onshore</a><button class="theme-toggle" id="theme" type="button" title="Light / dark / follow the system">Auto</button></nav>
+</div></div>
+<div class="wrap">
+
+<header class="page">
+  <p class="crumbs"><a href="index.html">OA Universe tabs</a> &rsaquo; Contractor linkages</p>
+  <h1>Contractor linkages</h1>
+  <p class="blurb">The evidence base. One row per contractor with the entity actually identified, the scopes it holds, the assets and clients it links to, a confidence rating and the sources behind it.</p>
+  <p class="srcline">Source: <code>Offshore_contractor_linkages.csv</code> &middot;
+     <a href="../Offshore_contractor_linkages.csv">open the CSV</a></p>
+</header>
+<div class="stats" id="stats"></div>
+<div id="sections"></div>
+<section><h2>Every row</h2><div id="table-host"></div></section>
+<section><h2>Legend &amp; method notes (from the tab itself)</h2><div class="notes"><ul><li>LEGEND &amp; METHOD</li><li>High — documented contract/EA/project naming the asset or operator</li><li>Medium — company/industry evidence but facility or currency unconfirmed</li><li>None found — no offshore linkage located</li><li>ROWS SHADED LIGHT BLUE = the 16 employers ADDED from research (not on your &#x27;Offshore - contractors&#x27; tab). Source tags: [WB] = colleague&#x27;s Sept-2026 whiteboard matrix (WA_Offshore_Oil_Gas_Facilities_Contractor_Matrix.docx); [MV] = member/Troy-verified (22 Sep 2026); untagged = desk research. See the &#x27;Offshore - reconciliation&#x27; tab.</li><li>NAME RESOLUTIONS: MEA = Monadelphous Engineering Associates · Hjelix = Helix · Enemech = EnerMech · Sierra = Siera Marine Management · Cyan = Cyan Renewables (ex-MMA Offshore) · AOS = Australian Offshore Solutions · OSA = Offshore Services Australasia · UPS = Upstream Production Solutions · WPF (Duratech) = WPF Duratec · Eris = ex-Kuiper Australia (the colleague&#x27;s &#x27;EEIS / Kuiper&#x27; is almost certainly Eris) · GGC = GGC Industries (LOW confidence) · Atlas Professionals = legacy name of Programmed Offshore.</li><li>SCOPE FLAGS: Vertech and Wood are NOT helicopter operators; Auriga is marine-pilot-transfer (no offshore O&amp;G link); LifeFlight has NO offshore O&amp;G role; Legeneering HUC not found; Programmed&#x27;s Decomm not evidenced; Baker Hughes = subsea production systems; UPS = O&amp;M/facility operator; Sierra/AOS/OSM/Programmed are CREW PROVIDERS behind vessel operators.</li><li>BIGGEST GAP: FWC enterprise-agreement coverage clauses (facilities/rigs/vessels named) could not be read from here — ESS Woodside Platforms 2022 &amp; MODU 2023, Sodexo 2025, Entier 2024, Programmed HUC/Construction 2024, OSM decom 2022/23, Kuiper decom 2025, Applus+ inspection, MWOG vs M&amp;ISS.</li><li>See also: &#x27;Offshore - asset -&gt; contractors&#x27; (inverse), &#x27;Offshore - operator companies&#x27; (Tier 1 / Tier 2 lists), &#x27;Offshore - facility x scope&#x27; (who holds each scope at each facility) and &#x27;Offshore - reconciliation&#x27; (vs the colleague&#x27;s matrix).</li><li>Colour key on the tab: Confidence colours (col I): · Low — inferred or thin</li></ul></div></section>
+
+<footer class="page">
+  Generated from <code>Offshore_contractor_linkages.csv</code> on 22 September 2026 by
+  <code>scripts/data-hygiene/oa-universe/build_tab_visualisations.py</code>.
+  The CSVs are the source of truth &mdash; edit those and re-run the script.
+</footer>
+</div>
+<script>window.OA_PAGE = {"stats":[{"v":55,"k":"Contractors researched"},{"v":16,"k":"Added from research","h":"not on the original contractors tab"},{"v":52,"k":"With an offshore asset linked"},{"v":14,"k":"Also on an onshore facility"}],"sections":[{"title":"How solid the linkages are","charts":[{"type":"bar","title":"Contractors by confidence","sub":"Leading confidence term on each row","color":"seq-3","foot":null,"items":[{"label":"High","value":34,"tip":"High\n34"},{"label":"Medium-High","value":4,"tip":"Medium-High\n4"},{"label":"Medium","value":10,"tip":"Medium\n10"},{"label":"Low-Medium","value":2,"tip":"Low-Medium\n2"},{"label":"Low","value":3,"tip":"Low\n3"},{"label":"None found","value":2,"tip":"None found\n2"}]},{"type":"bar","title":"Scopes claimed across the contractor list","sub":"A contractor holding several scopes counts once per scope","color":"seq-3","foot":null,"items":[{"label":"Marine","value":12,"tip":"Marine\n12"},{"label":"Maintenance","value":9,"tip":"Maintenance\n9"},{"label":"ROV","value":9,"tip":"ROV\n9"},{"label":"Decomm","value":8,"tip":"Decomm\n8"},{"label":"Helicopters","value":8,"tip":"Helicopters\n8"},{"label":"Drilling","value":6,"tip":"Drilling\n6"},{"label":"Catering","value":5,"tip":"Catering\n5"},{"label":"Construction","value":5,"tip":"Construction\n5"},{"label":"Hookup/Commissioning","value":3,"tip":"Hookup/Commissioning\n3"},{"label":"Chemist","value":1,"tip":"Chemist\n1"},{"label":"Construction / HUC / subsea / decom","value":1,"tip":"Construction / HUC / subsea / decom\n1"},{"label":"Cranes / lifting","value":1,"tip":"Cranes / lifting\n1"},{"label":"Crewing / labour hire","value":1,"tip":"Crewing / labour hire\n1"},{"label":"Electrical / instrumentation","value":1,"tip":"Electrical / instrumentation\n1"}]}]}],"table":{"columns":["Contractor (as listed)","Identified entity","Scope(s) — your tab","Scope check","Onshore facilities (from onshore tab)","Offshore key assets linked","Tier-1 clients linked","Marine key-client links","Confidence","Notes (evidence, EAs, caveats)","Sources"],"rows":[["Altrad","Altrad Australia (Altrad Services (Aust) Pty Ltd, ex-Cape/Hertel) + Altrad Sparrows (cranes/lifting)","Maintenance","OK — access/scaffold, insulation, coatings, PFP, rope access; cranes via Sparrows","Gorgon (Barrow); Wheatstone (Onslow)","Wheatstone Platform (H — Altrad case study + colleague WB); Barrow Island oil (WA Oil) (H); Thevenard Island (decom, M); Gorgon/Wheatstone lifting inspection 'offshore & onshore' (Sparrows)","Chevron (H). Inpex/Woodside = onshore only","—","High","Chevron brownfield maintenance since 2015 (peak 701 personnel) per Altrad case study; OA 'Altrad Chevron Facilities EA 2024'. Prelude HUC was at the Korean yard (not Aus offshore). [WB] Colleague WB confirms Altrad (with UGL) at Wheatstone Platform and Gorgon/Barrow.","altrad.com.au Chevron case study; altradsparrows.com Gorgon/Wheatstone; OA campaigns"],["Altrad Sparrows","Altrad Sparrows (Sparrows Group, part of Altrad) — crane & lifting equipment inspection, maintenance and operations","(not on your contractors tab — ADDED) Cranes / lifting (Maintenance)","OK — distinct entity/EA from Altrad Services (see Altrad row)","Gorgon (Barrow); Wheatstone (Onslow)","Wheatstone Platform (H — Chevron Gorgon & Wheatstone lifting inspection/maintenance 'offshore and onshore', May 2021); Barrow Island oil (M)","Chevron (H)","—","Medium-High","Part of the Altrad group but a separate contracting entity — worth its own row for EA purposes.","altradsparrows.com Chevron Gorgon/Wheatstone"],["AOS","Australian Offshore Solutions Pty Ltd (Perth) — offshore crewing/labour: marine crewing, ship mgmt, tow masters/rig moves, catering, FPSO & rig manning, ROV crew, dredging crews","Marine; Catering; ROV; Construction","OK + rig-move/drilling manning, dredging","—","Scarborough FPU (tow masters w/ McDermott — float-over & 45-day tow 2025); Scarborough trunkline/subsea (crewing+catering on Saipem Castorone & JSD 6000; crew mgmt for Boskalis; Subsea7 vessels); Enfield decom & Santos drilling support (indirect, via Solstad fleet)","Woodside (indirect, H); Santos (indirect, M) — no direct Tier-1 contracts","McDermott; Saipem; Subsea7 (5-yr frame agreement, JV w/ Kuiper); Boskalis; Solstad (crew mgmt from Jul 2025); Fugro (wind survey); Helix (Q7000)","High","Crew EMPLOYER sitting behind the marine contractors' vessels. EAs: WA&NT Offshore Construction Catering 2024; Deck Officers 2023; ROV Casual Greenfields 2022; Contract Dredging 2024. Catering >2,000 offshore personnel (FY23). [WB] On the colleague's whiteboard with no confirmed facility link — our research above fills it (Scarborough FPU tow; Saipem/McDermott/Subsea7/Solstad/Boskalis crews).","aosau.com services / news / project pages; OA campaigns"],["Applus+","Applus+ (Applus Energy & Industry — Applus+ Australia) — inspection, NDT, integrity","(not on your contractors tab — ADDED) Inspection / Integrity","New scope suggested: 'Inspection / Integrity' (with Vertech)","Woodside Gas Plant (KGP) — 'APPLUS' on your onshore tab","Okha FPSO (H); Ngujima-Yin FPSO (H) — holds the Woodside NW inspection EA (statutory inspection of FPSOs/platforms, succeeding Vertech's 2014–20 term); Pyrenees Venture FPSO (M); North Rankin Complex / Goodwyn A / Angel / Pluto A (M)","Woodside (H)","—","Medium-High","OA lists an Applus+ Woodside NW inspection EA. Exact facility coverage in the EA not read — confirm which FPSOs/platforms.","OA campaigns; vertechgroup.com.au (Woodside FPSO fleet page notes Applus+ succession)"],["Atlas Professionals","LEGACY NAME — Atlas Programmed Marine (Australia) Pty Ltd traded as 'Atlas Professionals' 2018–24; bought out and rebranded Programmed Offshore (Australia) Pty Ltd in Apr 2024 (see Programmed row); Programmed then acquired RFM Offshore (Apr 2025). Atlas NextWave (global) now does renewables recruitment in Aus, not O&G crewing","(not on your contractors tab — ADDED) Crewing / labour hire (Marine; Drilling; Catering; HUC)","FLAG — legacy alias of Programmed Offshore; keep only for EA-history traceability","—","North Rankin Complex / Goodwyn A / Angel (M historic — crewed Siem Thiima 2018); Prelude FLNG (H via successor 'Programmed Offshore Prelude Maintenance Work Agreement 2025')","Woodside (M historic); Shell (H via successor)","—","High (corporate status) / Low (current asset links)","EAs: Atlas Programmed Marine Catering EA 2023 & Drilling EA 2023 (OA list); Atlas AIMPE Marine Engineers Offshore EA 2023 — successors now under Programmed Offshore.","atlasprofessionals.com JV notice; businessnews Programmed Offshore; programmed.com.au RFM acquisition; OA campaigns"],["Auriga Aviation","Auriga Aviation Pty Ltd (Auriga Group — marine pilotage + aviation) — helicopter MARINE PILOT TRANSFER operator (H135/H145/H125; 15 aircraft; Karratha, Port Hedland, Gladstone, Hay Point, Mackay, Newcastle, Perth)","(not on your contractors tab — ADDED) Helicopters (pilot transfer)","FLAG — port pilot transfers to bulk/LNG shipping, NOT offshore crew change","—","None found","None found (clients = Rio Tinto & port authorities/shipping)","—","None found (offshore O&G)","On OA's list purely as an AWU aircraft-engineer employer ('Auriga Aviation Helicopter Engineers EA 2024', AG2024/4703). Suggest treating as ADJACENT rather than part of the offshore universe.","OA campaigns; auriga.com.au aviation; helijobs Auriga engineers ad"],["Baker Hughes","Baker Hughes Services Australia Pty Ltd","Drilling","FLAG — actual = subsea production systems (trees/wellheads/manifolds/controls) + subsea field-service techs on rigs/vessels; general drilling services in Aus unverified","Gorgon (Barrow)","Gorgon / Jansz-Io subsea (Stage 1 & 2 trees/manifolds; 15-yr master service order from 2018); Jansz-Io Compression (compression manifold 2021); Ichthys Explorer (CPF) (subsea trees/manifolds; BH–McDermott URF completed Jan 2024)","Chevron (H); Inpex (H). Woodside/Santos — not verified","McDermott (Ichthys consortium partner)","High","OA 'Subsea Field Services EA 2024–2028'. Techs mobilise to whichever rig drills Gorgon/Ichthys wells. Gorgon Stage 3 subsea supplier not verified.","offshore-mag BHGE Gorgon Stage 2; bakerhughes.com Ichthys; OA campaigns"],["Bhagwan Marine","Bhagwan Marine Ltd (ASX: BWN, listed Aug 2024; Perth) — vessel operator (tugs, AHTS, crew/utility vessels, barges), offshore project support & decommissioning","(not on your contractors tab — ADDED) Marine","OK — AHTS / field support / decom marine spread","—","Montara (Montara Venture FPSO) (H — AHTS Coral Knight, Jadestone 5-yr from Dec 2025 ~A$15m/yr, supporting since Feb 2025); Stag (H — CMV Athos, Jadestone; + Wandoo/Vermilion, 2-yr ext. Oct 2025 ~A$25m); Barrow Island oil (M-H — Mar 2026 tanker-mooring/nav-buoy removal, Chevron implied); Thevenard Island (H — decom completed 2024, 9 platforms); Northern Endeavour (M); Harriet Alpha (Santos) & Angel (Woodside) decom support (M); Gorgon/Wheatstone construction (historic)","Jadestone (H); Chevron (H); Vermilion (H, non-Tier-1); Aus Govt/Petrofac (M); Santos (M); Woodside (M)","Siera supplies crew","High","EAs: Bhagwan Marine Offshore Vessel Ops Deck Officers EA 2024 (OA/AMOU); AIMPE Engineers EAs 2023/24; MUA WA Inshore Agreement. Explicitly targets NWS, Northern Australia and Bass Strait decommissioning.","splash247 Bhagwan Jadestone; bairdmaritime Barrow Island decom; bhagwanmarine.com news; OA campaigns"],["Boskalis","Boskalis (Royal Boskalis Westminster) — dredging, shore-crossing, seabed intervention, towage","(not on your contractors tab — ADDED) Marine (dredging / towage)","OK","—","Scarborough FPU (H — trunkline seabed intervention & shore crossing 2022–24; FPU ~4,000 nm tow & mooring Jan 2026; AOS crew management; Eris crews)","Woodside (H)","—","High","Transient.","aosau.com Boskalis; offshore-mag Scarborough FPU arrival"],["CHC","CHC Helicopter (Australia) Pty Ltd (CHC Group) — Perth HQ; Karratha, Broome","Helicopters","OK — crew change, medevac, SAR","—","North Rankin Complex; Goodwyn A; Angel; NWS subsea tiebacks (Woodside Karratha 2011–2024 — H historic); Okha FPSO; Ngujima-Yin FPSO; Pyrenees Venture FPSO; Macedon; Stag (2019 shared Karratha/Learmonth/Onslow contract w/ Woodside, BHP, Jadestone, Vermilion — M); Prelude FLNG (2013–2025 — ENDED, PHI took over Sept 2025)","Woodside; Shell (ended 2025); Jadestone","—","Medium","LOSING its anchor WA contracts to PHI (Woodside Karratha 7-yr H175 deal May 2025; Prelude Sept 2025). Whether CHC still flies Woodside/Jadestone from Karratha in 2026 is unconfirmed. OA 'CHC Aircraft Engineers EA 2022'.","woodside.com sharing-services; verticalmag CHC 4-customer contract; offshore-energy Prelude CHC; helihub Shell AW189"],["Condex","Condex Services Pty Ltd (Sale VIC) — hazardous-area electrical & instrumentation contractor (wiring, inspection, instrumentation, testing, maintenance, fabrication); 11–50 staff","(not on your contractors tab — ADDED) Electrical / instrumentation","New scope suggested: 'E&I'","Longford Gas Plant, Long Island Point, Barry Beach (VIC — not on your onshore tab)","Bass Strait platforms (H — 'Esso Offshore Platforms within Bass Strait Victoria')","Esso/ExxonMobil → Woodside-operated from Jul 2026 (H)","—","High","'Condex Services Esso Offshore and Onshore Electrical Maintenance Services Agreement 2024' (AG2024/1017; ETU/CEPU party; nominal expiry 1 Mar 2027) — CHECK novation to Woodside. No WA work.","fwc.gov.au ag2024_1017; condexservices.com.au"],["Cyan","Cyan Renewables (Singapore; Seraya Partners) = owner of MMA Offshore Ltd (Perth), acquired Jul 2024; MMA rebranded Cyan Renewables Jul 2025. Aus ops = former MMA Offshore (~20 PSV/AHTS/MPSV)","Marine","OK — vessel operator + marine logistics (subsea division exists)","—","Scarborough FPU (PSV MMA Inscription, drilling support 2023–24); North Rankin Complex / Goodwyn A / Angel / Pluto A (Woodside NWS/Pluto supply & FPSO offtake support — Mermaid Strait/Sound/Leeuwin/Cove 2015–22); Okha FPSO / Ngujima-Yin FPSO (offtake support — M); Ichthys Explorer (CPF) / Ichthys Venturer (FPSO) (PSVs MMA Brewster & MMA Leveque from 2015/16; Brewster renewed 2022 to ~2027+); Wheatstone Platform / Barrow Island oil / Gorgon (PSV MMA Plover, Chevron marine logistics from May 2025)","Woodside (H); Inpex (H); Chevron (H)","— (is itself a marine contractor); Siera supplies crew (M)","High","EAs still under the MMA name (Deck Officers 2023; AIMPE Engineers 2023). Treat 'Cyan' = MMA Offshore for the O&G universe.","gcaptain Cyan acquires MMA; offshore-energy Scarborough MMA; oedigital Ichthys Brewster; offshore-energy MMA Plover Chevron"],["DOF","DOF Subsea Australia Pty Ltd (Perth) — subsea IMR/construction/decom vessel operator w/ in-house ROV/AUV & sat diving; also PSVs","Marine; ROV","OK + decommissioning, diving, mooring hook-up","—","Okha FPSO (CWLH) (Skandi Singapore flowline T&I 2020–21); Enfield / Stybarrow / Griffin (decom) (Woodside decom panel May 2023; Skandi Hercules on Stybarrow 2024); Prelude FLNG (Skandi Darwin IMR from 2017, 5-yr + options — post-2022 unverified); Gorgon / Jansz-Io subsea & Wheatstone Platform (Chevron IMR MSA 2015, ext. 2018 — current status unverified); Bass Strait platforms (PSV Skandi Feistein to Esso 2019→2024+); Montara (Skandi Hercules umbilical replacement 2019 — one-off)","Woodside (H); Shell (M); Chevron (M); Jadestone (L, one-off); Esso/Woodside Bass Strait (H)","— (is a marine contractor; on Woodside decom panel w/ TechnipFMC, Heerema, McDermott, Fugro); Siera crews Skandi Hercules","High (links) / Medium (which are live 2026)","OA 'DOF Subsea Australia ROV Casual EA 2021'. 2025–26 APAC awards mostly name no operator; Skandi Inventor 'North Australian waters' job Q4 2026 (client unnamed — Santos/Inpex NT candidates).","dof.com Woodside; woodside decom contracts PDF; offshore-energy Skandi Darwin Prelude / Chevron DOF ext.; dof.com Skandi Feistein Esso"],["Enemech","EnerMech Pty Ltd (Perth/Darwin; Aberdeen HQ) — cranes & lifting maintenance/inspection, pre-commissioning, N2/pressure testing, pipeline cleaning. ('Enemech' = misspelling)","Maintenance","OK — crane/lifting maintenance & inspection + pre-commissioning","—","Ichthys Explorer (CPF) & Ichthys Venturer (FPSO) (5-yr on+offshore lifting/crane maintenance 2022–27); Woodside 'six offshore assets — several FPSOs + a fixed platform' crane maintenance since 2019, ext. Nov 2025 (assets UNNAMED — likely Okha, Ngujima-Yin + others; verify); Bass Strait platforms (2026 pipeline cleaning Marlin A / W Kingfish / Kingfish A-B under UGL-led campaign); FLNG risers/umbilicals pre-comm off WA Oct 2025–Apr 2026 (operator undisclosed — likely Prelude/Crux, L-M)","Inpex (H); Woodside (H); Esso/Woodside Bass Strait (M); Shell (inferred, L)","Subsea7 (2016 NWS Persephone pre-comm — historic)","High","OA 2026 EBA campaign 'Enermech – Inspectors'. [WB] On the colleague's whiteboard with no confirmed facility link — our Ichthys 5-yr cranes contract and Woodside 6-asset cranes contract fill it.","enermech.com Inpex 5-yr; oedigital Woodside extends EnerMech; enermech.com Bass Strait scope"],["Entier","Entier Australia Pty Ltd (Stirling WA; sub of Entier Ltd, Aberdeen; >75% acquired by Aramark Feb 2025)","Catering","OK","—","None found — the 2024 greenfields EA implies a NEW Aus scope (rig/facility not identified)","None found","None found","Low","OA 'Entier Australia Pty Catering Greenfields Agreement 2024' — read its coverage clause to identify the facility/rig. [WB] Also on the colleague's whiteboard with no facility link — a consistent gap: neither pass found Entier's facility.","ICN Gateway; pressandjournal Aramark; OA campaigns"],["Eris (Kuiper)","Eris = former Kuiper Australia Pty Ltd (rebranded 2025 after 2024 MBO from Gulf Capital; now independent of Kuiper Group) — offshore workforce/labour-hire + rope access; Perth & Sale (Vic); 2,200+ personnel","Maintenance; Construction; Decomm","Construction (crew supply to marine contractors) H; Maintenance/HUC via Technip M; Decomm = EA only, no project evidence","—","Prelude FLNG (HUC/maintenance/brownfields for Technip 2017–current); Crux (maintenance via Technip 2024–25; pipeline crews for Allseas 2025); Pluto A (HUC/commissioning/maintenance for Technip 2017–24); Scarborough FPU / trunkline / subsea (Saipem Castorone & Endeavour 2023–24; Subsea7 2023–24; Boskalis 2023–24; FPU via AOS/Kuiper JV); Barossa (BW Opal FPSO) (Allseas Audacia/Fortitude pipelay 2023–24; Subsea7 2023–25); Gorgon / Jansz-Io subsea (Allseas & Technip, Gorgon Stage 2 2019–23); Jansz-Io Compression (Saipem JSD6000 2024–25); Ichthys (Phase 2B mooring/subsea, Heerema Sleipnir 2025); Bass Strait (Subsea7 West Barracouta 2020)","Indirect only — Shell, Woodside, Santos, Chevron, Inpex (via contractors)","Allseas; Saipem; Subsea7 (all confirmed) + Technip/TechnipFMC, Boskalis, Heerema, AOS","High (construction crews) / Medium (Prelude, Pluto maintenance) / Low (decom)","EAs (as Kuiper): WA&NT Offshore Construction Projects 2024; WA&NT Offshore Maintenance Work 2025; Kuiper Energy WA&NT Offshore Demolition & Removal Greenfield 2025 (decom). FWC Full Bench Kuiper Australia v AWU [2024] FWCFB 378 (union won). [WB] The colleague's 'EEIS / Kuiper' (whiteboard, no facility link) is almost certainly Eris — this row fills that gap.","eris.org about / project-history; kuiper-group.com Allseas & Subsea7; aosau.com AOS-Kuiper JV; OA campaigns"],["ESS","Compass Group (Australia) Pty Ltd — ESS Support Services Worldwide (offshore/remote catering & accommodation)","Catering","OK — platforms, FPSO/FLNG, MODUs, construction vessels","—","Ichthys Explorer (CPF) & Ichthys Venturer (FPSO) (H — 'Inpex Production' EA; colleague WB confirms); Wheatstone Platform (H — EA + WB); North Rankin Complex & Goodwyn A (H — 'Woodside Platforms' EA + WB); Ngujima-Yin FPSO & Okha FPSO (M — colleague WB); Scarborough FPU (M — colleague WB); MODUs (rigs unidentified — MODU EA); Northern Endeavour (historic). NOT Prelude (Sodexo — verified by Troy 22 Sep 2026). NOT Angel / Pluto A (not permanently staffed; extended-campaign catering is project-specific — removed per Troy).","Inpex; Chevron; Woodside; Shell (H on client set)","Possibly construction vessels under WA&NT Offshore Construction Greenfields 2023–24 (contractor unidentified)","High (clients) / Medium (FPSOs, Scarborough)","'ESS Woodside Catering EBA' on OA current-negotiations page. READ coverage clauses of the Woodside Platforms 2022 & MODU 2023 EAs — they will name facilities/rigs. [WB Sep 2026] Colleague whiteboard: ESS at Wheatstone, Ichthys E/V, NRC, GWA, Angel, Pluto A, Ngujima-Yin, Okha, Scarborough — adopted. Prelude attributed to Sodexo; our earlier ESS-at-Prelude inference downgraded to L. [MV 22 Sep 2026] Troy: Prelude is definitely Sodexo — ESS removed at Prelude (the 2022 ESS Prelude greenfields EA is a historical footnote); ESS removed at Angel & Pluto A (NUIs).","OA campaigns; OA ESS-Inpex news; OA EBA negotiations; austlii FWCAgmt 2019/844"],["Fugro","Fugro Australia Marine Pty Ltd (ROV) & Fugro Australia Pty Ltd (survey) — Perth HQ + Remote Operations Centre","Surveyors; ROV","OK — geophysical/geotech site investigation, USV/AUV survey, construction-support survey, ROV inspection, rig positioning","—","Scarborough FPU / trunkline (USV pre-lay/touchdown/as-built survey for Saipem/Woodside 2024–25); Greater Sunrise & Bayu-Undan (site characterisation / AUV survey Q4 2026, Fugro Equator); NWS trunkline inspection (Blue Essence USV 'Fugro Maali', Woodside); Enfield / Griffin / Stybarrow (decom survey & positioning 2023–26); Woodside rig positioning since 1995 (all Woodside drilling); Fugro Etive (NW Shelf site-investigation & subsea support — CURRENT main vessel)","Woodside (H); Santos (Bayu-Undan, inferred M); Chevron/Gorgon (historic)","Saipem (Scarborough survey client — H); Vertech names Fugro as an intermediary client","Medium-High","OA 'Fugro Australia Marine ROV Casual EA 2022' (bargaining won via FWC majority-support Jan 2022); 'Offshore O&G Hydrographic Survey EA 2024'. Also one of your 8 marine key clients (see key clients tab).","offshore-energy Fugro USV trunkline / Timor-Leste survey; OA Fugro ROV win"],["GGC","BEST PICK: GGC Industries (GGC Cranes, Rigging & Scaffolding — Mackay QLD; Darwin/Brisbane/Geelong/Melbourne/Adelaide). Identification MEDIUM — only 'GGC' with offshore O&G / NT decom positioning (G.G.C. Earthmovers rejected)","Decomm","FLAG — actual = cranes/scaffolding/rigging/mechanical; offshore decom is a stated TARGET, not a verified contract","—","None verified. Claimed past: Kipper Tuna Turrum (Bass Strait, construction era), Gorgon, Julimar-Brunello, 'INPEX operations' (likely Darwin onshore) — all L","Inpex, Chevron, Woodside (named clients — L for offshore)","None found","Low","No NOPSEMA EP, OA EA or award ties GGC to a named offshore decom campaign. CONFIRM the abbreviation.","australianminingreview GGC feature; ggcindustries.com.au"],["Go Offshore","GO Offshore Pty Ltd (GO Marine Group, West Perth) — vessel owner/operator (AHTS/PSV/accommodation/liftboats) + crewing/personnel supply, DP/mooring consultancy, rig moves; 50/50 JV 'SEA Energy and Renewables' w/ Qube (2024)","Marine","OK — vessels + crewing","—","North Rankin Complex / Goodwyn A / Angel (Woodside NWS production ops — PSV GO Aurelia & OSV GO Provider from Apr 2025); Ichthys Explorer (CPF) / Ichthys Venturer (FPSO) (GO Koi offtake support from Broome 2018+; AHT RT Raven on Inpex contract to Feb 2026; Floatel Triumph manning 2017); Ningaloo Vision FPSO (AHTS GO Spica, Santos Van Gogh infill drilling 2021); Santos/Quadrant DD1 semi-sub campaign 2018 (Sea Triumph)","Woodside (H); Inpex (H); Santos (H). Chevron, Shell, Esso, Eni named as clients (M, no detail)","— ; manages vessels for James Fisher Subtech & Floatel","High","EA 'GO OFFSHORE Pty Ltd & MUA Offshore O&G EA 2024' (expiry Aug 2027; excludes FPSO work except transit; RT Raven manning clause tied to Ichthys). Group went through administration Oct 2017 and re-emerged.","gooffshore.com.au news; shippingtelegraph NWS charters; gooffshore Santos drilling; rivieramm GO profile"],["GR Production Services","GR Production Services Pty Ltd (GRPS; GR Group w/ ASX-listed GR Engineering) — 'operator's operator': production & technical personnel, maintenance shutdown planning/execution; Perth & Winnellie (Darwin) offices","(not on your contractors tab — ADDED) Operations personnel / maintenance","New scope suggested: 'Operations / production personnel'","Ichthys Darwin (M)","Ichthys Explorer (CPF) & Ichthys Venturer (FPSO) (M — contract covers 'all Ichthys LNG upstream and downstream facilities'; CPF/FPSO not individually named)","Inpex (H)","—","High (Inpex) / Medium (offshore split)","3 yrs from 1 Dec 2023 + 2×3-yr options (~A$28m): supplements Inpex's workforce. No GRPS EA found. OA filed for a PABO at Ichthys (Apr 2026) under the Inpex Tier-1 Production EBA campaign — relevant because GRPS personnel sit alongside Inpex's own.","grps.com.au Inpex contract; offshore-energy Inpex GR Engineering unit; listcorp GNG"],["Heerema","Heerema Marine Contractors — heavy-lift / marine construction (SSCV Sleipnir)","(not on your contractors tab — ADDED) Heavy lift / construction","OK — transient heavy-lift vessel","—","Ichthys Explorer (CPF) & Ichthys Venturer (FPSO) (H — Phase 2B mooring/subsea installation, Sleipnir 2025; Eris crews); Enfield / Griffin / Stybarrow (M — Woodside decom panel May 2023)","Inpex (H); Woodside (M)","—","High (Ichthys) / Medium (decom)","Transient — presence tied to campaigns.","eris.org project history; woodside decom contracts PDF"],["Hjelix","Helix Energy Solutions (Q7000/Q4000 well intervention; Helix Robotics) — merged into Hornbeck Offshore 1 Sept 2026. No OA EA listed. ('Hjelix' = typo)","ROV","FLAG — actual = riserless well intervention / subsea P&A (Q7000); robotics arm does trenching/renewables (not Aus O&G)","—","Bass Strait platforms (Esso subsea-well P&A campaign 2024, Q7000; Woodside 50% partner); Cooper Energy BMG decom (Gippsland 2024 — not on list). No Woodside/Santos/Chevron/Inpex intervention found.","Esso/Woodside (2024 only)","None found","High (2024) / None found (current)","Q7000 left Australia Nov 2024 (Brazil/W Africa through 2026) — NOT currently in Australia. AOS crewed/catered the Q7000 here.","offshore-energy Helix Q7000 Esso decom; investors.helixesg.com; hornbeck merger release"],["IAS","IAS Group = Innovative Asset Solutions Pty Ltd (Canning Vale WA; UGL/CIMIC-owned since 2021) — fabric maintenance: UHP water-jetting, surface prep, coatings, insulation/cladding, preservation, Technowrap composite repairs (IC Integrity JV w/ ICR), decommissioning","(not on your contractors tab — ADDED) Maintenance (fabric)","OK — fabric maintenance / coatings / insulation campaigns","—","Wheatstone Platform (M — only public tie is OA's 2026 'IAS Wheatstone Platform Maintenance EBA' listing); Woodside facilities via UGL–IAS non-binding framework (2025; facility unspecified — could be KGP/Pluto onshore)","Chevron (M); Woodside (M)","—","Medium","No FWC agreement found under 'Innovative Asset Solutions'. ICR–IAS(UGL) JV won a multi-facility Technowrap campaign for an unnamed Australian operator (Oct 2023). UGL's 2025 Chevron construction-services contract is UGL-delivered, not IAS.","OA EBA negotiations; ias-group.com.au; cimic.com.au IAS; ugllimited.com 2025 WA contracts; icr-world.com IC Integrity"],["Kaefer (ISOLOGIC)","KAEFER Integrated Services Pty Ltd (insulation, access/scaffold, coatings, PFP, SMP/E&I). 'ISOLOGIC' NOT verified as a Kaefer brand/entity — check","Maintenance","OK but ONSHORE-dominant","Gorgon (Barrow)","Ichthys Venturer (FPSO) (M — colleague WB: 'has performed Ichthys offshore project work'; ours had onshore/shutdowns only); Santos Varanus hub — John Brookes / Spar / Spartan (M — colleague WB: Santos national maintenance contract includes WA assets; facility-by-facility scope unconfirmed); historic: Wheatstone Platform HUC (for Clough 2015–17), Esso Bass Strait (JV w/ UGL 2010–18)","Onshore only: Santos 'National Maintenance' 2023+ (WA/SA/Qld — could include Varanus; offshore unverified); Santos Darwin LNG 2021+; Inpex Ichthys onshore (TRACE JV 2018–21; shutdowns 2021–22). Gorgon: no Kaefer project page found — your onshore hint unverified","None found","Medium (colleague WB) — was 'None found'","Mostly an onshore player in this universe. Verify 'ISOLOGIC'. [WB] Colleague WB adds Kaefer at Ichthys Venturer (project work) and Santos WA assets — adopted at M. 'ISOLOGIC' still unverified.","kaefer.com.au project pages (Esso, Wheatstone offshore works, Santos, DLNG, Ichthys)"],["Legeneering","Legeneering (Aust.) Pty Ltd (Perth; Henderson fabrication) — FPSO/offshore maintenance, engineering, fabrication, coatings, brownfield, decommissioning","Maintenance; Hookup/Commissioning","Maintenance confirmed; HUC NOT found — actual = FPSO maintenance/brownfield + decommissioning (suggest 'Maintenance; Decomm')","—","Ngujima-Yin FPSO & Okha FPSO (H — all Woodside FPSO maintenance; EA 2025; Okha shared with Monadelphous — both verified by Troy); North Rankin Complex / Goodwyn A / Pluto A (H — Legeneering site + colleague WB); Thevenard Island (decom — H); historic: Nganhurra, Northern Endeavour FPSOs. Pyrenees Venture REMOVED 22 Sep 2026 pending confirmation (colleague WB: MODEC self-performs O&M; our link was a BHP-era 2016 listing).","Woodside (H); Chevron (decom, M-H); MODEC/Woodside Pyrenees (M)","None found","High (Woodside FPSOs & platforms)","Long OA history — bargaining forced via FWC 2020, 17 days protected action, first EA Aug 2021; Ngujima-Yin COVID pay dispute 2022. OA 2026 campaign 'Legeneering Services – Non-Woodside Maintenance' (client unnamed — ask members). Website stale (2020). [WB] Colleague WB: Legeneering at NRC, GWA, Pluto A, Ngujima-Yin, Okha — raised to H. Colleague does NOT list Monadelphous at Okha (we do, from Monadelphous's project page) — verify the Okha split. [MV 22 Sep 2026] Troy: Okha — keep both Legeneering and Monadelphous; Pyrenees link removed for now.","legeneering.com.au Woodside / BHP; offshore-energy Woodside FPSO contract; OA news (bargaining, EBA win, COVID); OA campaigns"],["Lifeflight","LifeFlight Australia (Brisbane aeromedical/rescue charity; LifeFlight Commercial; StarFlight JV) — Qld bases + Singapore","Helicopters","FLAG — HEMS/SAR (Qld Health); markets to 'offshore operators' but NO offshore O&G contract found","—","None found","Santos, Origin, Shell QGC — only via the onshore Surat Gas Aeromedical Service (CSG) — not offshore","None found","None found","No WA/NT offshore bases. Recommend REMOVING from the offshore universe unless you have a specific contract. (If you meant CareFlight (Darwin) — different org; no offshore O&G contract found either.)","lifeflight.org.au commercial / partners; australianaviation LifeFlight AW139s"],["McDermott","McDermott Australia Pty Ltd + McDermott Australia (Crewing Services) Pty Ltd — Perth subsea/decom team; Batam yard","Construction","OK + DECOMMISSIONING (add)","—","Scarborough FPU (EPCIC; on site Jan 2026; HUC 2026); Stybarrow (decom — DTM buoy removal 2023, DLV 2000); Griffin (decom); Crux (jacket fab Batam + offshore campaign; 'Crewing Services – Shell Crux Project Agreement 2025'); Ichthys (Brewster DC1a campaign agreement 2025 — Phase 2 subsea, M); Santos Campbell platform (Varanus, removed 2024) & Harriet Alpha (largest decom, 2025–26) — not on canonical list","Woodside; Shell; Inpex; Santos","IS one of your 8 marine key clients","High (Scarborough, Crux, decom) / Medium (Ichthys DC1a)","EAs: Offshore Decommissioning Greenfields 2023; WA&NT Offshore Construction Projects Greenfields 2020–24; 2 crewing project agreements 2025. NOPSEMA paused Woodside Stybarrow/Griffin decom Aug 2025 after DLV 2000 lift incidents. Siera crews DLV 2000; AOS tow masters on the FPU.","mcdermott.com Scarborough EPCIC; offshore-energy Crux jacket / McDermott-Woodside decom / largest decom; rigzone Shell-Santos contracts; OA campaigns"],["MEA","Monadelphous Engineering Associates Pty Ltd (MEA) — the maintenance/industrial-services entity of Monadelphous Group. NOT 'Modern Engineering Australia'. (See Monadelphous row — same group, different EAs)","Decomm","FLAG — actual = primarily maintenance/shutdowns/brownfields (NWS platforms, KGP/Pluto) + ONE decom support job (Northern Endeavour) + HUC","(KGP, Pluto — via Monadelphous)","North Rankin Complex; Goodwyn A; Angel (Woodside maintenance/shutdown/brownfields, ext. Dec 2023, 3 yr + 2 — H); Jansz-Io Compression (Chevron electrical power & control install, Dec 2023 — H); Crux (HUC via Technip Energies, late 2026 — H); Northern Endeavour FPSO (decom support for Petrofac, Sept 2022–H2 2023 — Monadelphous's first offshore decom); Prelude FLNG (maintenance/turnarounds/brownfields ext. Apr 2022 — M)","Woodside; Chevron; Shell (via Technip); Aus Govt/Petrofac (historic)","— (Technip Energies is the Crux HUC principal — not on your 8)","High","OA 'MEA Offshore Decommissioning EA 2022'; 'MEA Pty Ltd Offshore Agreement 2024'; 'MEA (Woodside) Onshore EA 2022'. Consider merging/cross-referencing with the Monadelphous row.","OA campaigns; monadelphous.com.au ASX announcements Dec 2023 / Sept 2022 / Apr 2022; offshore-energy Monadelphous Shell"],["Monadelphous","Monadelphous Group Ltd (ASX: MND) — offshore via M Maintenance Services Pty Ltd, MWOG Pty Ltd, M&ISS Pty Ltd; MEA holds the Woodside onshore EA (see MEA row)","Maintenance; Hookup/Commissioning","OK — offshore operational/campaign/shutdown maintenance, brownfields, HUC, decom support","Woodside Gas Plant (KGP); Pluto 1 (construction); Pluto 2 (construction); Inpex Darwin","North Rankin Complex; Goodwyn A; Angel; Pluto A; Okha FPSO (Woodside maintenance/shutdown/brownfields 2017–22, ext. 2023–28 — H); Scarborough FPU (HUC multidisciplinary, awarded FY25, execution 2026 — H); Ichthys Explorer (CPF) & Ichthys Venturer (FPSO) (maintenance + brownfields 2017, ext. May 2023 ~A$350m to ~2027; ~1,000 personnel — H); Prelude FLNG (maintenance & mods since 2015; 7-yr renewal FY25; major turnaround late FY26 — H); Crux (HUC via Technip Energies, Jul 2025→late 2026 — H); Barossa (BW Opal FPSO) (4-yr maintenance for BW Offshore from Q1 2026 — H); Jansz-Io Compression (electrical/control install, completed FY26 — likely onshore Barrow; offshore not confirmed); Northern Endeavour (decom for Petrofac, completed FY26)","Woodside; Inpex; Shell; BW Offshore (for Santos Barossa); Chevron (JIC, likely onshore)","— ; subcontracts to Technip Energies (Crux HUC; earlier TechnipFMC Prelude HUC 2017)","High","THE anchor offshore maintenance employer across 4 operators. EAs (OA): M Maintenance Services Inpex Offshore Maintenance EA 2023; MWOG Offshore Maintenance EA 2025; M&ISS Offshore Maintenance EA 2025; MEA (Woodside) Onshore EA 2022. Which facilities MWOG vs M&ISS cover is NOT stated — check. OA 2026 campaign: 'Coordinators (Inpex) & KGP/Pluto Maintenance'. [WB] Colleague WB confirms Monadelphous at Prelude, Crux (HUC), Ichthys E/V, NRC, GWA, Angel, Pluto A, Scarborough (HUC) — consistent. Colleague lists only Legeneering at Okha (we also have Monadelphous, from its project page) — verify the split. Colleague: Scarborough long-term maintenance contractor not yet confirmed. [MV 22 Sep 2026] Troy: Okha — keep both Monadelphous and Legeneering (verified).","monadelphous.com.au Woodside facilities / Scarborough FPU / FY26 & FY25 releases; lngprime Ichthys ext.; oedigital Crux; capitalbrief BW Offshore contract; OA campaigns; boilingcold Woodside maintenance"],["Noble","Noble Corporation plc (acquired Diamond Offshore Sept 2024 — 'Diamond Offshore EA 2024' & 'Noble Drilling EA 2023' both now Noble)","Drilling","OK — semisub dev/expl/P&A; historic jack-up","—","Ichthys Explorer (CPF) (Ocean Apex drilled Ichthys subsea wells Oct 2023–mid 2024); Halyard / Spar / Greater East Spar (Ocean Apex — Halyard-2 infill Sept 2024 + Santos P&A 2024–25); Gorgon / Jansz-Io area (Chevron slot Q4 2023; Wheatstone Deep-1 & Dino South-1 expl. 2025); Woodside 2023 campaign (Gemtree-1); Bayu-Undan (Noble Tom Prosser infill 2021–22 — M); Dorado (Tom Prosser Dorado-2/3 2019, Pavo-1 2022 — historic). FUTURE: Woodside 5-well semisub (Noble Deliverer, Q2/Q3 2027, field undisclosed)","Woodside (2023; 2027); Inpex (2023–24); Santos (2024–25); Chevron (2023, 2025)","None found","High (Ocean Apex) / Medium (Tom Prosser history) / Low (whether 2023 EA still has Aus crews)","Ocean Apex rolled off Q4 2025, scrapped Jul 2026 — Noble has NO rig in Australia until Deliverer 2027. Noble did NOT drill Barossa (Valaris MS-1 did).","oedigital Ocean Apex Ichthys; Noble Fleet Status; esgian roundups; oedigital Noble semisub Woodside; prnewswire Noble Q2 2026"],["Oceaneering","Oceaneering Australia Pty Ltd ('ROV EA 2019' on OA; bargaining from late 2020 as one of 4 ROV contractors)","ROV","OK — drill-support & vessel ROV, survey/IMR, integrity mgmt","—","None specifically documented. OA's 2021 ROV campaign places sector pilots on Woodside, Shell, Chevron WA installations generally. First Aus survey/IMR scope Nov 2023 for an unnamed 'major Australian energy company'.","Not verifiable by name (likely Woodside/Chevron/Shell)","None found","Low-Medium","Presence certain; asset mapping unverified. Ask members which rigs/vessels Oceaneering pilots are on.","OA ROV campaign; offshore-energy Oceaneering first Aus survey scope"],["OSA","Offshore Services Australasia Pty Ltd (West Perth) — helicopter operator. Lineage: Bond Helicopters Aus → Babcock Offshore Services Australasia (2016) → sold to CHC Group (Sept 2021); likely now within CHC (ownership M)","Helicopters","OK — crew change, SAR/winching, medevac","—","Bayu-Undan (Santos, from Dili/Darwin, H175s — H, until ~Jan 2025; Weststar-GAP took over Feb 2025); Wheatstone Platform (M); Barrow Island oil / Gorgon (Barrow Island base — M); Santos Varanus hub assets — John Brookes / Spar / Halyard / Reindeer (M, 2019–24 via 2×AW139 Karratha contract); Montara (L — historic Babcock S-92s from Truscott for PTTEP)","Santos; Chevron; Jadestone/PTTEP (historic); Woodside/ENI/Inpex (Babcock-era, unverified)","None found","Medium","Verify current parent (CHC vs independent) and whether OSA still holds Chevron Wheatstone/Barrow flying in 2026. Job ads still running Feb 2026 (active). RotorHub's 'CHC 4× H175 in WA' may be OSA's aircraft.","helijobs OSA ads; santos.com Timor-Leste; helihub Babcock AW139 Santos; babcock.com.au Santos; oedigital Weststar-GAP Bayu-Undan"],["OSM","OSM Australia Pty Ltd (Perth) — sub of OSM Thome (OSM Maritime + Thome, 2023); ship mgmt, crewing, technical mgmt; + OSM Thome WA / TSM Offshore Pty Ltd (ex-Tidewater Ship Management (Australia), bought Feb 2023)","Marine; Drilling; ROV; Construction; Decomm","Marine H; ROV (EA) H; Construction catering (EA 2025) H; Decomm (EAs 2022/23) H but facility unknown; Drilling — NO Aus rig crewing verified (L)","—","North Rankin Complex / Goodwyn A / Angel / Pluto A (OSM crew on Siem Thiima — Woodside's LNG-fuelled Karratha supply vessel, 3-yr from Q1 2022 — and Siem Aquamarine; M); Siem Aquamarine/Amethyst re-contracted to unnamed 'major operator' late 2023 (likely Woodside/Scarborough — L-M); decom/catering shifts Nov–Dec 2023 (facility unnamed — L); Tidewater PSVs Tortuga Tide / Pacific Guillemot / Pacific Dove crewed via TSM Offshore (charterers unknown)","Woodside (M, via Siem Thiima)","— ; SEA1 Offshore/Siem (H) and Tidewater (H) are the vessel principals","Medium","EAs: OSM Australia & MUA Offshore O&G EA 2023; Masters & Deck Officers 2024; Engineers 2024 (AIMPE); ROV Casual 2022; Offshore Decommissioning 2022; Decommissioning Catering 2023; WA&NT Offshore Construction Catering 2025. IMC WA penalties (casual conversion Nov 2025; AWU prosecution Sept 2024).","imc.wa.gov.au decisions; boilingcold Siem Thiima; sea1offshore Aquamarine/Amethyst; osmthome.com; OA campaigns"],["Parabellum","Parabellum International Pty Ltd (Naval Base WA; Perth, Darwin, Gladstone, Sunshine Coast) — emergency response (fire/rescue), medical (paramedics, medics, ESOs, clinics), ERT training (RTO), site security, marine/oil-spill response; ~50–200 staff","(not on your contractors tab — ADDED) Emergency services / medical","New scope suggested: 'Emergency response / medical'","Gorgon (Barrow Island) (M); Wheatstone (Onslow) (L-M)","Barrow Island oil / Gorgon (M — site emergency & medical staff, predominantly on-island); Wheatstone Platform (offshore medic coverage UNCONFIRMED)","Chevron (M-H); Inpex & Shell (L — client logos only)","—","Medium","OA 2026 'Parabellum (Chevron Facilities) EBA'. A 'five-year Chevron contract' headline exists (page now 404). WAtoday May 2022: firefighter/medical staffing shortfall could 'close down' Barrow Island's Gorgon plant. No FWC agreement found.","OA EBA negotiations; parabellum.com.au; tsbe.com.au profile; petroleumaustralia (404)"],["Petrofac","Petrofac Facilities Management Ltd — Northern Endeavour Phase 1 decommissioning operator/manager for the Commonwealth (Oct 2022–2025; took over from UPS; disconnection complete Apr 2025)","(not on your contractors tab — ADDED) Decomm (operator / manager)","OK","—","Northern Endeavour FPSO (H — NOT on your Key Assets tab)","Australian Govt / DISR (H)","Vantris (Sapura Constructor subcontract); Monadelphous, Bhagwan, UPS crews beneath it","High","Phase 2 (well P&A) tender closed Dec 2025 — award pending (Petrofac's role may end); Phase 3 (subsea removal) later.","offshore-energy Petrofac takeover / cutting ties / recycling; industry.gov.au Northern Endeavour"],["PHI","PHI International Australia Pty Ltd / PHI Aviation (bought HNZ Pacific offshore 2017). Bases: Broome, Karratha, Learmonth, Darwin, Truscott staging","Helicopters","OK — crew change, SAR, medevac (Karratha 'MPT' EA = marine pilot transfer)","—","Ichthys Explorer (CPF) & Ichthys Venturer (FPSO) (Broome S-92s since 2017; Truscott from 2020 — H); Prelude FLNG (AW189s from Sept 2025, replacing CHC — H); Scarborough FPU (3× S-92 Learmonth from 2023 — H); North Rankin Complex / Goodwyn A / Angel / NWS subsea tiebacks / Pluto A (7-yr Woodside Karratha H175 contract from 2025 — M); Okha / Ngujima-Yin / Pyrenees Venture FPSOs (L-M, inferred from Karratha/Learmonth coverage)","Inpex (H); Shell (H); Woodside (H)","None found","High","OA has 3 PHI EAs (Gascoyne = Learmonth; Kimberley = Broome; Karratha MPT) — engineers/ramp only; pilots not OA. PHI is now the DOMINANT WA offshore helicopter operator (took Woodside Karratha & Prelude from CHC). Darwin base client unknown (Barossa plausible — verify).","offshore-energy PHI-HNZ Ichthys; oedigital PHI Scarborough; rotorhub PHI-Woodside 7-yr; helihub Shell AW189; flightglobal PHI Broome AW189; OA campaigns"],["Programmed","Programmed Offshore Pty Ltd & Programmed Marine Pty Ltd (PERSOL; sister PERSOLKELLY) — offshore crewing/labour hire: marine, drilling, construction & commissioning, O&M, ROV, catering","Marine; Drilling; Catering; Maintenance; ROV; Construction; Hookup/Commissioning; Decomm","All verified by company description/EA titles EXCEPT Decomm (not evidenced — L)","—","Prelude FLNG ('Prelude Maintenance Work Agreement 2025' — M-H); HUC ('Offshore Maintenance HUC Greenfields EA 2024' — facility unnamed; fits Barossa 2025 or Scarborough 2026 — L); offshore construction ('WA&NT Offshore Construction Projects Greenfields 2024' + Construction Catering 2024 — project unnamed — L)","Shell (M-H via Prelude EA); Woodside (corporate client, offshore unconfirmed — L)","None verified","Medium (Prelude) / Low (rest)","Programmed Marine was merged into the Atlas Professionals JV (2018) yet holds 'Maritime Offshore O&G Deck Officers EA 2023' — confirm entity. READ the HUC/Construction 2024 EA coverage clauses to identify facilities. [WB] On the colleague's whiteboard with no confirmed facility link — our Prelude Maintenance Work Agreement 2025 finding fills it.","OA campaigns; programmed.com.au offshore; programmed.com.au marine (Atlas)"],["Reach","Reach Subsea ASA (Norway) — NOT Reach Robotics (Sydney). USV 'Reach Remote 2' + electric work-class ROV; DNV-certified Remote Ops Centre, Perth","ROV","OK — remote/USV-based ROV, IMR, gWatch reservoir monitoring","—","Scarborough FPU / field (Woodside — gWatch gravity/seafloor monitoring + subsea ROV/IMR; USV sailed Aug 2025, AMSA/DNV-certified Dec 2025)","Woodside (H)","— ; MoA with Beacon Offshore (Thailand; GO Explorer/GO Supporter) May 2026 to tender Aus subsea jointly","High","Uncrewed model — crewing implications (ROC-based pilots in Perth).","oedigital Reach USV Woodside; offshore-energy Reach cleared; reachsubsea.no Beacon MoA"],["SEA1 Offshore (ex-Siem)","Sea1 Offshore Australia Pty Ltd (renamed from Siem Offshore Australia Sep 2024; Perth; parent Sea1 Offshore Inc, Oslo) — AHTS operator; also manages 6 Viking Supply AHTS","(not on your contractors tab — ADDED) Marine","OK — AHTS / rig support","—","North Rankin Complex / Goodwyn A / Angel / Pluto A (H historic — Siem Thiima, Woodside dual-fuel PSV 2022–24; vessel sold to Siem Sustainable Energy Apr 2024). CURRENTLY no NW assets: 3 AHTS (Sea1 Aquamarine, Sea1 Emerald, Andreas Viking) on Otway Basin (VIC) rig support for the Transocean Equinox campaign to ~Dec 2026","Woodside (H historic); ConocoPhillips (H), Amplitude (M-H), Beach (M) — non-Tier-1, current","OSM & Siera supply crews","Medium-High (current deployment) / Low (undisclosed 2023 operator)","Flagged an Australian upturn from Q2 2027 on '2 new rig contracts' — watch for a NW return. No Sea1/Siem EA on the OA list — check MUA/AMOU/AIMPE agreements for the renaming.","sea1offshore.com name change / vessel sale / contract awards; investing.com Sea1 Q2 2026 call; offshore-energy ConocoPhillips Sea1"],["SGS","SGS Australia Pty Ltd (testing/inspection)","Chemist","OK — offshore inspectors + lab/chemist services","—","Prelude FLNG (contract from Shell Dec 2016; 'SGS Prelude Chemists EA 2024' — H). No evidence for Ichthys, Gorgon/Wheatstone, NWS/Pluto or FPSOs.","Shell","None found","High (Prelude) / None found (others)","—","offshore-energy SGS Prelude; OA campaigns"],["Sierra","SIERA Marine Management Pty Ltd (spelt 'Siera'; Perth/Melbourne/Singapore) — Indigenous-owned ship & crew management (masters, chief engineers, IRs, catering crew), technical mgmt, mooring consultancy; SIERA Logistics (crew transfers)","Marine","FLAG — actual = crewing / ship management (crew PROVIDER, not vessel owner)","—","Indirect, via vessels it crews: Scarborough FPU (McDermott DLV 2000 foundation/mooring 2024); Enfield / Stybarrow (decom) (DOF Skandi Hercules 2024); NWS subsea tiebacks / Okha FPSO (Skandi Hercules Woodside work); Woodside NWS/Scarborough drilling support (SEA1 Amethyst — M)","Woodside (indirect, M); no direct Tier-1 contracts found","McDermott (H — DLV 2000); DOF (H — Skandi Hercules); Tidewater (H — Pacific Dove/Guillemot, Tortuga Tide); SEA1 Offshore (H); MMA/Cyan & Bhagwan (M)","High (identity) / Medium (asset links)","EAs: Siera & MUA Offshore O&G EA 2024 (expiry Aug 2027; covers PSV/AHTS/standby/seismic/FPSO/MODU crews, no vessels named); Deck Officers 2024; AWU Marine Engineers 2024.","siera.com.au what-we-do / who-we-are; ICN Gateway; OA campaigns; sea1offshore Aquamarine/Amethyst"],["Sodexo","Sodexo Australia Pty Ltd — Sodexo Remote Sites (Energy & Resources)","Catering","OK — offshore catering/cleaning (Vic & WA) + large onshore/island camps","(Varanus Island — 5-yr Santos contract from Dec 2024 incl. Varanus, Devil Creek, Cooper Basin, Gladstone/Surat — not on your onshore tab yet)","Prelude FLNG (H — VERIFIED by Troy 22 Sep 2026; Sodexo–Shell facilities-management contract since 2015, re-partnered 2019: catering, accommodation, housekeeping, helideck admin); Santos Varanus hub — John Brookes / Spar / Halyard / Spartan (island accommodation supporting them; H for Varanus — 5-yr Santos contract from Dec 2024); Bass Strait platforms (L — 2020 EA 'off the coast of Vic', unconfirmed)","Santos (H — Varanus); Shell (historic Prelude); Esso/Woodside Bass Strait (unverified)","None found","High (Prelude — verified; Santos Varanus) / Low (Bass Strait)","OA 'Sodexo Remote Sites Offshore & AWU EA 2020' (3-yr campaign; ~85 workers; protected action on Prelude) → '2025'. READ the 2025 EA coverage clause. [WB] Colleague confirms Sodexo CURRENT at Prelude and Santos/Varanus — REVISED from our 'historic to ~2022' reading. [MV] Prelude confirmed Sodexo (Troy, 22 Sep 2026).","OA Sodexo EA news; au.sodexo.com Santos contract; OA campaigns"],["Solstad Australia","Solstad Australia Pty Ltd (Perth; Solstad Offshore ASA) — AHTS/CSV vessel operator. PSV fleet sold to Tidewater Mar 2023 (Normand Tortuga → Tortuga Tide; Far Seeker → Seeker Tide); Far Senator → Andreas Viking (Sea1-managed)","(not on your contractors tab — ADDED) Marine","OK — AHTS / rig support","—","Scarborough FPU & Enfield (H historic — Normand Tortuga w/ Valaris DPS-1, 2022); Ichthys Explorer/Venturer (H historic — Normand Scorpion/Sirius to Aug 2023); Bayu-Undan (H historic — Far Seeker, Santos 2021); NWS / Angel-area rig support 2026 (M — Normand Saracen & Scorpion Dampier-based, operator unnamed)","Woodside (H to 2023 / M 2024–26); Inpex (H to 2023 / M); Santos (H to 2023 / L); Chevron & Shell (H to 2023 via Normand Skimmer/Swan — vessels now Tidewater)","AOS supplies crew (from Jul 2025)","Medium (2024–26 charterers undisclosed)","Feb 2023 FWC PABO decision listed 8 vessels & clients (Skimmer–Chevron; Swan–Shell; Tortuga/Ranger–Woodside; Far Seeker/Senator–Santos; Saracen/Scorpion–Inpex). EAs: Solstad & AIMPE Offshore EA 2023; AMOU deck officers EA. OA 2026 industry-wide Deck & Marine Engineering Officers campaign captures Solstad.","fwc.gov.au 2023fwc221; solstad.com contracts; aosau.com Solstad; AIS Aug 2026"],["Technip Energies / TechnipFMC","Two separate companies since 2021: Technip Energies (EPC / HUC — Crux HUC principal; Prelude) and TechnipFMC (subsea — Prelude subsea, Julimar Ph3 subsea, Griffin decom 'Deep Orient', Woodside decom panel)","(not on your contractors tab — ADDED) Construction / HUC / subsea / decom","New scope suggested: 'EPC / subsea'","—","Crux (H — Technip Energies HUC; Monadelphous & Eris subcontract); Prelude FLNG (H — HUC 2017 & ongoing maintenance via Eris/Technip); Griffin (decom) (H — TechnipFMC 'Deep Orient'); Julimar-Brunello (H — TechnipFMC JDP3 subsea); Pluto A (M — HUC/maintenance 2017–24 via Eris); Enfield / Stybarrow (M — Woodside decom panel)","Shell (H); Woodside (H)","— (adjacent to your 8 marine key clients)","High","The intermediary PRINCIPAL for a large maintenance/HUC workforce — Monadelphous (Crux) and Eris (Prelude/Crux/Pluto) both sit under Technip contracts.","oedigital Crux Monadelphous; offshore-mag TechnipFMC Julimar Ph3; woodside decom contracts PDF; eris.org project history"],["Tidewater","Tidewater Marine Australia Pty Ltd (Perth; ~4 vessels) — ex-Swire Pacific Offshore Australia (acquired Apr 2022). Crewing entity Tidewater Ship Management (Australia) sold to OSM Feb 2023 → OSM Thome WA → TSM Offshore Pty Ltd (Jun 2026). Siera also services its PSVs","Marine","OK — PSV owner/operator. NB crews employed via OSM-owned TSM Offshore / Siera, NOT Tidewater","—","None verified — 3 PSVs 'on charter' in Aus waters 2024 but charterer/field not named","None found (historic SPO clients Woodside/Chevron/Inpex/Shell — L, unverified)","None found","Low (links) / High (entity & vessels)","Vessels: Tortuga Tide, Pacific Guillemot, Pacific Dove. EAs: Tidewater Ship Mgmt (Australia) & MUA Offshore O&G EA 2023 (expiry Aug 2027); Masters & Deck Officers 2024. CFMEU (MUA) v TSM Offshore, IMC WA Jul 2026 — admitted minimum-crewing breach on Tortuga Tide May 2024.","imc.wa.gov.au 202600454; tdw.com history; siera.com.au; OA campaigns"],["TMT","Total Marine Technology Pty Ltd (Perth; Typhoon work-class ROV builder/operator; subsea tooling, LWI, decom tooling). Owned/backed by Sapura → Vantris Energy","ROV","OK — ROV drilling/completion support, IMR + LWI & decom tooling","—","None documented by name. OA (2021) places TMT pilots on WA installations (Woodside/Shell/Chevron sector).","Not verified by name","Vantris (Sapura) — parent/affiliate (H)","Low-Medium","OA 'TMT ROV EA 2021' (first ROV EA in the sector, ~40 workers) & 2024. Ask members for current deployments.","tmtrov.com about; OA ROV campaign; OA campaigns"],["Transocean (sedco forex)","Transocean Ltd — Aus employing entity Sedco Forex International Inc ('Sedco Forex International Inc EA 2023'). Pending all-stock acquisition of Valaris (announced Feb 2026)","Drilling","OK — harsh-env semisub drilling, P&A; drillship Deepwater Skyros booked Aus 2027","—","Enfield / Stybarrow (decom — Stybarrow P&A 2024, Transocean Endurance); Julimar-Brunello (Julimar Ph3 wells Q3 2025); NWS subsea tiebacks / North Rankin–Angel area (Woodside NWS 3-well option Jul–Nov 2026); Crux (Equinox 5-well dev drilling 2024 — industry-reported, Shell not officially named — M); Santos (field undisclosed, Equinox Q2 2027); Bass Strait/Otway consortium work (Beach, ConocoPhillips, Amplitude — outside canonical list)","Woodside (Endurance Mar 2024–Nov 2026); Shell (Equinox 2024, reported); Santos (2027); undisclosed (Deepwater Skyros Apr 2027–Mar 2028)","None found","High (Endurance/Woodside; consortium; Santos 2027) / Medium (Crux) / Low (Skyros customer)","Endurance mobilises to Norway (Equinor) from Jun 2027. Skyros customer undisclosed (Gorgon Stage 3's 6 wells in 1,300 m plausible — speculation only).","deepwater.com Fleet Status Aug 2026 / Feb 2025; thedcn Australian rig deals; keyfactsenergy; offshore-energy Transocean Norway-Aus; offshore-mag Transocean $137m; OA campaigns"],["UGL","UGL Pty Ltd / UGL Operations & Maintenance / UGL Resources (Contracting) — CIMIC Group","Maintenance","OK but predominantly ONSHORE; + offshore HUC greenfields EA (no contract evidenced)","Gorgon (Barrow); Barrow CO2 (construction); Wheatstone (Onslow); Woodside Gas Plant (KGP); Pluto 1 (construction); Varanus Island (Santos onshore & offshore)","Bass Strait platforms (M — UGL-led 2026 offshore asset campaign: Marlin A, W Kingfish, Kingfish A/B; EnerMech subcontracted; historic Esso JV w/ Kaefer 2010–18); Wheatstone Platform (M — colleague WB confirms UGL offshore at Wheatstone; contract docs don't differentiate on/offshore); Santos Varanus offshore assets — John Brookes / Spar / Halyard (M — per your onshore tab 'Santos Offshore'); Scarborough FPU HUC (L — 'UGL Offshore HUC Greenfields Agreement 2025' exists but Monadelphous holds the FPU HUC; bid/EA only)","Woodside (KGP/Pluto — onshore; May 2026 OA industrial action at KGP/Pluto); Chevron (Gorgon/Wheatstone — onshore confirmed); Esso/Woodside (Bass Strait — M); Santos (Varanus — per your onshore tab)","None found","Medium (Bass Strait; Wheatstone Platform) / Low (HUC) / High onshore","EAs (OA): UGL O&M EA 2023; UGL Resources (Contracting) Karratha EA 2023; UGL Offshore HUC Greenfields 2025. OA 2026 campaign 'UGL – KGP/Pluto Maintenance'. Check whether the HUC EA ever got a contract. [WB] Colleague WB confirms UGL (with Altrad) on Wheatstone Platform and Gorgon/Barrow — Wheatstone raised L→M.","offshore-energy EnerMech Esso pipeline; cimic.com.au UGL KGP; offshore-energy UGL Gorgon/Wheatstone; pluto2.net UGL HUC EA & 'misses out'; OA campaigns"],["UPS","Upstream Production Solutions Pty Ltd (Perth) — offshore/onshore O&M contractor / facility operator incl. late-life 'lighthouse mode' custodianship","Decomm","FLAG — actual = O&M / facility operator (pre-decom custodianship)","—","Northern Endeavour FPSO (O&M for NOGA 2016–19; NOPSEMA prohibition notice Jul 2019; Commonwealth engaged UPS 2020–Oct 2022 to keep the FPSO safe until Petrofac took over — H, historic). No other current campaign verified.","Australian Govt (DISR) — historic","None found","Medium (High historic / Low current)","OA 'UPS Northern Endeavour EA' (May 2022). Northern Endeavour: Phase 1 disconnect done (risers cut Apr 2025), FPSO recycled in Denmark (Apr 2026); Phase 2 (well P&A) tender closed Dec 2025 — award pending; Phase 3 (subsea removal) later — WATCH for the new contractor. UPS website unreachable — current contracts unverified.","wikipedia Northern Endeavour; offshore-energy Petrofac takeover / cutting ties / recycling; OA UPS EA news"],["Valaris (Ensco","Valaris Ltd (ex-Ensco Rowan) — Aus entity Ensco Australia Pty Ltd ('Ensco Australia EA 2022'; 'Valaris Drilling EBA' live negotiation on OA). Subject to pending Transocean acquisition","Drilling","OK — moored semisub dev drilling (now exited); jack-up drilling/P&A (Bass Strait)","—","Scarborough FPU (Valaris DPS-1 dev wells Jan 2024–Nov 2025); Barossa (BW Opal FPSO) (Valaris MS-1 drilled the 6 subsea wells 2022, 2024–Aug 2025); Bass Strait platforms (Valaris 107 — Kipper 1B Aug 2025; Turrum Ph3 five wells completed Sept 2026; 26-well P&A program planned); Montara (Valaris 247 — Skua-11 sidetrack Mar–Jun 2025)","Woodside (DPS-1; Bass Strait partner); Santos (MS-1); Jadestone (247); Esso/Woodside (107); also Eni, EOG, GB Energy (non-Tier-1)","None found","High","DPS-1 sold for recycling May 2026; MS-1 warm-stacked Malaysia; 247 left Aus; Valaris 107 is the ONLY Valaris rig now in Australia (Esso to Oct 2026 → GB Energy Nov 2026–Mar 2027). NOPSEMA improvement notices 2024.","Valaris Fleet Status Reports 2025/2026; drillingcontractor DPS-1 recycling / Valaris 107 Turrum; oedigital Valaris 107 Esso / 247 Montara; offshore-energy Valaris-Woodside; OA EBA negotiations"],["vertech","Vertech Group Pty Ltd (Osborne Park WA; CWL Group w/ Sonomatic, Geo Oceans, AUAV, Abseil Access) — rope access, NDT/inspection, integrity, RDVI, marine-class surveys","Helicopters","WRONG LABEL — actual = inspection / NDT / rope access / integrity (they do helicopter-assisted flare-tip changes — likely the source of confusion). Suggest a new 'Inspection/Integrity' scope","—","North Rankin Complex (NRA flare-tower guy-wire 2023 TAR; flare tips; derrick decom); Goodwyn A (flare tip; derrick decom); Angel; Okha FPSO (2024 RTM campaign); Ngujima-Yin FPSO (fleet statutory inspection 2014–20 — historic; Applus+ now holds the Woodside NW inspection EA); Ichthys Explorer (CPF) & Ichthys Venturer (FPSO) (2021 turnaround 130+ inspectors; Venturer flare-tip 2021; ROV UWILD); Montara Venture FPSO, Pyrenees Venture FPSO, Ningaloo Vision FPSO, Chevron (sector page, undated — M); Barossa/Scarborough design-stage RDVI","Woodside; Inpex (H); Jadestone, MODEC, Santos, Chevron (M, undated)","Fugro (named as an intermediary client)","High (Woodside NWS, Ichthys) / Medium (others)","EAs (OA): Vertech (WA&NT) Hydrocarbon Sector Inspection Services EA 2025; Offshore Inspection EA 2020.","vertechgroup.com.au projects / offshore-production / Woodside FPSO fleet; OA campaigns"],["Weststar-GAP","Weststar Aviation (Malaysia) / Weststar-GAP — offshore helicopters (Malaysian-registered AW189s)","(not on your contractors tab — ADDED) Helicopters","OK — offshore crew change","—","Bayu-Undan (H — Santos Timor-Leste ops, 2× AW189 Dili–Darwin from 1 Feb 2025, replacing OSA); Barossa (BW Opal FPSO) (L — Darwin-based Santos ops plausible, unverified)","Santos (H)","—","High (Bayu-Undan) / Low (Barossa)","Non-Australian EA — a new non-Aus-EA helicopter operator inside the Santos universe.","oedigital Santos hires Weststar-GAP"],["Wood","Wood (John Wood Group plc, now Sidara) — Wood Australia; engineering/EPCM, brownfield execution, O&M","Helicopters","WRONG LABEL — actual = brownfield EPCM/engineering, offshore brownfield construction labour, O&M. Suggest 'Maintenance / Engineering'","(KGP — via NWS EPCM)","North Rankin Complex; Goodwyn A; Okha FPSO (+KGP) (Woodside NWS brownfield EPCM since 2013; 2-yr ext. Jan 2026 up to A$100m; 140 Perth staff — H); Bass Strait platforms (+Longford, LIP) (Esso maintenance/shutdown from Jan 2025 ~250 jobs + 5-yr brownfield EPC — H; transfers to Woodside Jul 2026); Barossa (BW Opal FPSO) ('Wood BW Opal Offshore Maintenance Services Greenfields Agreement 2024' — M; Monadelphous holds the 4-yr maintenance from 2026); Greater Sunrise (2024 Woodside engineering — L-M)","Woodside (H); Esso→Woodside Bass Strait (H); BW Offshore (M)","None found","High (NWS EPCM, Bass Strait) / Medium (BW Opal)","EAs (OA): Wood Offshore Brownfields Services (WA) Greenfields 2024–28; Wood Offshore Maintenance Services Greenfields 2021; Wood BW Opal Offshore Maintenance Greenfields 2024.","woodgroup.com NWS EPCM ext.; offshore-energy Wood ext. / Wood-ExxonMobil 250 jobs; lawinsider Wood BW Opal EA; OA campaigns"],["WPF(Duratech)","WPF Duratec Pty Ltd (Naval Base WA; Darwin facility) = Wilson's Pipe Fabrication, wholly owned by Duratec Ltd (ASX: DUR — spelt Duratec) since Oct 2022. Pipe spooling, specialist fabrication, offshore mechanical/site services; ~50 workers on the OA EA. Clients at acquisition: Santos, Vermilion, Jadestone","Decomm","OK — decom site services (make-safe, P&A support, integrity/NDT, weight shedding, riser removals) + fabrication, FPSO/platform repairs, rig maintenance","Varanus Island (Santos onshore — appears as 'Duratech' and 'Wilsons' on your onshore tab)","Harriet Alpha platform (Santos Harriet JV, Varanus area — A$17m 5-phase decom 2024–26; McDermott lift/removal 2025; jacket removed 2026 — H; not on canonical list); Ningaloo Vision FPSO (transformer/mechanical works 2023–24 — H); Santos Varanus hub — John Brookes / Spar / Halyard (VICPOP compression project, HJV fender remediation — H Varanus, M per-platform); Bambra-5H subsea well assessment (Santos — H); Stag (L — Jadestone client, asset unconfirmed); Wandoo (Vermilion, non-Tier-1 — L)","Santos (H); Jadestone (M); (Vermilion)","McDermott (H — worked under/alongside on Harriet Alpha removal, DLV 2000, 2025–26)","High","OA 'WPF – Duratec EA 2025' (bargaining from Oct 2021). Duratec acquired Pacific Welding (Newcastle) 2026. The obvious Santos decom-services incumbent for Varanus/Harriet.","OA WPF bargaining news; ASX Duratec acquisition PDF; wpfduratec.com.au projects (Harriet Alpha, Ningaloo Vision, decom phases); ACCC register; OA campaigns"]],"emptyColumns":[],"emptyIdx":[]}};</script>
+<script>
+(function () {
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem('oa-viz-theme'); } catch (e) {}
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+
+  function themeLabel() {
+    var t = root.getAttribute('data-theme');
+    return t === 'dark' ? 'Dark' : (t === 'light' ? 'Light' : 'Auto');
+  }
+  var btn = document.getElementById('theme');
+  if (btn) {
+    btn.textContent = themeLabel();
+    btn.addEventListener('click', function () {
+      var t = root.getAttribute('data-theme');
+      var next = t === 'dark' ? 'light' : (t === 'light' ? null : 'dark');
+      if (next) { root.setAttribute('data-theme', next); } else { root.removeAttribute('data-theme'); }
+      try { next ? localStorage.setItem('oa-viz-theme', next) : localStorage.removeItem('oa-viz-theme'); } catch (e) {}
+      btn.textContent = themeLabel();
+    });
+  }
+
+  // ---- tooltip layer -------------------------------------------------------
+  var tip = document.createElement('div');
+  tip.id = 'tip';
+  document.body.appendChild(tip);
+  function showTip(text, x, y) {
+    tip.textContent = text;
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var left = Math.min(Math.max(8, x + 14), window.innerWidth - r.width - 8);
+    var top = y - r.height - 12;
+    if (top < 8) top = y + 18;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  document.addEventListener('mousemove', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el) { tip.classList.remove('on'); return; }
+    showTip(el.getAttribute('data-tip'), e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+
+  var PAGE = window.OA_PAGE;
+  if (!PAGE) return;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function fmt(n) { return (typeof n === 'number' ? n : 0).toLocaleString('en-AU'); }
+
+  // ---- charts --------------------------------------------------------------
+  function barChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var max = c.max || Math.max.apply(null, c.items.map(function (i) { return i.value; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      var fill = el('div', 'bar-fill');
+      fill.style.width = (max ? (item.value / max) * 100 : 0) + '%';
+      if (c.color) fill.style.background = 'var(--' + c.color + ')';
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.value)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    if (c.foot) card.appendChild(el('p', 'sub', c.foot)).style.margin = '14px 0 0';
+    return card;
+  }
+
+  function stackChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var legend = el('div', 'legend');
+    c.series.forEach(function (s) {
+      var span = el('span');
+      var sw = el('i');
+      sw.style.background = 'var(--' + s.color + ')';
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(s.name));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+    var max = Math.max.apply(null, c.items.map(function (i) { return i.total; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      item.values.forEach(function (v, i) {
+        if (!v) return;
+        var seg = el('div', 'seg');
+        seg.style.width = 'calc(' + (v / max) * 100 + '% - 2px)';
+        seg.style.background = 'var(--' + c.series[i].color + ')';
+        track.appendChild(seg);
+      });
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.total)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    return card;
+  }
+
+  function heatChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var tools = el('div', 'heat-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = c.filter || 'Filter rows…';
+    tools.appendChild(search);
+    var count = el('span', 'toolnote', '');
+    tools.appendChild(count);
+    card.appendChild(tools);
+
+    var legend = el('div', 'legend');
+    c.legend.forEach(function (l) {
+      var span = el('span');
+      var sw = el('i');
+      if (l.cls) { sw.className = 'cell ' + l.cls; sw.style.borderRadius = '3px'; }
+      else { sw.style.boxShadow = 'inset 0 0 0 1px var(--grid)'; }
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(l.label));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+
+    var scroll = el('div', 'heat-scroll');
+    var grid = el('div', 'heat');
+    grid.style.gridTemplateColumns = 'minmax(128px, 210px) repeat(' + c.cols.length + ', minmax(' + (c.cols.length > 12 ? 58 : 66) + 'px, 1fr))';
+    grid.appendChild(el('div', 'corner'));
+    c.cols.forEach(function (col) {
+      var h = el('div', 'hh', col.label);
+      if (col.tip) h.setAttribute('data-tip', col.tip);
+      grid.appendChild(h);
+    });
+    var rowNodes = [];
+    c.rows.forEach(function (r) {
+      var nodes = [];
+      var rh = el('div', 'rh', r.label);
+      if (r.tip) rh.setAttribute('data-tip', r.tip);
+      nodes.push(rh);
+      r.cells.forEach(function (cell, i) {
+        var cn = el('div', 'cell' + (cell.c ? ' ' + cell.c : ' empty'), cell.t || '');
+        cn.setAttribute('data-tip', (cell.tip || (r.label + ' × ' + c.cols[i].label + '\nno linkage recorded')));
+        nodes.push(cn);
+      });
+      nodes.forEach(function (n) { grid.appendChild(n); });
+      rowNodes.push({ text: (r.label + ' ' + (r.search || '')).toLowerCase(), nodes: nodes });
+    });
+    scroll.appendChild(grid);
+    card.appendChild(scroll);
+
+    function apply() {
+      var q = search.value.trim().toLowerCase();
+      var shown = 0;
+      rowNodes.forEach(function (r) {
+        var hit = !q || r.text.indexOf(q) !== -1;
+        if (hit) shown++;
+        r.nodes.forEach(function (n) { n.style.display = hit ? '' : 'none'; });
+      });
+      count.textContent = shown + ' of ' + rowNodes.length + ' rows';
+    }
+    search.addEventListener('input', apply);
+    apply();
+    return card;
+  }
+
+  function renderChart(c) {
+    if (c.type === 'stack') return stackChart(c);
+    if (c.type === 'heat') return heatChart(c);
+    return barChart(c);
+  }
+
+  // ---- page assembly -------------------------------------------------------
+  var statsHost = document.getElementById('stats');
+  if (statsHost && PAGE.stats) {
+    PAGE.stats.forEach(function (s) {
+      var n = el('div', 'stat');
+      n.appendChild(el('div', 'v', s.v));
+      n.appendChild(el('div', 'k', s.k));
+      if (s.h) n.appendChild(el('div', 'h', s.h));
+      statsHost.appendChild(n);
+    });
+  }
+
+  var chartHost = document.getElementById('sections');
+  if (chartHost && PAGE.sections) {
+    PAGE.sections.forEach(function (sec) {
+      var s = el('section');
+      s.appendChild(el('h2', null, sec.title));
+      var grid = el('div', 'chart-grid' + (sec.wide ? ' one' : ''));
+      sec.charts.forEach(function (c) { grid.appendChild(renderChart(c)); });
+      s.appendChild(grid);
+      chartHost.appendChild(s);
+    });
+  }
+
+  // ---- table ---------------------------------------------------------------
+  var T = PAGE.table;
+  var tableHost = document.getElementById('table-host');
+  if (T && tableHost) {
+    var escapeHTML = function (s) {
+      return String(s).replace(/[&<>"]/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+      });
+    };
+    var chipFor = function (letter) {
+      var map = { H: ['chip-h', 'High'], M: ['chip-m', 'Medium'], L: ['chip-l', 'Low'] };
+      var m = map[letter];
+      return '<span class="chip ' + m[0] + '" title="' + m[1] + ' confidence">' + letter + '</span>';
+    };
+    var decorate = function (raw) {
+      var t = escapeHTML(raw);
+      if (/^[HML]$/.test(raw)) return chipFor(raw);
+      t = t.replace(/\((H|M|L)\)/g, function (_, l) { return chipFor(l); });
+      t = t.replace(/\[WB\]/g, '<span class="tag" title="From the colleague’s whiteboard">WB</span>');
+      return t;
+    };
+
+    var showAll = false;
+    var tools = el('div', 'table-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Search all columns…';
+    tools.appendChild(search);
+    var note = el('span', 'toolnote', '');
+    var toggle = null;
+    if (T.emptyColumns && T.emptyColumns.length) {
+      toggle = el('button', 'toolbtn', 'Show ' + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : ''));
+      toggle.setAttribute('data-tip', 'Columns with no values in any row:\n' + T.emptyColumns.join(', '));
+      tools.appendChild(toggle);
+    }
+    tools.appendChild(note);
+    tableHost.appendChild(tools);
+
+    var scroll = el('div', 'table-scroll');
+    var table = document.createElement('table');
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    thead.appendChild(headRow);
+    var tbody = document.createElement('tbody');
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    tableHost.appendChild(scroll);
+
+    var sortCol = -1, sortDir = 1, query = '';
+
+    function visibleCols() {
+      return T.columns.map(function (c, i) { return i; }).filter(function (i) {
+        return showAll || T.emptyIdx.indexOf(i) === -1;
+      });
+    }
+    function draw() {
+      var cols = visibleCols();
+      headRow.innerHTML = '';
+      cols.forEach(function (i) {
+        var th = el('th', null, T.columns[i] || '—');
+        if (sortCol === i) {
+          var ind = el('span', 'ind', sortDir > 0 ? ' ↑' : ' ↓');
+          th.appendChild(ind);
+        }
+        th.addEventListener('click', function () {
+          if (sortCol === i) { sortDir = -sortDir; } else { sortCol = i; sortDir = 1; }
+          draw();
+        });
+        headRow.appendChild(th);
+      });
+      var terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      var rows = T.rows.filter(function (r) {
+        if (!terms.length) return true;
+        var hay = r.join(' ').toLowerCase();
+        return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+      });
+      if (sortCol >= 0) {
+        rows = rows.slice().sort(function (a, b) {
+          var x = a[sortCol] || '', y = b[sortCol] || '';
+          var nx = parseFloat(x), ny = parseFloat(y);
+          var numeric = !isNaN(nx) && !isNaN(ny) && /^[\d.,\s]+$/.test(x) && /^[\d.,\s]+$/.test(y);
+          if (numeric) return (nx - ny) * sortDir;
+          if (!x) return 1;
+          if (!y) return -1;
+          return x.localeCompare(y) * sortDir;
+        });
+      }
+      tbody.innerHTML = rows.map(function (r) {
+        return '<tr>' + cols.map(function (i) {
+          var v = r[i] || '';
+          var cls = /^[\d.]+$/.test(v) ? ' class="num"' : '';
+          return '<td' + cls + '>' + decorate(v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      note.textContent = rows.length === T.rows.length
+        ? fmt(T.rows.length) + ' rows · ' + cols.length + ' of ' + T.columns.length + ' columns'
+        : fmt(rows.length) + ' of ' + fmt(T.rows.length) + ' rows';
+    }
+    search.addEventListener('input', function () { query = search.value; draw(); });
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        showAll = !showAll;
+        toggle.textContent = (showAll ? 'Hide ' : 'Show ') + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : '');
+        draw();
+      });
+    }
+    draw();
+  }
+})();
+</script>
+</body>
+</html>

@@ -10,6 +10,8 @@ Working folder for aligning the Organising DB's structure and content with the O
 | `reference/OA_universe_context_for_database_reconciliation.md` | The map owner's account of the workbook and the modelling distinctions it forces |
 | `reference/OA_universe.xlsx` | The sector map itself (cell comments and colour tags preserved) |
 | `reference/oa-universe-tabs/*.csv` | One CSV per workbook tab, for diff-able reference and scripted loads |
+| `reference/oa-universe-tabs/viz/index.html` | Cover page linking a charted, searchable HTML view of each tab — open it in a browser, no server needed |
+| `../../scripts/data-hygiene/oa-universe/build_tab_visualisations.py` | Regenerates those HTML pages from the CSVs |
 | `worksheets/employers_adjudication_2026-09-22.csv` | Every production employer with lineage, proposed canonical mapping, action and open question; decision columns to fill in |
 | `worksheets/worksites_adjudication_2026-09-22.csv` | Every production worksite with proposed grain, OA Universe asset, action and open question; decision columns to fill in |
 | `../../scripts/data-hygiene/oa-universe/` | Read-only profiling pack (00–07) that produced the plan's numbers and re-measures each washing round |

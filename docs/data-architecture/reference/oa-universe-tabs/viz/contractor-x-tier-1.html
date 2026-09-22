@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contractor × Tier-1 operator — OA Universe</title>
+<meta name="description" content="The headline matrix — which contractor works which operator, shaded H / M / L by confidence.">
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.05);
+  --track: #f0efec;
+  --seq-1: #104281;
+  --seq-2: #1c5cab;
+  --seq-3: #2a78d6;
+  --seq-4: #5598e7;
+  --seq-5: #86b6ef;
+  --seq-0: #cde2fb;
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --shadow: none;
+    --track: #232322;
+    --seq-1: #9ec5f4;
+    --seq-2: #6da7ec;
+    --seq-3: #3987e5;
+    --seq-4: #256abf;
+    --seq-5: #184f95;
+    --seq-0: #12345f;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --neutral: #383835;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --shadow: none;
+  --track: #232322;
+  --seq-1: #9ec5f4;
+  --seq-2: #6da7ec;
+  --seq-3: #3987e5;
+  --seq-4: #256abf;
+  --seq-5: #184f95;
+  --seq-0: #12345f;
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+  --neutral: #383835;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 72px; }
+
+/* ---- masthead ---- */
+.masthead { border-bottom: 1px solid var(--border); background: var(--surface); }
+.masthead-in {
+  max-width: 1180px; margin: 0 auto; padding: 14px 16px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.brand { font-weight: 640; letter-spacing: -0.01em; text-decoration: none; }
+.brand span { color: var(--muted); font-weight: 400; }
+.masthead nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.masthead nav a {
+  text-decoration: none; color: var(--ink-2); font-size: 13px;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid transparent;
+}
+.masthead nav a:hover { background: var(--track); }
+.masthead nav a[aria-current="page"] { border-color: var(--border); color: var(--ink); font-weight: 560; }
+.theme-toggle {
+  font: inherit; font-size: 13px; cursor: pointer; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+}
+.theme-toggle:hover { background: var(--track); }
+
+/* ---- page head ---- */
+header.page { padding: 34px 0 10px; }
+header.page h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+header.page .blurb { margin: 0; color: var(--ink-2); max-width: 74ch; }
+.crumbs { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.crumbs a { color: var(--ink-2); }
+.srcline { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.srcline code { font-size: 12px; background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+/* ---- stat tiles ---- */
+.stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); margin: 26px 0 8px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; box-shadow: var(--shadow);
+}
+.stat .v { font-size: 30px; line-height: 1.05; letter-spacing: -0.02em; font-weight: 600; }
+.stat .k { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.stat .h { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ---- sections & charts ---- */
+section { margin-top: 34px; }
+section > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px; font-weight: 620; }
+.chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.chart-grid.one { grid-template-columns: 1fr; }
+.chart-grid.one .bar-row { grid-template-columns: minmax(84px, 230px) 1fr auto; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px 18px; box-shadow: var(--shadow); min-width: 0;
+}
+.card h3 { font-size: 15px; margin: 0 0 3px; letter-spacing: -0.01em; }
+.card .sub { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 12px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: minmax(84px, 38%) 1fr auto; gap: 10px; align-items: center; }
+.bar-label { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.bar-track { height: 14px; background: var(--track); border-radius: 0 4px 4px 0; display: flex; }
+.bar-fill { background: var(--seq-3); border-radius: 0 4px 4px 0; min-width: 2px; height: 100%; }
+.bar-track .seg { height: 100%; min-width: 2px; margin-right: 2px; border-radius: 0; }
+.bar-track .seg:last-child { margin-right: 0; border-radius: 0 4px 4px 0; }
+.bar-value { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; }
+.bar-row:hover .bar-label, .bar-row:hover .bar-value { color: var(--ink); }
+
+/* ---- heatmap ---- */
+.heat-tools { display: flex; gap: 10px; align-items: center; margin: 0 0 12px; flex-wrap: wrap; }
+.heat-scroll { overflow: auto; max-height: 620px; border: 1px solid var(--border); border-radius: 8px; }
+.heat { display: grid; gap: 2px; padding: 2px; background: var(--surface); }
+.heat .hh, .heat .rh {
+  position: sticky; background: var(--surface); z-index: 2; font-size: 11.5px; color: var(--ink-2);
+}
+.heat .hh { top: 0; padding: 6px 4px; text-align: center; line-height: 1.25; align-self: stretch; border-bottom: 1px solid var(--grid); overflow-wrap: break-word; hyphens: none; }
+.heat .rh { left: 0; z-index: 1; padding: 4px 8px 4px 6px; display: flex; align-items: center; border-right: 1px solid var(--grid); overflow-wrap: break-word; }
+.heat .corner { position: sticky; top: 0; left: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid); }
+.heat .cell { min-height: 22px; border-radius: 3px; background: var(--track); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; }
+.heat .cell.empty { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); }
+.heat .cell:hover { outline: 2px solid var(--ink); outline-offset: -2px; }
+.heat.dim .row-off { display: none; }
+
+/* ---- table ---- */
+.table-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+input[type="search"], input[type="text"] {
+  font: inherit; font-size: 13px; padding: 6px 10px; min-width: 220px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink);
+}
+.toolbtn {
+  font: inherit; font-size: 13px; cursor: pointer; padding: 6px 11px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink-2);
+}
+.toolbtn:hover { background: var(--track); }
+.toolnote { font-size: 13px; color: var(--muted); }
+.table-scroll { overflow: auto; max-height: 720px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface); text-align: left; font-weight: 600;
+  padding: 9px 12px; border-bottom: 1px solid var(--axis); white-space: nowrap; cursor: pointer; color: var(--ink-2);
+}
+thead th:hover { color: var(--ink); }
+thead th .ind { color: var(--muted); font-weight: 400; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid var(--grid); vertical-align: top; color: var(--ink-2); }
+tbody td:first-child { color: var(--ink); font-weight: 560; }
+tbody tr:hover td { background: var(--track); }
+tbody td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+.chip { display: inline-block; font-size: 11px; font-weight: 640; line-height: 1.6; padding: 0 6px; border-radius: 4px; color: #fff; vertical-align: 1px; }
+.chip-h { background: var(--seq-2); }
+.chip-m { background: var(--seq-3); }
+.chip-l { background: var(--seq-5); color: #0b0b0b; }
+:root[data-theme="dark"] .chip-l, :root:where(:not([data-theme="light"])) .chip-l { color: #0b0b0b; }
+.tag { display: inline-block; font-size: 10.5px; letter-spacing: 0.04em; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.status i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ---- notes ---- */
+.notes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px 14px; }
+.notes li { margin: 8px 0; color: var(--ink-2); font-size: 13.5px; }
+
+/* ---- index cards ---- */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.tabcard {
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px 20px; box-shadow: var(--shadow);
+}
+.tabcard:hover { border-color: var(--axis); }
+.tabcard h3 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.tabcard p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.tabcard .meta { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.tabcard .go { font-size: 13px; color: var(--seq-3); font-weight: 560; }
+
+/* ---- tooltip ---- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .09s;
+  max-width: 320px; background: var(--ink); color: var(--plane); font-size: 12.5px; line-height: 1.45;
+  padding: 7px 10px; border-radius: 7px; white-space: pre-line;
+}
+#tip.on { opacity: 1; }
+
+footer.page { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+footer.page code { background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+@media (max-width: 640px) {
+  header.page h1 { font-size: 24px; }
+  .bar-row { grid-template-columns: minmax(70px, 44%) 1fr auto; }
+}
+@media print {
+  .masthead nav, .theme-toggle, .table-tools, .heat-tools { display: none; }
+  .table-scroll, .heat-scroll { max-height: none; }
+  .card, .stat { break-inside: avoid; }
+}
+
+.cell.s1 { background: #104281; color: #fff; }
+.cell.s2 { background: #1c5cab; color: #fff; }
+.cell.s3 { background: #2a78d6; color: #fff; }
+.cell.s4 { background: #5598e7; color: #0b0b0b; }
+.cell.s5 { background: #86b6ef; color: #0b0b0b; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s3 { background: #3987e5; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s4 { background: #256abf; color: #fff; }
+  :root:where(:not([data-theme="light"])) .cell.s5 { background: #184f95; color: #fff; }
+}
+:root[data-theme="dark"] .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s3 { background: #3987e5; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s4 { background: #256abf; color: #fff; }
+:root[data-theme="dark"] .cell.s5 { background: #184f95; color: #fff; }
+</style>
+</head>
+<body>
+<div class="masthead"><div class="masthead-in">
+  <a class="brand" href="index.html">OA Universe <span>&middot; tab visualisations</span></a>
+  <nav><a href="index.html">Index</a><a href="key-assets.html">Key assets</a><a href="asset-contractors.html">Asset → contractors</a><a href="contractor-linkages.html">Contractor linkages</a><a href="contractor-x-tier-1.html" aria-current="page">Contractor × Tier-1</a><a href="contractors.html">Contractors by scope</a><a href="facility-x-scope.html">Facility × scope</a><a href="key-clients.html">Marine key clients</a><a href="operator-companies.html">Operator → companies</a><a href="reconciliation.html">Reconciliation</a><a href="onshore.html">Onshore</a><button class="theme-toggle" id="theme" type="button" title="Light / dark / follow the system">Auto</button></nav>
+</div></div>
+<div class="wrap">
+
+<header class="page">
+  <p class="crumbs"><a href="index.html">OA Universe tabs</a> &rsaquo; Contractor × Tier-1</p>
+  <h1>Contractor × Tier-1 operator</h1>
+  <p class="blurb">The contractor-by-operator matrix, shaded by confidence. Read across a row for a contractor's client spread, down a column for an operator's contractor base.</p>
+  <p class="srcline">Source: <code>Offshore_contractor_x_Tier_1.csv</code> &middot;
+     <a href="../Offshore_contractor_x_Tier_1.csv">open the CSV</a></p>
+</header>
+<div class="stats" id="stats"></div>
+<div id="sections"></div>
+<section><h2>Every row</h2><div id="table-host"></div></section>
+<section><h2>Legend &amp; method notes (from the tab itself)</h2><div class="notes"><ul><li>LEGEND</li><li>H = High-confidence offshore linkage (documented contract/EA)</li><li>M = Medium (company/industry evidence; facility or currency unconfirmed)</li><li>Light-blue names = the 16 added employers. Derived from the linkages tab. Esso/Bass Strait shown separately because Woodside only took operatorship on 1 Jul 2026; &#x27;Aus Govt&#x27; = Northern Endeavour decommissioning. Blank = no offshore linkage found.</li><li>Colour key on the tab: L = Low / inferred / historic-only</li></ul></div></section>
+
+<footer class="page">
+  Generated from <code>Offshore_contractor_x_Tier_1.csv</code> on 22 September 2026 by
+  <code>scripts/data-hygiene/oa-universe/build_tab_visualisations.py</code>.
+  The CSVs are the source of truth &mdash; edit those and re-run the script.
+</footer>
+</div>
+<script>window.OA_PAGE = {"stats":[{"v":55,"k":"Contractors"},{"v":10,"k":"Tier-1 operators"},{"v":136,"k":"Contractor × operator linkages"},{"v":5,"k":"Contractors with no operator link","h":"no offshore linkage found yet"}],"sections":[{"title":"The matrix","wide":true,"charts":[{"type":"heat","title":"Contractor × Tier-1 operator","sub":"Every recorded linkage, shaded by confidence. Hover a cell for the detail; filter to a contractor or an operator name.","filter":"Filter contractors or operators…","cols":[{"label":"Woodside","tip":"Woodside"},{"label":"Santos","tip":"Santos"},{"label":"Chevron","tip":"Chevron"},{"label":"Inpex","tip":"Inpex"},{"label":"Shell","tip":"Shell"},{"label":"Jadestone","tip":"Jadestone"},{"label":"BW Offshore","tip":"BW Offshore"},{"label":"MODEC","tip":"MODEC"},{"label":"Esso","tip":"Esso (Bass Strait → Woodside)"},{"label":"Aus Govt","tip":"Aus Govt (N. Endeavour)"}],"rows":[{"label":"Altrad","tip":"Altrad\n1 operator linkages\n· Chevron (High)","search":"Chevron (High)","cells":[{"t":"","c":"","tip":"Altrad × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Altrad × Santos\nno linkage recorded"},{"t":"H","c":"s2","tip":"Altrad × Chevron\nHigh confidence"},{"t":"","c":"","tip":"Altrad × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Altrad × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Altrad × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Altrad × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Altrad × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Altrad × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Altrad × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Altrad Sparrows","tip":"Altrad Sparrows\n1 operator linkages\n· Chevron (High)","search":"Chevron (High)","cells":[{"t":"","c":"","tip":"Altrad Sparrows × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Altrad Sparrows × Santos\nno linkage recorded"},{"t":"H","c":"s2","tip":"Altrad Sparrows × Chevron\nHigh confidence"},{"t":"","c":"","tip":"Altrad Sparrows × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Altrad Sparrows × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Altrad Sparrows × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Altrad Sparrows × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Altrad Sparrows × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Altrad Sparrows × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Altrad Sparrows × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"AOS","tip":"AOS\n2 operator linkages\n· Woodside (Medium)\n· Santos (Low)","search":"Woodside (Medium) Santos (Low)","cells":[{"t":"M","c":"s3","tip":"AOS × Woodside\nMedium confidence"},{"t":"L","c":"s5","tip":"AOS × Santos\nLow confidence"},{"t":"","c":"","tip":"AOS × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"AOS × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"AOS × Shell\nno linkage recorded"},{"t":"","c":"","tip":"AOS × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"AOS × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"AOS × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"AOS × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"AOS × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Applus+","tip":"Applus+\n1 operator linkages\n· Woodside (High)","search":"Woodside (High)","cells":[{"t":"H","c":"s2","tip":"Applus+ × Woodside\nHigh confidence"},{"t":"","c":"","tip":"Applus+ × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Applus+ × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Applus+ × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Applus+ × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Applus+ × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Applus+ × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Applus+ × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Applus+ × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Applus+ × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Atlas Professionals","tip":"Atlas Professionals\n2 operator linkages\n· Woodside (Medium)\n· Shell (High)","search":"Woodside (Medium) Shell (High)","cells":[{"t":"M","c":"s3","tip":"Atlas Professionals × Woodside\nMedium confidence"},{"t":"","c":"","tip":"Atlas Professionals × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Atlas Professionals × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Atlas Professionals × Inpex\nno linkage recorded"},{"t":"H","c":"s2","tip":"Atlas Professionals × Shell\nHigh confidence"},{"t":"","c":"","tip":"Atlas Professionals × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Atlas Professionals × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Atlas Professionals × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Atlas Professionals × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Atlas Professionals × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Auriga Aviation","tip":"Auriga Aviation\n0 operator linkages","search":"","cells":[{"t":"","c":"","tip":"Auriga Aviation × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Auriga Aviation × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Auriga Aviation × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Auriga Aviation × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Auriga Aviation × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Auriga Aviation × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Auriga Aviation × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Auriga Aviation × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Auriga Aviation × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Auriga Aviation × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Baker Hughes","tip":"Baker Hughes\n2 operator linkages\n· Chevron (High)\n· Inpex (High)","search":"Chevron (High) Inpex (High)","cells":[{"t":"","c":"","tip":"Baker Hughes × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Baker Hughes × Santos\nno linkage recorded"},{"t":"H","c":"s2","tip":"Baker Hughes × Chevron\nHigh confidence"},{"t":"H","c":"s2","tip":"Baker Hughes × Inpex\nHigh confidence"},{"t":"","c":"","tip":"Baker Hughes × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Baker Hughes × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Baker Hughes × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Baker Hughes × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Baker Hughes × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Baker Hughes × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Bhagwan Marine","tip":"Bhagwan Marine\n5 operator linkages\n· Woodside (Medium)\n· Santos (Medium)\n· Chevron (High)\n· Jadestone (High)\n· Aus Govt (N. Endeavour) (Medium)","search":"Woodside (Medium) Santos (Medium) Chevron (High) Jadestone (High) Aus Govt (N. Endeavour) (Medium)","cells":[{"t":"M","c":"s3","tip":"Bhagwan Marine × Woodside\nMedium confidence"},{"t":"M","c":"s3","tip":"Bhagwan Marine × Santos\nMedium confidence"},{"t":"H","c":"s2","tip":"Bhagwan Marine × Chevron\nHigh confidence"},{"t":"","c":"","tip":"Bhagwan Marine × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Bhagwan Marine × Shell\nno linkage recorded"},{"t":"H","c":"s2","tip":"Bhagwan Marine × Jadestone\nHigh confidence"},{"t":"","c":"","tip":"Bhagwan Marine × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Bhagwan Marine × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Bhagwan Marine × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"M","c":"s3","tip":"Bhagwan Marine × Aus Govt (N. Endeavour)\nMedium confidence"}]},{"label":"Boskalis","tip":"Boskalis\n1 operator linkages\n· Woodside (High)","search":"Woodside (High)","cells":[{"t":"H","c":"s2","tip":"Boskalis × Woodside\nHigh confidence"},{"t":"","c":"","tip":"Boskalis × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Boskalis × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Boskalis × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Boskalis × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Boskalis × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Boskalis × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Boskalis × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Boskalis × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Boskalis × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"CHC","tip":"CHC\n3 operator linkages\n· Woodside (Medium)\n· Shell (Low)\n· Jadestone (Medium)","search":"Woodside (Medium) Shell (Low) Jadestone (Medium)","cells":[{"t":"M","c":"s3","tip":"CHC × Woodside\nMedium confidence"},{"t":"","c":"","tip":"CHC × Santos\nno linkage recorded"},{"t":"","c":"","tip":"CHC × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"CHC × Inpex\nno linkage recorded"},{"t":"L","c":"s5","tip":"CHC × Shell\nLow confidence"},{"t":"M","c":"s3","tip":"CHC × Jadestone\nMedium confidence"},{"t":"","c":"","tip":"CHC × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"CHC × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"CHC × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"CHC × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Condex","tip":"Condex\n1 operator linkages\n· Esso (Bass Strait → Woodside) (High)","search":"Esso (Bass Strait → Woodside) (High)","cells":[{"t":"","c":"","tip":"Condex × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Condex × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Condex × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Condex × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Condex × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Condex × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Condex × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Condex × MODEC\nno linkage recorded"},{"t":"H","c":"s2","tip":"Condex × Esso (Bass Strait → Woodside)\nHigh confidence"},{"t":"","c":"","tip":"Condex × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Cyan","tip":"Cyan\n3 operator linkages\n· Woodside (High)\n· Chevron (High)\n· Inpex (High)","search":"Woodside (High) Chevron (High) Inpex (High)","cells":[{"t":"H","c":"s2","tip":"Cyan × Woodside\nHigh confidence"},{"t":"","c":"","tip":"Cyan × Santos\nno linkage recorded"},{"t":"H","c":"s2","tip":"Cyan × Chevron\nHigh confidence"},{"t":"H","c":"s2","tip":"Cyan × Inpex\nHigh confidence"},{"t":"","c":"","tip":"Cyan × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Cyan × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Cyan × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Cyan × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Cyan × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Cyan × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"DOF","tip":"DOF\n5 operator linkages\n· Woodside (High)\n· Chevron (Medium)\n· Shell (Medium)\n· Jadestone (Low)\n· Esso (Bass Strait → Woodside) (High)","search":"Woodside (High) Chevron (Medium) Shell (Medium) Jadestone (Low) Esso (Bass Strait → Woodside) (High)","cells":[{"t":"H","c":"s2","tip":"DOF × Woodside\nHigh confidence"},{"t":"","c":"","tip":"DOF × Santos\nno linkage recorded"},{"t":"M","c":"s3","tip":"DOF × Chevron\nMedium confidence"},{"t":"","c":"","tip":"DOF × Inpex\nno linkage recorded"},{"t":"M","c":"s3","tip":"DOF × Shell\nMedium confidence"},{"t":"L","c":"s5","tip":"DOF × Jadestone\nLow confidence"},{"t":"","c":"","tip":"DOF × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"DOF × MODEC\nno linkage recorded"},{"t":"H","c":"s2","tip":"DOF × Esso (Bass Strait → Woodside)\nHigh confidence"},{"t":"","c":"","tip":"DOF × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Enemech","tip":"Enemech\n4 operator linkages\n· Woodside (High)\n· Inpex (High)\n· Shell (Low)\n· Esso (Bass Strait → Woodside) (Medium)","search":"Woodside (High) Inpex (High) Shell (Low) Esso (Bass Strait → Woodside) (Medium)","cells":[{"t":"H","c":"s2","tip":"Enemech × Woodside\nHigh confidence"},{"t":"","c":"","tip":"Enemech × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Enemech × Chevron\nno linkage recorded"},{"t":"H","c":"s2","tip":"Enemech × Inpex\nHigh confidence"},{"t":"L","c":"s5","tip":"Enemech × Shell\nLow confidence"},{"t":"","c":"","tip":"Enemech × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Enemech × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Enemech × MODEC\nno linkage recorded"},{"t":"M","c":"s3","tip":"Enemech × Esso (Bass Strait → Woodside)\nMedium confidence"},{"t":"","c":"","tip":"Enemech × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Entier","tip":"Entier\n0 operator linkages","search":"","cells":[{"t":"","c":"","tip":"Entier × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Entier × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Entier × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Entier × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Entier × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Entier × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Entier × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Entier × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Entier × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Entier × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Eris (Kuiper)","tip":"Eris (Kuiper)\n5 operator linkages\n· Woodside (Medium)\n· Santos (Medium)\n· Chevron (Medium)\n· Inpex (Medium)\n· Shell (Medium)","search":"Woodside (Medium) Santos (Medium) Chevron (Medium) Inpex (Medium) Shell (Medium)","cells":[{"t":"M","c":"s3","tip":"Eris (Kuiper) × Woodside\nMedium confidence"},{"t":"M","c":"s3","tip":"Eris (Kuiper) × Santos\nMedium confidence"},{"t":"M","c":"s3","tip":"Eris (Kuiper) × Chevron\nMedium confidence"},{"t":"M","c":"s3","tip":"Eris (Kuiper) × Inpex\nMedium confidence"},{"t":"M","c":"s3","tip":"Eris (Kuiper) × Shell\nMedium confidence"},{"t":"","c":"","tip":"Eris (Kuiper) × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Eris (Kuiper) × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Eris (Kuiper) × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Eris (Kuiper) × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Eris (Kuiper) × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"ESS","tip":"ESS\n4 operator linkages\n· Woodside (High)\n· Chevron (High)\n· Inpex (High)\n· Shell (Medium)","search":"Woodside (High) Chevron (High) Inpex (High) Shell (Medium)","cells":[{"t":"H","c":"s2","tip":"ESS × Woodside\nHigh confidence"},{"t":"","c":"","tip":"ESS × Santos\nno linkage recorded"},{"t":"H","c":"s2","tip":"ESS × Chevron\nHigh confidence"},{"t":"H","c":"s2","tip":"ESS × Inpex\nHigh confidence"},{"t":"M","c":"s3","tip":"ESS × Shell\nMedium confidence"},{"t":"","c":"","tip":"ESS × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"ESS × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"ESS × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"ESS × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"ESS × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Fugro","tip":"Fugro\n3 operator linkages\n· Woodside (High)\n· Santos (Medium)\n· Chevron (Low)","search":"Woodside (High) Santos (Medium) Chevron (Low)","cells":[{"t":"H","c":"s2","tip":"Fugro × Woodside\nHigh confidence"},{"t":"M","c":"s3","tip":"Fugro × Santos\nMedium confidence"},{"t":"L","c":"s5","tip":"Fugro × Chevron\nLow confidence"},{"t":"","c":"","tip":"Fugro × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Fugro × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Fugro × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Fugro × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Fugro × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Fugro × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Fugro × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"GGC","tip":"GGC\n3 operator linkages\n· Woodside (Low)\n· Chevron (Low)\n· Inpex (Low)","search":"Woodside (Low) Chevron (Low) Inpex (Low)","cells":[{"t":"L","c":"s5","tip":"GGC × Woodside\nLow confidence"},{"t":"","c":"","tip":"GGC × Santos\nno linkage recorded"},{"t":"L","c":"s5","tip":"GGC × Chevron\nLow confidence"},{"t":"L","c":"s5","tip":"GGC × Inpex\nLow confidence"},{"t":"","c":"","tip":"GGC × Shell\nno linkage recorded"},{"t":"","c":"","tip":"GGC × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"GGC × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"GGC × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"GGC × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"GGC × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Go Offshore","tip":"Go Offshore\n6 operator linkages\n· Woodside (High)\n· Santos (High)\n· Chevron (Medium)\n· Inpex (High)\n· Shell (Medium)\n· Esso (Bass Strait → Woodside) (Medium)","search":"Woodside (High) Santos (High) Chevron (Medium) Inpex (High) Shell (Medium) Esso (Bass Strait → Woodside) (Medium)","cells":[{"t":"H","c":"s2","tip":"Go Offshore × Woodside\nHigh confidence"},{"t":"H","c":"s2","tip":"Go Offshore × Santos\nHigh confidence"},{"t":"M","c":"s3","tip":"Go Offshore × Chevron\nMedium confidence"},{"t":"H","c":"s2","tip":"Go Offshore × Inpex\nHigh confidence"},{"t":"M","c":"s3","tip":"Go Offshore × Shell\nMedium confidence"},{"t":"","c":"","tip":"Go Offshore × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Go Offshore × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Go Offshore × MODEC\nno linkage recorded"},{"t":"M","c":"s3","tip":"Go Offshore × Esso (Bass Strait → Woodside)\nMedium confidence"},{"t":"","c":"","tip":"Go Offshore × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"GR Production Services","tip":"GR Production Services\n1 operator linkages\n· Inpex (High)","search":"Inpex (High)","cells":[{"t":"","c":"","tip":"GR Production Services × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"GR Production Services × Santos\nno linkage recorded"},{"t":"","c":"","tip":"GR Production Services × Chevron\nno linkage recorded"},{"t":"H","c":"s2","tip":"GR Production Services × Inpex\nHigh confidence"},{"t":"","c":"","tip":"GR Production Services × Shell\nno linkage recorded"},{"t":"","c":"","tip":"GR Production Services × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"GR Production Services × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"GR Production Services × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"GR Production Services × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"GR Production Services × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Heerema","tip":"Heerema\n2 operator linkages\n· Woodside (Medium)\n· Inpex (High)","search":"Woodside (Medium) Inpex (High)","cells":[{"t":"M","c":"s3","tip":"Heerema × Woodside\nMedium confidence"},{"t":"","c":"","tip":"Heerema × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Heerema × Chevron\nno linkage recorded"},{"t":"H","c":"s2","tip":"Heerema × Inpex\nHigh confidence"},{"t":"","c":"","tip":"Heerema × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Heerema × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Heerema × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Heerema × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Heerema × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Heerema × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Hjelix","tip":"Hjelix\n2 operator linkages\n· Woodside (Low)\n· Esso (Bass Strait → Woodside) (High)","search":"Woodside (Low) Esso (Bass Strait → Woodside) (High)","cells":[{"t":"L","c":"s5","tip":"Hjelix × Woodside\nLow confidence"},{"t":"","c":"","tip":"Hjelix × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Hjelix × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Hjelix × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Hjelix × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Hjelix × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Hjelix × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Hjelix × MODEC\nno linkage recorded"},{"t":"H","c":"s2","tip":"Hjelix × Esso (Bass Strait → Woodside)\nHigh confidence"},{"t":"","c":"","tip":"Hjelix × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"IAS","tip":"IAS\n2 operator linkages\n· Woodside (Medium)\n· Chevron (Medium)","search":"Woodside (Medium) Chevron (Medium)","cells":[{"t":"M","c":"s3","tip":"IAS × Woodside\nMedium confidence"},{"t":"","c":"","tip":"IAS × Santos\nno linkage recorded"},{"t":"M","c":"s3","tip":"IAS × Chevron\nMedium confidence"},{"t":"","c":"","tip":"IAS × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"IAS × Shell\nno linkage recorded"},{"t":"","c":"","tip":"IAS × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"IAS × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"IAS × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"IAS × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"IAS × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Kaefer (ISOLOGIC)","tip":"Kaefer (ISOLOGIC)\n2 operator linkages\n· Santos (Medium)\n· Inpex (Medium)","search":"Santos (Medium) Inpex (Medium)","cells":[{"t":"","c":"","tip":"Kaefer (ISOLOGIC) × Woodside\nno linkage recorded"},{"t":"M","c":"s3","tip":"Kaefer (ISOLOGIC) × Santos\nMedium confidence"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC) × Chevron\nno linkage recorded"},{"t":"M","c":"s3","tip":"Kaefer (ISOLOGIC) × Inpex\nMedium confidence"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC) × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC) × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC) × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC) × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC) × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC) × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Legeneering","tip":"Legeneering\n3 operator linkages\n· Woodside (High)\n· Chevron (Medium)\n· MODEC (Medium)","search":"Woodside (High) Chevron (Medium) MODEC (Medium)","cells":[{"t":"H","c":"s2","tip":"Legeneering × Woodside\nHigh confidence"},{"t":"","c":"","tip":"Legeneering × Santos\nno linkage recorded"},{"t":"M","c":"s3","tip":"Legeneering × Chevron\nMedium confidence"},{"t":"","c":"","tip":"Legeneering × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Legeneering × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Legeneering × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Legeneering × BW Offshore\nno linkage recorded"},{"t":"M","c":"s3","tip":"Legeneering × MODEC\nMedium confidence"},{"t":"","c":"","tip":"Legeneering × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Legeneering × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Lifeflight","tip":"Lifeflight\n0 operator linkages","search":"","cells":[{"t":"","c":"","tip":"Lifeflight × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Lifeflight × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Lifeflight × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Lifeflight × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Lifeflight × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Lifeflight × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Lifeflight × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Lifeflight × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Lifeflight × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Lifeflight × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"McDermott","tip":"McDermott\n4 operator linkages\n· Woodside (High)\n· Santos (High)\n· Inpex (Medium)\n· Shell (High)","search":"Woodside (High) Santos (High) Inpex (Medium) Shell (High)","cells":[{"t":"H","c":"s2","tip":"McDermott × Woodside\nHigh confidence"},{"t":"H","c":"s2","tip":"McDermott × Santos\nHigh confidence"},{"t":"","c":"","tip":"McDermott × Chevron\nno linkage recorded"},{"t":"M","c":"s3","tip":"McDermott × Inpex\nMedium confidence"},{"t":"H","c":"s2","tip":"McDermott × Shell\nHigh confidence"},{"t":"","c":"","tip":"McDermott × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"McDermott × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"McDermott × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"McDermott × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"McDermott × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"MEA","tip":"MEA\n4 operator linkages\n· Woodside (High)\n· Chevron (High)\n· Shell (Medium)\n· Aus Govt (N. Endeavour) (High)","search":"Woodside (High) Chevron (High) Shell (Medium) Aus Govt (N. Endeavour) (High)","cells":[{"t":"H","c":"s2","tip":"MEA × Woodside\nHigh confidence"},{"t":"","c":"","tip":"MEA × Santos\nno linkage recorded"},{"t":"H","c":"s2","tip":"MEA × Chevron\nHigh confidence"},{"t":"","c":"","tip":"MEA × Inpex\nno linkage recorded"},{"t":"M","c":"s3","tip":"MEA × Shell\nMedium confidence"},{"t":"","c":"","tip":"MEA × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"MEA × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"MEA × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"MEA × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"H","c":"s2","tip":"MEA × Aus Govt (N. Endeavour)\nHigh confidence"}]},{"label":"Monadelphous","tip":"Monadelphous\n6 operator linkages\n· Woodside (High)\n· Chevron (Low)\n· Inpex (High)\n· Shell (High)\n· BW Offshore (High)\n· Aus Govt (N. Endeavour) (Medium)","search":"Woodside (High) Chevron (Low) Inpex (High) Shell (High) BW Offshore (High) Aus Govt (N. Endeavour) (Medium)","cells":[{"t":"H","c":"s2","tip":"Monadelphous × Woodside\nHigh confidence"},{"t":"","c":"","tip":"Monadelphous × Santos\nno linkage recorded"},{"t":"L","c":"s5","tip":"Monadelphous × Chevron\nLow confidence"},{"t":"H","c":"s2","tip":"Monadelphous × Inpex\nHigh confidence"},{"t":"H","c":"s2","tip":"Monadelphous × Shell\nHigh confidence"},{"t":"","c":"","tip":"Monadelphous × Jadestone\nno linkage recorded"},{"t":"H","c":"s2","tip":"Monadelphous × BW Offshore\nHigh confidence"},{"t":"","c":"","tip":"Monadelphous × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Monadelphous × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"M","c":"s3","tip":"Monadelphous × Aus Govt (N. Endeavour)\nMedium confidence"}]},{"label":"Noble","tip":"Noble\n4 operator linkages\n· Woodside (High)\n· Santos (High)\n· Chevron (High)\n· Inpex (High)","search":"Woodside (High) Santos (High) Chevron (High) Inpex (High)","cells":[{"t":"H","c":"s2","tip":"Noble × Woodside\nHigh confidence"},{"t":"H","c":"s2","tip":"Noble × Santos\nHigh confidence"},{"t":"H","c":"s2","tip":"Noble × Chevron\nHigh confidence"},{"t":"H","c":"s2","tip":"Noble × Inpex\nHigh confidence"},{"t":"","c":"","tip":"Noble × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Noble × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Noble × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Noble × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Noble × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Noble × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Oceaneering","tip":"Oceaneering\n3 operator linkages\n· Woodside (Low)\n· Chevron (Low)\n· Shell (Low)","search":"Woodside (Low) Chevron (Low) Shell (Low)","cells":[{"t":"L","c":"s5","tip":"Oceaneering × Woodside\nLow confidence"},{"t":"","c":"","tip":"Oceaneering × Santos\nno linkage recorded"},{"t":"L","c":"s5","tip":"Oceaneering × Chevron\nLow confidence"},{"t":"","c":"","tip":"Oceaneering × Inpex\nno linkage recorded"},{"t":"L","c":"s5","tip":"Oceaneering × Shell\nLow confidence"},{"t":"","c":"","tip":"Oceaneering × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Oceaneering × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Oceaneering × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Oceaneering × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Oceaneering × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"OSA","tip":"OSA\n3 operator linkages\n· Santos (High)\n· Chevron (Medium)\n· Jadestone (Low)","search":"Santos (High) Chevron (Medium) Jadestone (Low)","cells":[{"t":"","c":"","tip":"OSA × Woodside\nno linkage recorded"},{"t":"H","c":"s2","tip":"OSA × Santos\nHigh confidence"},{"t":"M","c":"s3","tip":"OSA × Chevron\nMedium confidence"},{"t":"","c":"","tip":"OSA × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"OSA × Shell\nno linkage recorded"},{"t":"L","c":"s5","tip":"OSA × Jadestone\nLow confidence"},{"t":"","c":"","tip":"OSA × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"OSA × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"OSA × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"OSA × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"OSM","tip":"OSM\n1 operator linkages\n· Woodside (Medium)","search":"Woodside (Medium)","cells":[{"t":"M","c":"s3","tip":"OSM × Woodside\nMedium confidence"},{"t":"","c":"","tip":"OSM × Santos\nno linkage recorded"},{"t":"","c":"","tip":"OSM × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"OSM × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"OSM × Shell\nno linkage recorded"},{"t":"","c":"","tip":"OSM × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"OSM × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"OSM × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"OSM × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"OSM × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Parabellum","tip":"Parabellum\n3 operator linkages\n· Chevron (Medium)\n· Inpex (Low)\n· Shell (Low)","search":"Chevron (Medium) Inpex (Low) Shell (Low)","cells":[{"t":"","c":"","tip":"Parabellum × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Parabellum × Santos\nno linkage recorded"},{"t":"M","c":"s3","tip":"Parabellum × Chevron\nMedium confidence"},{"t":"L","c":"s5","tip":"Parabellum × Inpex\nLow confidence"},{"t":"L","c":"s5","tip":"Parabellum × Shell\nLow confidence"},{"t":"","c":"","tip":"Parabellum × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Parabellum × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Parabellum × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Parabellum × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Parabellum × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Petrofac","tip":"Petrofac\n1 operator linkages\n· Aus Govt (N. Endeavour) (High)","search":"Aus Govt (N. Endeavour) (High)","cells":[{"t":"","c":"","tip":"Petrofac × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Petrofac × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Petrofac × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Petrofac × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Petrofac × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Petrofac × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Petrofac × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Petrofac × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Petrofac × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"H","c":"s2","tip":"Petrofac × Aus Govt (N. Endeavour)\nHigh confidence"}]},{"label":"PHI","tip":"PHI\n3 operator linkages\n· Woodside (High)\n· Inpex (High)\n· Shell (High)","search":"Woodside (High) Inpex (High) Shell (High)","cells":[{"t":"H","c":"s2","tip":"PHI × Woodside\nHigh confidence"},{"t":"","c":"","tip":"PHI × Santos\nno linkage recorded"},{"t":"","c":"","tip":"PHI × Chevron\nno linkage recorded"},{"t":"H","c":"s2","tip":"PHI × Inpex\nHigh confidence"},{"t":"H","c":"s2","tip":"PHI × Shell\nHigh confidence"},{"t":"","c":"","tip":"PHI × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"PHI × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"PHI × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"PHI × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"PHI × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Programmed","tip":"Programmed\n2 operator linkages\n· Woodside (Low)\n· Shell (Medium)","search":"Woodside (Low) Shell (Medium)","cells":[{"t":"L","c":"s5","tip":"Programmed × Woodside\nLow confidence"},{"t":"","c":"","tip":"Programmed × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Programmed × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Programmed × Inpex\nno linkage recorded"},{"t":"M","c":"s3","tip":"Programmed × Shell\nMedium confidence"},{"t":"","c":"","tip":"Programmed × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Programmed × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Programmed × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Programmed × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Programmed × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Reach","tip":"Reach\n1 operator linkages\n· Woodside (High)","search":"Woodside (High)","cells":[{"t":"H","c":"s2","tip":"Reach × Woodside\nHigh confidence"},{"t":"","c":"","tip":"Reach × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Reach × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Reach × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Reach × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Reach × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Reach × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Reach × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Reach × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Reach × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"SEA1 Offshore (ex-Siem)","tip":"SEA1 Offshore (ex-Siem)\n1 operator linkages\n· Woodside (Low)","search":"Woodside (Low)","cells":[{"t":"L","c":"s5","tip":"SEA1 Offshore (ex-Siem) × Woodside\nLow confidence"},{"t":"","c":"","tip":"SEA1 Offshore (ex-Siem) × Santos\nno linkage recorded"},{"t":"","c":"","tip":"SEA1 Offshore (ex-Siem) × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"SEA1 Offshore (ex-Siem) × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"SEA1 Offshore (ex-Siem) × Shell\nno linkage recorded"},{"t":"","c":"","tip":"SEA1 Offshore (ex-Siem) × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"SEA1 Offshore (ex-Siem) × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"SEA1 Offshore (ex-Siem) × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"SEA1 Offshore (ex-Siem) × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"SEA1 Offshore (ex-Siem) × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"SGS","tip":"SGS\n1 operator linkages\n· Shell (High)","search":"Shell (High)","cells":[{"t":"","c":"","tip":"SGS × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"SGS × Santos\nno linkage recorded"},{"t":"","c":"","tip":"SGS × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"SGS × Inpex\nno linkage recorded"},{"t":"H","c":"s2","tip":"SGS × Shell\nHigh confidence"},{"t":"","c":"","tip":"SGS × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"SGS × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"SGS × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"SGS × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"SGS × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Sierra","tip":"Sierra\n1 operator linkages\n· Woodside (Medium)","search":"Woodside (Medium)","cells":[{"t":"M","c":"s3","tip":"Sierra × Woodside\nMedium confidence"},{"t":"","c":"","tip":"Sierra × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Sierra × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Sierra × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Sierra × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Sierra × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Sierra × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Sierra × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Sierra × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Sierra × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Sodexo","tip":"Sodexo\n3 operator linkages\n· Santos (High)\n· Shell (High)\n· Esso (Bass Strait → Woodside) (Low)","search":"Santos (High) Shell (High) Esso (Bass Strait → Woodside) (Low)","cells":[{"t":"","c":"","tip":"Sodexo × Woodside\nno linkage recorded"},{"t":"H","c":"s2","tip":"Sodexo × Santos\nHigh confidence"},{"t":"","c":"","tip":"Sodexo × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Sodexo × Inpex\nno linkage recorded"},{"t":"H","c":"s2","tip":"Sodexo × Shell\nHigh confidence"},{"t":"","c":"","tip":"Sodexo × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Sodexo × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Sodexo × MODEC\nno linkage recorded"},{"t":"L","c":"s5","tip":"Sodexo × Esso (Bass Strait → Woodside)\nLow confidence"},{"t":"","c":"","tip":"Sodexo × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Solstad Australia","tip":"Solstad Australia\n5 operator linkages\n· Woodside (Medium)\n· Santos (Low)\n· Chevron (Low)\n· Inpex (Medium)\n· Shell (Low)","search":"Woodside (Medium) Santos (Low) Chevron (Low) Inpex (Medium) Shell (Low)","cells":[{"t":"M","c":"s3","tip":"Solstad Australia × Woodside\nMedium confidence"},{"t":"L","c":"s5","tip":"Solstad Australia × Santos\nLow confidence"},{"t":"L","c":"s5","tip":"Solstad Australia × Chevron\nLow confidence"},{"t":"M","c":"s3","tip":"Solstad Australia × Inpex\nMedium confidence"},{"t":"L","c":"s5","tip":"Solstad Australia × Shell\nLow confidence"},{"t":"","c":"","tip":"Solstad Australia × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Solstad Australia × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Solstad Australia × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Solstad Australia × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Solstad Australia × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Technip Energies / TechnipFMC","tip":"Technip Energies / TechnipFMC\n2 operator linkages\n· Woodside (High)\n· Shell (High)","search":"Woodside (High) Shell (High)","cells":[{"t":"H","c":"s2","tip":"Technip Energies / TechnipFMC × Woodside\nHigh confidence"},{"t":"","c":"","tip":"Technip Energies / TechnipFMC × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Technip Energies / TechnipFMC × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Technip Energies / TechnipFMC × Inpex\nno linkage recorded"},{"t":"H","c":"s2","tip":"Technip Energies / TechnipFMC × Shell\nHigh confidence"},{"t":"","c":"","tip":"Technip Energies / TechnipFMC × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Technip Energies / TechnipFMC × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Technip Energies / TechnipFMC × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Technip Energies / TechnipFMC × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Technip Energies / TechnipFMC × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Tidewater","tip":"Tidewater\n0 operator linkages","search":"","cells":[{"t":"","c":"","tip":"Tidewater × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"Tidewater × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Tidewater × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Tidewater × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Tidewater × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Tidewater × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Tidewater × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Tidewater × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Tidewater × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Tidewater × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"TMT","tip":"TMT\n0 operator linkages","search":"","cells":[{"t":"","c":"","tip":"TMT × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"TMT × Santos\nno linkage recorded"},{"t":"","c":"","tip":"TMT × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"TMT × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"TMT × Shell\nno linkage recorded"},{"t":"","c":"","tip":"TMT × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"TMT × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"TMT × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"TMT × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"TMT × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Transocean (sedco forex)","tip":"Transocean (sedco forex)\n3 operator linkages\n· Woodside (High)\n· Santos (High)\n· Shell (Medium)","search":"Woodside (High) Santos (High) Shell (Medium)","cells":[{"t":"H","c":"s2","tip":"Transocean (sedco forex) × Woodside\nHigh confidence"},{"t":"H","c":"s2","tip":"Transocean (sedco forex) × Santos\nHigh confidence"},{"t":"","c":"","tip":"Transocean (sedco forex) × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Transocean (sedco forex) × Inpex\nno linkage recorded"},{"t":"M","c":"s3","tip":"Transocean (sedco forex) × Shell\nMedium confidence"},{"t":"","c":"","tip":"Transocean (sedco forex) × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Transocean (sedco forex) × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Transocean (sedco forex) × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Transocean (sedco forex) × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Transocean (sedco forex) × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"UGL","tip":"UGL\n4 operator linkages\n· Woodside (Low)\n· Santos (Medium)\n· Chevron (Medium)\n· Esso (Bass Strait → Woodside) (Medium)","search":"Woodside (Low) Santos (Medium) Chevron (Medium) Esso (Bass Strait → Woodside) (Medium)","cells":[{"t":"L","c":"s5","tip":"UGL × Woodside\nLow confidence"},{"t":"M","c":"s3","tip":"UGL × Santos\nMedium confidence"},{"t":"M","c":"s3","tip":"UGL × Chevron\nMedium confidence"},{"t":"","c":"","tip":"UGL × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"UGL × Shell\nno linkage recorded"},{"t":"","c":"","tip":"UGL × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"UGL × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"UGL × MODEC\nno linkage recorded"},{"t":"M","c":"s3","tip":"UGL × Esso (Bass Strait → Woodside)\nMedium confidence"},{"t":"","c":"","tip":"UGL × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"UPS","tip":"UPS\n1 operator linkages\n· Aus Govt (N. Endeavour) (High)","search":"Aus Govt (N. Endeavour) (High)","cells":[{"t":"","c":"","tip":"UPS × Woodside\nno linkage recorded"},{"t":"","c":"","tip":"UPS × Santos\nno linkage recorded"},{"t":"","c":"","tip":"UPS × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"UPS × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"UPS × Shell\nno linkage recorded"},{"t":"","c":"","tip":"UPS × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"UPS × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"UPS × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"UPS × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"H","c":"s2","tip":"UPS × Aus Govt (N. Endeavour)\nHigh confidence"}]},{"label":"Valaris (Ensco","tip":"Valaris (Ensco\n4 operator linkages\n· Woodside (High)\n· Santos (High)\n· Jadestone (High)\n· Esso (Bass Strait → Woodside) (High)","search":"Woodside (High) Santos (High) Jadestone (High) Esso (Bass Strait → Woodside) (High)","cells":[{"t":"H","c":"s2","tip":"Valaris (Ensco × Woodside\nHigh confidence"},{"t":"H","c":"s2","tip":"Valaris (Ensco × Santos\nHigh confidence"},{"t":"","c":"","tip":"Valaris (Ensco × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Valaris (Ensco × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Valaris (Ensco × Shell\nno linkage recorded"},{"t":"H","c":"s2","tip":"Valaris (Ensco × Jadestone\nHigh confidence"},{"t":"","c":"","tip":"Valaris (Ensco × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Valaris (Ensco × MODEC\nno linkage recorded"},{"t":"H","c":"s2","tip":"Valaris (Ensco × Esso (Bass Strait → Woodside)\nHigh confidence"},{"t":"","c":"","tip":"Valaris (Ensco × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"vertech","tip":"vertech\n6 operator linkages\n· Woodside (High)\n· Santos (Medium)\n· Chevron (Medium)\n· Inpex (High)\n· Jadestone (Medium)\n· MODEC (Medium)","search":"Woodside (High) Santos (Medium) Chevron (Medium) Inpex (High) Jadestone (Medium) MODEC (Medium)","cells":[{"t":"H","c":"s2","tip":"vertech × Woodside\nHigh confidence"},{"t":"M","c":"s3","tip":"vertech × Santos\nMedium confidence"},{"t":"M","c":"s3","tip":"vertech × Chevron\nMedium confidence"},{"t":"H","c":"s2","tip":"vertech × Inpex\nHigh confidence"},{"t":"","c":"","tip":"vertech × Shell\nno linkage recorded"},{"t":"M","c":"s3","tip":"vertech × Jadestone\nMedium confidence"},{"t":"","c":"","tip":"vertech × BW Offshore\nno linkage recorded"},{"t":"M","c":"s3","tip":"vertech × MODEC\nMedium confidence"},{"t":"","c":"","tip":"vertech × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"vertech × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Weststar-GAP","tip":"Weststar-GAP\n1 operator linkages\n· Santos (High)","search":"Santos (High)","cells":[{"t":"","c":"","tip":"Weststar-GAP × Woodside\nno linkage recorded"},{"t":"H","c":"s2","tip":"Weststar-GAP × Santos\nHigh confidence"},{"t":"","c":"","tip":"Weststar-GAP × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Weststar-GAP × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Weststar-GAP × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Weststar-GAP × Jadestone\nno linkage recorded"},{"t":"","c":"","tip":"Weststar-GAP × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"Weststar-GAP × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"Weststar-GAP × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"Weststar-GAP × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"Wood","tip":"Wood\n3 operator linkages\n· Woodside (High)\n· BW Offshore (Medium)\n· Esso (Bass Strait → Woodside) (High)","search":"Woodside (High) BW Offshore (Medium) Esso (Bass Strait → Woodside) (High)","cells":[{"t":"H","c":"s2","tip":"Wood × Woodside\nHigh confidence"},{"t":"","c":"","tip":"Wood × Santos\nno linkage recorded"},{"t":"","c":"","tip":"Wood × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"Wood × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"Wood × Shell\nno linkage recorded"},{"t":"","c":"","tip":"Wood × Jadestone\nno linkage recorded"},{"t":"M","c":"s3","tip":"Wood × BW Offshore\nMedium confidence"},{"t":"","c":"","tip":"Wood × MODEC\nno linkage recorded"},{"t":"H","c":"s2","tip":"Wood × Esso (Bass Strait → Woodside)\nHigh confidence"},{"t":"","c":"","tip":"Wood × Aus Govt (N. Endeavour)\nno linkage recorded"}]},{"label":"WPF(Duratech)","tip":"WPF(Duratech)\n2 operator linkages\n· Santos (High)\n· Jadestone (Medium)","search":"Santos (High) Jadestone (Medium)","cells":[{"t":"","c":"","tip":"WPF(Duratech) × Woodside\nno linkage recorded"},{"t":"H","c":"s2","tip":"WPF(Duratech) × Santos\nHigh confidence"},{"t":"","c":"","tip":"WPF(Duratech) × Chevron\nno linkage recorded"},{"t":"","c":"","tip":"WPF(Duratech) × Inpex\nno linkage recorded"},{"t":"","c":"","tip":"WPF(Duratech) × Shell\nno linkage recorded"},{"t":"M","c":"s3","tip":"WPF(Duratech) × Jadestone\nMedium confidence"},{"t":"","c":"","tip":"WPF(Duratech) × BW Offshore\nno linkage recorded"},{"t":"","c":"","tip":"WPF(Duratech) × MODEC\nno linkage recorded"},{"t":"","c":"","tip":"WPF(Duratech) × Esso (Bass Strait → Woodside)\nno linkage recorded"},{"t":"","c":"","tip":"WPF(Duratech) × Aus Govt (N. Endeavour)\nno linkage recorded"}]}],"legend":[{"label":"High — documented contract or EA","cls":"s2"},{"label":"Medium — company or industry evidence","cls":"s3"},{"label":"Low — inferred or historic only","cls":"s5"},{"label":"No linkage recorded","cls":""}]}]},{"title":"Reach on each side of the matrix","charts":[{"type":"stack","title":"Contractors per operator","sub":"How wide each Tier-1 operator's contractor base is","series":[{"name":"High","color":"seq-2"},{"name":"Medium","color":"seq-3"},{"name":"Low","color":"seq-5"}],"items":[{"label":"Woodside","values":[20,10,6],"total":36,"tip":"Woodside\n36 contractors\n20 high, 10 medium, 6 low"},{"label":"Chevron","values":[8,9,5],"total":22,"tip":"Chevron\n22 contractors\n8 high, 9 medium, 5 low"},{"label":"Shell","values":[7,7,5],"total":19,"tip":"Shell\n19 contractors\n7 high, 7 medium, 5 low"},{"label":"Inpex","values":[11,4,2],"total":17,"tip":"Inpex\n17 contractors\n11 high, 4 medium, 2 low"},{"label":"Santos","values":[9,6,2],"total":17,"tip":"Santos\n17 contractors\n9 high, 6 medium, 2 low"},{"label":"Esso (Bass Strait → Woodside)","values":[5,3,1],"total":9,"tip":"Esso (Bass Strait → Woodside)\n9 contractors\n5 high, 3 medium, 1 low"},{"label":"Jadestone","values":[2,3,2],"total":7,"tip":"Jadestone\n7 contractors\n2 high, 3 medium, 2 low"},{"label":"Aus Govt (N. Endeavour)","values":[3,2,0],"total":5,"tip":"Aus Govt (N. Endeavour)\n5 contractors\n3 high, 2 medium"},{"label":"BW Offshore","values":[1,1,0],"total":2,"tip":"BW Offshore\n2 contractors\n1 high, 1 medium"},{"label":"MODEC","values":[0,2,0],"total":2,"tip":"MODEC\n2 contractors\n2 medium"}]},{"type":"stack","title":"Operators per contractor","sub":"Top 18 contractors by number of Tier-1 operators they work for","series":[{"name":"High","color":"seq-2"},{"name":"Medium","color":"seq-3"},{"name":"Low","color":"seq-5"}],"items":[{"label":"Go Offshore","values":[3,3,0],"total":6,"tip":"Go Offshore\n6 operators\n3 high, 3 medium"},{"label":"Monadelphous","values":[4,1,1],"total":6,"tip":"Monadelphous\n6 operators\n4 high, 1 medium, 1 low"},{"label":"vertech","values":[2,4,0],"total":6,"tip":"vertech\n6 operators\n2 high, 4 medium"},{"label":"Bhagwan Marine","values":[2,3,0],"total":5,"tip":"Bhagwan Marine\n5 operators\n2 high, 3 medium"},{"label":"DOF","values":[2,2,1],"total":5,"tip":"DOF\n5 operators\n2 high, 2 medium, 1 low"},{"label":"Eris (Kuiper)","values":[0,5,0],"total":5,"tip":"Eris (Kuiper)\n5 operators\n5 medium"},{"label":"Solstad Australia","values":[0,2,3],"total":5,"tip":"Solstad Australia\n5 operators\n2 medium, 3 low"},{"label":"ESS","values":[3,1,0],"total":4,"tip":"ESS\n4 operators\n3 high, 1 medium"},{"label":"Enemech","values":[2,1,1],"total":4,"tip":"Enemech\n4 operators\n2 high, 1 medium, 1 low"},{"label":"MEA","values":[3,1,0],"total":4,"tip":"MEA\n4 operators\n3 high, 1 medium"},{"label":"McDermott","values":[3,1,0],"total":4,"tip":"McDermott\n4 operators\n3 high, 1 medium"},{"label":"Noble","values":[4,0,0],"total":4,"tip":"Noble\n4 operators\n4 high"},{"label":"UGL","values":[0,3,1],"total":4,"tip":"UGL\n4 operators\n3 medium, 1 low"},{"label":"Valaris (Ensco","values":[4,0,0],"total":4,"tip":"Valaris (Ensco\n4 operators\n4 high"},{"label":"CHC","values":[0,2,1],"total":3,"tip":"CHC\n3 operators\n2 medium, 1 low"},{"label":"Cyan","values":[3,0,0],"total":3,"tip":"Cyan\n3 operators\n3 high"},{"label":"Fugro","values":[1,1,1],"total":3,"tip":"Fugro\n3 operators\n1 high, 1 medium, 1 low"},{"label":"GGC","values":[0,0,3],"total":3,"tip":"GGC\n3 operators\n3 low"}]}]}],"table":{"columns":["Contractor","Woodside","Santos","Chevron","Inpex","Shell","Jadestone","BW Offshore","MODEC","Esso (Bass Strait → Woodside)","Aus Govt (N. Endeavour)"],"rows":[["Altrad","","","H","","","","","","",""],["Altrad Sparrows","","","H","","","","","","",""],["AOS","M","L","","","","","","","",""],["Applus+","H","","","","","","","","",""],["Atlas Professionals","M","","","","H","","","","",""],["Auriga Aviation","","","","","","","","","",""],["Baker Hughes","","","H","H","","","","","",""],["Bhagwan Marine","M","M","H","","","H","","","","M"],["Boskalis","H","","","","","","","","",""],["CHC","M","","","","L","M","","","",""],["Condex","","","","","","","","","H",""],["Cyan","H","","H","H","","","","","",""],["DOF","H","","M","","M","L","","","H",""],["Enemech","H","","","H","L","","","","M",""],["Entier","","","","","","","","","",""],["Eris (Kuiper)","M","M","M","M","M","","","","",""],["ESS","H","","H","H","M","","","","",""],["Fugro","H","M","L","","","","","","",""],["GGC","L","","L","L","","","","","",""],["Go Offshore","H","H","M","H","M","","","","M",""],["GR Production Services","","","","H","","","","","",""],["Heerema","M","","","H","","","","","",""],["Hjelix","L","","","","","","","","H",""],["IAS","M","","M","","","","","","",""],["Kaefer (ISOLOGIC)","","M","","M","","","","","",""],["Legeneering","H","","M","","","","","M","",""],["Lifeflight","","","","","","","","","",""],["McDermott","H","H","","M","H","","","","",""],["MEA","H","","H","","M","","","","","H"],["Monadelphous","H","","L","H","H","","H","","","M"],["Noble","H","H","H","H","","","","","",""],["Oceaneering","L","","L","","L","","","","",""],["OSA","","H","M","","","L","","","",""],["OSM","M","","","","","","","","",""],["Parabellum","","","M","L","L","","","","",""],["Petrofac","","","","","","","","","","H"],["PHI","H","","","H","H","","","","",""],["Programmed","L","","","","M","","","","",""],["Reach","H","","","","","","","","",""],["SEA1 Offshore (ex-Siem)","L","","","","","","","","",""],["SGS","","","","","H","","","","",""],["Sierra","M","","","","","","","","",""],["Sodexo","","H","","","H","","","","L",""],["Solstad Australia","M","L","L","M","L","","","","",""],["Technip Energies / TechnipFMC","H","","","","H","","","","",""],["Tidewater","","","","","","","","","",""],["TMT","","","","","","","","","",""],["Transocean (sedco forex)","H","H","","","M","","","","",""],["UGL","L","M","M","","","","","","M",""],["UPS","","","","","","","","","","H"],["Valaris (Ensco","H","H","","","","H","","","H",""],["vertech","H","M","M","H","","M","","M","",""],["Weststar-GAP","","H","","","","","","","",""],["Wood","H","","","","","","M","","H",""],["WPF(Duratech)","","H","","","","M","","","",""]],"emptyColumns":[],"emptyIdx":[]}};</script>
+<script>
+(function () {
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem('oa-viz-theme'); } catch (e) {}
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+
+  function themeLabel() {
+    var t = root.getAttribute('data-theme');
+    return t === 'dark' ? 'Dark' : (t === 'light' ? 'Light' : 'Auto');
+  }
+  var btn = document.getElementById('theme');
+  if (btn) {
+    btn.textContent = themeLabel();
+    btn.addEventListener('click', function () {
+      var t = root.getAttribute('data-theme');
+      var next = t === 'dark' ? 'light' : (t === 'light' ? null : 'dark');
+      if (next) { root.setAttribute('data-theme', next); } else { root.removeAttribute('data-theme'); }
+      try { next ? localStorage.setItem('oa-viz-theme', next) : localStorage.removeItem('oa-viz-theme'); } catch (e) {}
+      btn.textContent = themeLabel();
+    });
+  }
+
+  // ---- tooltip layer -------------------------------------------------------
+  var tip = document.createElement('div');
+  tip.id = 'tip';
+  document.body.appendChild(tip);
+  function showTip(text, x, y) {
+    tip.textContent = text;
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var left = Math.min(Math.max(8, x + 14), window.innerWidth - r.width - 8);
+    var top = y - r.height - 12;
+    if (top < 8) top = y + 18;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  document.addEventListener('mousemove', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el) { tip.classList.remove('on'); return; }
+    showTip(el.getAttribute('data-tip'), e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+
+  var PAGE = window.OA_PAGE;
+  if (!PAGE) return;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function fmt(n) { return (typeof n === 'number' ? n : 0).toLocaleString('en-AU'); }
+
+  // ---- charts --------------------------------------------------------------
+  function barChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var max = c.max || Math.max.apply(null, c.items.map(function (i) { return i.value; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      var fill = el('div', 'bar-fill');
+      fill.style.width = (max ? (item.value / max) * 100 : 0) + '%';
+      if (c.color) fill.style.background = 'var(--' + c.color + ')';
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.value)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    if (c.foot) card.appendChild(el('p', 'sub', c.foot)).style.margin = '14px 0 0';
+    return card;
+  }
+
+  function stackChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var legend = el('div', 'legend');
+    c.series.forEach(function (s) {
+      var span = el('span');
+      var sw = el('i');
+      sw.style.background = 'var(--' + s.color + ')';
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(s.name));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+    var max = Math.max.apply(null, c.items.map(function (i) { return i.total; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      item.values.forEach(function (v, i) {
+        if (!v) return;
+        var seg = el('div', 'seg');
+        seg.style.width = 'calc(' + (v / max) * 100 + '% - 2px)';
+        seg.style.background = 'var(--' + c.series[i].color + ')';
+        track.appendChild(seg);
+      });
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.total)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    return card;
+  }
+
+  function heatChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var tools = el('div', 'heat-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = c.filter || 'Filter rows…';
+    tools.appendChild(search);
+    var count = el('span', 'toolnote', '');
+    tools.appendChild(count);
+    card.appendChild(tools);
+
+    var legend = el('div', 'legend');
+    c.legend.forEach(function (l) {
+      var span = el('span');
+      var sw = el('i');
+      if (l.cls) { sw.className = 'cell ' + l.cls; sw.style.borderRadius = '3px'; }
+      else { sw.style.boxShadow = 'inset 0 0 0 1px var(--grid)'; }
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(l.label));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+
+    var scroll = el('div', 'heat-scroll');
+    var grid = el('div', 'heat');
+    grid.style.gridTemplateColumns = 'minmax(128px, 210px) repeat(' + c.cols.length + ', minmax(' + (c.cols.length > 12 ? 58 : 66) + 'px, 1fr))';
+    grid.appendChild(el('div', 'corner'));
+    c.cols.forEach(function (col) {
+      var h = el('div', 'hh', col.label);
+      if (col.tip) h.setAttribute('data-tip', col.tip);
+      grid.appendChild(h);
+    });
+    var rowNodes = [];
+    c.rows.forEach(function (r) {
+      var nodes = [];
+      var rh = el('div', 'rh', r.label);
+      if (r.tip) rh.setAttribute('data-tip', r.tip);
+      nodes.push(rh);
+      r.cells.forEach(function (cell, i) {
+        var cn = el('div', 'cell' + (cell.c ? ' ' + cell.c : ' empty'), cell.t || '');
+        cn.setAttribute('data-tip', (cell.tip || (r.label + ' × ' + c.cols[i].label + '\nno linkage recorded')));
+        nodes.push(cn);
+      });
+      nodes.forEach(function (n) { grid.appendChild(n); });
+      rowNodes.push({ text: (r.label + ' ' + (r.search || '')).toLowerCase(), nodes: nodes });
+    });
+    scroll.appendChild(grid);
+    card.appendChild(scroll);
+
+    function apply() {
+      var q = search.value.trim().toLowerCase();
+      var shown = 0;
+      rowNodes.forEach(function (r) {
+        var hit = !q || r.text.indexOf(q) !== -1;
+        if (hit) shown++;
+        r.nodes.forEach(function (n) { n.style.display = hit ? '' : 'none'; });
+      });
+      count.textContent = shown + ' of ' + rowNodes.length + ' rows';
+    }
+    search.addEventListener('input', apply);
+    apply();
+    return card;
+  }
+
+  function renderChart(c) {
+    if (c.type === 'stack') return stackChart(c);
+    if (c.type === 'heat') return heatChart(c);
+    return barChart(c);
+  }
+
+  // ---- page assembly -------------------------------------------------------
+  var statsHost = document.getElementById('stats');
+  if (statsHost && PAGE.stats) {
+    PAGE.stats.forEach(function (s) {
+      var n = el('div', 'stat');
+      n.appendChild(el('div', 'v', s.v));
+      n.appendChild(el('div', 'k', s.k));
+      if (s.h) n.appendChild(el('div', 'h', s.h));
+      statsHost.appendChild(n);
+    });
+  }
+
+  var chartHost = document.getElementById('sections');
+  if (chartHost && PAGE.sections) {
+    PAGE.sections.forEach(function (sec) {
+      var s = el('section');
+      s.appendChild(el('h2', null, sec.title));
+      var grid = el('div', 'chart-grid' + (sec.wide ? ' one' : ''));
+      sec.charts.forEach(function (c) { grid.appendChild(renderChart(c)); });
+      s.appendChild(grid);
+      chartHost.appendChild(s);
+    });
+  }
+
+  // ---- table ---------------------------------------------------------------
+  var T = PAGE.table;
+  var tableHost = document.getElementById('table-host');
+  if (T && tableHost) {
+    var escapeHTML = function (s) {
+      return String(s).replace(/[&<>"]/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+      });
+    };
+    var chipFor = function (letter) {
+      var map = { H: ['chip-h', 'High'], M: ['chip-m', 'Medium'], L: ['chip-l', 'Low'] };
+      var m = map[letter];
+      return '<span class="chip ' + m[0] + '" title="' + m[1] + ' confidence">' + letter + '</span>';
+    };
+    var decorate = function (raw) {
+      var t = escapeHTML(raw);
+      if (/^[HML]$/.test(raw)) return chipFor(raw);
+      t = t.replace(/\((H|M|L)\)/g, function (_, l) { return chipFor(l); });
+      t = t.replace(/\[WB\]/g, '<span class="tag" title="From the colleague’s whiteboard">WB</span>');
+      return t;
+    };
+
+    var showAll = false;
+    var tools = el('div', 'table-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Search all columns…';
+    tools.appendChild(search);
+    var note = el('span', 'toolnote', '');
+    var toggle = null;
+    if (T.emptyColumns && T.emptyColumns.length) {
+      toggle = el('button', 'toolbtn', 'Show ' + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : ''));
+      toggle.setAttribute('data-tip', 'Columns with no values in any row:\n' + T.emptyColumns.join(', '));
+      tools.appendChild(toggle);
+    }
+    tools.appendChild(note);
+    tableHost.appendChild(tools);
+
+    var scroll = el('div', 'table-scroll');
+    var table = document.createElement('table');
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    thead.appendChild(headRow);
+    var tbody = document.createElement('tbody');
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    tableHost.appendChild(scroll);
+
+    var sortCol = -1, sortDir = 1, query = '';
+
+    function visibleCols() {
+      return T.columns.map(function (c, i) { return i; }).filter(function (i) {
+        return showAll || T.emptyIdx.indexOf(i) === -1;
+      });
+    }
+    function draw() {
+      var cols = visibleCols();
+      headRow.innerHTML = '';
+      cols.forEach(function (i) {
+        var th = el('th', null, T.columns[i] || '—');
+        if (sortCol === i) {
+          var ind = el('span', 'ind', sortDir > 0 ? ' ↑' : ' ↓');
+          th.appendChild(ind);
+        }
+        th.addEventListener('click', function () {
+          if (sortCol === i) { sortDir = -sortDir; } else { sortCol = i; sortDir = 1; }
+          draw();
+        });
+        headRow.appendChild(th);
+      });
+      var terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      var rows = T.rows.filter(function (r) {
+        if (!terms.length) return true;
+        var hay = r.join(' ').toLowerCase();
+        return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+      });
+      if (sortCol >= 0) {
+        rows = rows.slice().sort(function (a, b) {
+          var x = a[sortCol] || '', y = b[sortCol] || '';
+          var nx = parseFloat(x), ny = parseFloat(y);
+          var numeric = !isNaN(nx) && !isNaN(ny) && /^[\d.,\s]+$/.test(x) && /^[\d.,\s]+$/.test(y);
+          if (numeric) return (nx - ny) * sortDir;
+          if (!x) return 1;
+          if (!y) return -1;
+          return x.localeCompare(y) * sortDir;
+        });
+      }
+      tbody.innerHTML = rows.map(function (r) {
+        return '<tr>' + cols.map(function (i) {
+          var v = r[i] || '';
+          var cls = /^[\d.]+$/.test(v) ? ' class="num"' : '';
+          return '<td' + cls + '>' + decorate(v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      note.textContent = rows.length === T.rows.length
+        ? fmt(T.rows.length) + ' rows · ' + cols.length + ' of ' + T.columns.length + ' columns'
+        : fmt(rows.length) + ' of ' + fmt(T.rows.length) + ' rows';
+    }
+    search.addEventListener('input', function () { query = search.value; draw(); });
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        showAll = !showAll;
+        toggle.textContent = (showAll ? 'Hide ' : 'Show ') + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : '');
+        draw();
+      });
+    }
+    draw();
+  }
+})();
+</script>
+</body>
+</html>

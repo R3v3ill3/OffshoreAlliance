@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contractors by scope of work — OA Universe</title>
+<meta name="description" content="The original scope list: which contractors sit under marine, drilling, catering, maintenance, ROV and the rest.">
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.05);
+  --track: #f0efec;
+  --seq-1: #104281;
+  --seq-2: #1c5cab;
+  --seq-3: #2a78d6;
+  --seq-4: #5598e7;
+  --seq-5: #86b6ef;
+  --seq-0: #cde2fb;
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --shadow: none;
+    --track: #232322;
+    --seq-1: #9ec5f4;
+    --seq-2: #6da7ec;
+    --seq-3: #3987e5;
+    --seq-4: #256abf;
+    --seq-5: #184f95;
+    --seq-0: #12345f;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --neutral: #383835;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --shadow: none;
+  --track: #232322;
+  --seq-1: #9ec5f4;
+  --seq-2: #6da7ec;
+  --seq-3: #3987e5;
+  --seq-4: #256abf;
+  --seq-5: #184f95;
+  --seq-0: #12345f;
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+  --neutral: #383835;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 72px; }
+
+/* ---- masthead ---- */
+.masthead { border-bottom: 1px solid var(--border); background: var(--surface); }
+.masthead-in {
+  max-width: 1180px; margin: 0 auto; padding: 14px 16px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.brand { font-weight: 640; letter-spacing: -0.01em; text-decoration: none; }
+.brand span { color: var(--muted); font-weight: 400; }
+.masthead nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.masthead nav a {
+  text-decoration: none; color: var(--ink-2); font-size: 13px;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid transparent;
+}
+.masthead nav a:hover { background: var(--track); }
+.masthead nav a[aria-current="page"] { border-color: var(--border); color: var(--ink); font-weight: 560; }
+.theme-toggle {
+  font: inherit; font-size: 13px; cursor: pointer; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+}
+.theme-toggle:hover { background: var(--track); }
+
+/* ---- page head ---- */
+header.page { padding: 34px 0 10px; }
+header.page h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+header.page .blurb { margin: 0; color: var(--ink-2); max-width: 74ch; }
+.crumbs { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.crumbs a { color: var(--ink-2); }
+.srcline { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.srcline code { font-size: 12px; background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+/* ---- stat tiles ---- */
+.stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); margin: 26px 0 8px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; box-shadow: var(--shadow);
+}
+.stat .v { font-size: 30px; line-height: 1.05; letter-spacing: -0.02em; font-weight: 600; }
+.stat .k { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.stat .h { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ---- sections & charts ---- */
+section { margin-top: 34px; }
+section > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px; font-weight: 620; }
+.chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.chart-grid.one { grid-template-columns: 1fr; }
+.chart-grid.one .bar-row { grid-template-columns: minmax(84px, 230px) 1fr auto; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px 18px; box-shadow: var(--shadow); min-width: 0;
+}
+.card h3 { font-size: 15px; margin: 0 0 3px; letter-spacing: -0.01em; }
+.card .sub { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 12px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: minmax(84px, 38%) 1fr auto; gap: 10px; align-items: center; }
+.bar-label { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.bar-track { height: 14px; background: var(--track); border-radius: 0 4px 4px 0; display: flex; }
+.bar-fill { background: var(--seq-3); border-radius: 0 4px 4px 0; min-width: 2px; height: 100%; }
+.bar-track .seg { height: 100%; min-width: 2px; margin-right: 2px; border-radius: 0; }
+.bar-track .seg:last-child { margin-right: 0; border-radius: 0 4px 4px 0; }
+.bar-value { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; }
+.bar-row:hover .bar-label, .bar-row:hover .bar-value { color: var(--ink); }
+
+/* ---- heatmap ---- */
+.heat-tools { display: flex; gap: 10px; align-items: center; margin: 0 0 12px; flex-wrap: wrap; }
+.heat-scroll { overflow: auto; max-height: 620px; border: 1px solid var(--border); border-radius: 8px; }
+.heat { display: grid; gap: 2px; padding: 2px; background: var(--surface); }
+.heat .hh, .heat .rh {
+  position: sticky; background: var(--surface); z-index: 2; font-size: 11.5px; color: var(--ink-2);
+}
+.heat .hh { top: 0; padding: 6px 4px; text-align: center; line-height: 1.25; align-self: stretch; border-bottom: 1px solid var(--grid); overflow-wrap: break-word; hyphens: none; }
+.heat .rh { left: 0; z-index: 1; padding: 4px 8px 4px 6px; display: flex; align-items: center; border-right: 1px solid var(--grid); overflow-wrap: break-word; }
+.heat .corner { position: sticky; top: 0; left: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid); }
+.heat .cell { min-height: 22px; border-radius: 3px; background: var(--track); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; }
+.heat .cell.empty { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); }
+.heat .cell:hover { outline: 2px solid var(--ink); outline-offset: -2px; }
+.heat.dim .row-off { display: none; }
+
+/* ---- table ---- */
+.table-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+input[type="search"], input[type="text"] {
+  font: inherit; font-size: 13px; padding: 6px 10px; min-width: 220px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink);
+}
+.toolbtn {
+  font: inherit; font-size: 13px; cursor: pointer; padding: 6px 11px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink-2);
+}
+.toolbtn:hover { background: var(--track); }
+.toolnote { font-size: 13px; color: var(--muted); }
+.table-scroll { overflow: auto; max-height: 720px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface); text-align: left; font-weight: 600;
+  padding: 9px 12px; border-bottom: 1px solid var(--axis); white-space: nowrap; cursor: pointer; color: var(--ink-2);
+}
+thead th:hover { color: var(--ink); }
+thead th .ind { color: var(--muted); font-weight: 400; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid var(--grid); vertical-align: top; color: var(--ink-2); }
+tbody td:first-child { color: var(--ink); font-weight: 560; }
+tbody tr:hover td { background: var(--track); }
+tbody td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+.chip { display: inline-block; font-size: 11px; font-weight: 640; line-height: 1.6; padding: 0 6px; border-radius: 4px; color: #fff; vertical-align: 1px; }
+.chip-h { background: var(--seq-2); }
+.chip-m { background: var(--seq-3); }
+.chip-l { background: var(--seq-5); color: #0b0b0b; }
+:root[data-theme="dark"] .chip-l, :root:where(:not([data-theme="light"])) .chip-l { color: #0b0b0b; }
+.tag { display: inline-block; font-size: 10.5px; letter-spacing: 0.04em; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.status i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ---- notes ---- */
+.notes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px 14px; }
+.notes li { margin: 8px 0; color: var(--ink-2); font-size: 13.5px; }
+
+/* ---- index cards ---- */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.tabcard {
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px 20px; box-shadow: var(--shadow);
+}
+.tabcard:hover { border-color: var(--axis); }
+.tabcard h3 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.tabcard p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.tabcard .meta { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.tabcard .go { font-size: 13px; color: var(--seq-3); font-weight: 560; }
+
+/* ---- tooltip ---- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .09s;
+  max-width: 320px; background: var(--ink); color: var(--plane); font-size: 12.5px; line-height: 1.45;
+  padding: 7px 10px; border-radius: 7px; white-space: pre-line;
+}
+#tip.on { opacity: 1; }
+
+footer.page { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+footer.page code { background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+@media (max-width: 640px) {
+  header.page h1 { font-size: 24px; }
+  .bar-row { grid-template-columns: minmax(70px, 44%) 1fr auto; }
+}
+@media print {
+  .masthead nav, .theme-toggle, .table-tools, .heat-tools { display: none; }
+  .table-scroll, .heat-scroll { max-height: none; }
+  .card, .stat { break-inside: avoid; }
+}
+
+.cell.s1 { background: #104281; color: #fff; }
+.cell.s2 { background: #1c5cab; color: #fff; }
+.cell.s3 { background: #2a78d6; color: #fff; }
+.cell.s4 { background: #5598e7; color: #0b0b0b; }
+.cell.s5 { background: #86b6ef; color: #0b0b0b; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s3 { background: #3987e5; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s4 { background: #256abf; color: #fff; }
+  :root:where(:not([data-theme="light"])) .cell.s5 { background: #184f95; color: #fff; }
+}
+:root[data-theme="dark"] .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s3 { background: #3987e5; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s4 { background: #256abf; color: #fff; }
+:root[data-theme="dark"] .cell.s5 { background: #184f95; color: #fff; }
+</style>
+</head>
+<body>
+<div class="masthead"><div class="masthead-in">
+  <a class="brand" href="index.html">OA Universe <span>&middot; tab visualisations</span></a>
+  <nav><a href="index.html">Index</a><a href="key-assets.html">Key assets</a><a href="asset-contractors.html">Asset → contractors</a><a href="contractor-linkages.html">Contractor linkages</a><a href="contractor-x-tier-1.html">Contractor × Tier-1</a><a href="contractors.html" aria-current="page">Contractors by scope</a><a href="facility-x-scope.html">Facility × scope</a><a href="key-clients.html">Marine key clients</a><a href="operator-companies.html">Operator → companies</a><a href="reconciliation.html">Reconciliation</a><a href="onshore.html">Onshore</a><button class="theme-toggle" id="theme" type="button" title="Light / dark / follow the system">Auto</button></nav>
+</div></div>
+<div class="wrap">
+
+<header class="page">
+  <p class="crumbs"><a href="index.html">OA Universe tabs</a> &rsaquo; Contractors by scope</p>
+  <h1>Contractors by scope of work</h1>
+  <p class="blurb">The starting contractor list, grouped by scope of work. Contractors appearing under several scopes — Programmed, OSM, AOS — are the labour-hire and multi-scope employers that need one canonical record, not one per scope.</p>
+  <p class="srcline">Source: <code>Offshore_contractors.csv</code> &middot;
+     <a href="../Offshore_contractors.csv">open the CSV</a></p>
+</header>
+<div class="stats" id="stats"></div>
+<div id="sections"></div>
+<section><h2>Every row</h2><div id="table-host"></div></section>
+
+
+<footer class="page">
+  Generated from <code>Offshore_contractors.csv</code> on 22 September 2026 by
+  <code>scripts/data-hygiene/oa-universe/build_tab_visualisations.py</code>.
+  The CSVs are the source of truth &mdash; edit those and re-run the script.
+</footer>
+</div>
+<script>window.OA_PAGE = {"stats":[{"v":11,"k":"Scopes of work"},{"v":39,"k":"Distinct contractors"},{"v":59,"k":"Scope × contractor entries"},{"v":8,"k":"Contractors in more than one scope"}],"sections":[{"title":"The scope list","charts":[{"type":"bar","title":"Contractors per scope","sub":"As listed on the tab","color":"seq-3","foot":null,"items":[{"label":"ROV","value":9,"tip":"ROV\n9 contractors\n· DOF\n· Oceaneering\n· TMT\n· Fugro\n· AOS\n· Programmed\n· OSM\n· Hjelix\n· Reach"},{"label":"Maintenance","value":8,"tip":"Maintenance\n8 contractors\n· Monadelphous\n· Legeneering\n· UGL\n· Altrad\n· Eris (Kuiper)\n· Programmed\n· Enemech\n· Kaefer (ISOLOGIC)"},{"label":"Marine","value":8,"tip":"Marine\n8 contractors\n· DOF\n· Sierra\n· Cyan\n· Go Offshore\n· AOS\n· Programmed\n· OSM\n· Tidewater"},{"label":"Decomm","value":7,"tip":"Decomm\n7 contractors\n· UPS\n· Eris (Kuiper)\n· Programmed\n· OSM\n· MEA\n· WPF(Duratech)\n· GGC"},{"label":"Drilling","value":6,"tip":"Drilling\n6 contractors\n· Transocean (sedco forex)\n· Valaris (Ensco\n· Programmed\n· OSM\n· Baker Hughes\n· Noble"},{"label":"Helicopters","value":6,"tip":"Helicopters\n6 contractors\n· PHI\n· OSA\n· CHC\n· vertech\n· Wood\n· Lifeflight"},{"label":"Catering","value":5,"tip":"Catering\n5 contractors\n· ESS\n· Entier\n· Sodexo\n· AOS\n· Programmed"},{"label":"Construction","value":5,"tip":"Construction\n5 contractors\n· Eris (Kuiper)\n· McDermott\n· OSM\n· AOS\n· Programmed"},{"label":"Hookup/Commissioning","value":3,"tip":"Hookup/Commissioning\n3 contractors\n· Monadelphous\n· Programmed\n· Legeneering"},{"label":"Chemist","value":1,"tip":"Chemist\n1 contractors\n· SGS"},{"label":"Surveyors","value":1,"tip":"Surveyors\n1 contractors\n· Fugro"}]},{"type":"bar","title":"Scopes per contractor","sub":"Contractors listed under more than one scope of work","color":"seq-3","foot":null,"items":[{"label":"Programmed","value":8,"tip":"Programmed\n8 scopes\n· Marine\n· Drilling\n· Catering\n· Maintenance\n· ROV\n· Construction\n· Hookup/Commissioning\n· Decomm"},{"label":"OSM","value":5,"tip":"OSM\n5 scopes\n· Marine\n· Drilling\n· ROV\n· Construction\n· Decomm"},{"label":"AOS","value":4,"tip":"AOS\n4 scopes\n· Marine\n· Catering\n· ROV\n· Construction"},{"label":"Eris (Kuiper)","value":3,"tip":"Eris (Kuiper)\n3 scopes\n· Maintenance\n· Construction\n· Decomm"},{"label":"DOF","value":2,"tip":"DOF\n2 scopes\n· Marine\n· ROV"},{"label":"Fugro","value":2,"tip":"Fugro\n2 scopes\n· Surveyors\n· ROV"},{"label":"Legeneering","value":2,"tip":"Legeneering\n2 scopes\n· Maintenance\n· Hookup/Commissioning"},{"label":"Monadelphous","value":2,"tip":"Monadelphous\n2 scopes\n· Maintenance\n· Hookup/Commissioning"}]}]},{"title":"Contractor × scope","wide":true,"charts":[{"type":"heat","title":"Which contractor is listed under which scope","sub":"A filled cell means the contractor appears under that scope on the tab","filter":"Filter contractors or scopes…","cols":[{"label":"Marine","tip":"Marine"},{"label":"Chemist","tip":"Chemist"},{"label":"Drilling","tip":"Drilling"},{"label":"Catering","tip":"Catering"},{"label":"Surveyors","tip":"Surveyors"},{"label":"Maintenance","tip":"Maintenance"},{"label":"Helicopters","tip":"Helicopters"},{"label":"ROV","tip":"ROV"},{"label":"Construction","tip":"Construction"},{"label":"Hookup/Commissioning","tip":"Hookup/Commissioning"},{"label":"Decomm","tip":"Decomm"}],"rows":[{"label":"Altrad","tip":"Altrad\n1 scope\n· Maintenance","search":"Maintenance","cells":[{"t":"","c":"","tip":"Altrad\nnot listed under Marine"},{"t":"","c":"","tip":"Altrad\nnot listed under Chemist"},{"t":"","c":"","tip":"Altrad\nnot listed under Drilling"},{"t":"","c":"","tip":"Altrad\nnot listed under Catering"},{"t":"","c":"","tip":"Altrad\nnot listed under Surveyors"},{"t":"●","c":"s3","tip":"Altrad\nMaintenance"},{"t":"","c":"","tip":"Altrad\nnot listed under Helicopters"},{"t":"","c":"","tip":"Altrad\nnot listed under ROV"},{"t":"","c":"","tip":"Altrad\nnot listed under Construction"},{"t":"","c":"","tip":"Altrad\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Altrad\nnot listed under Decomm"}]},{"label":"AOS","tip":"AOS\n4 scopes\n· Marine\n· Catering\n· ROV\n· Construction","search":"Marine Catering ROV Construction","cells":[{"t":"●","c":"s3","tip":"AOS\nMarine"},{"t":"","c":"","tip":"AOS\nnot listed under Chemist"},{"t":"","c":"","tip":"AOS\nnot listed under Drilling"},{"t":"●","c":"s3","tip":"AOS\nCatering"},{"t":"","c":"","tip":"AOS\nnot listed under Surveyors"},{"t":"","c":"","tip":"AOS\nnot listed under Maintenance"},{"t":"","c":"","tip":"AOS\nnot listed under Helicopters"},{"t":"●","c":"s3","tip":"AOS\nROV"},{"t":"●","c":"s3","tip":"AOS\nConstruction"},{"t":"","c":"","tip":"AOS\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"AOS\nnot listed under Decomm"}]},{"label":"Baker Hughes","tip":"Baker Hughes\n1 scope\n· Drilling","search":"Drilling","cells":[{"t":"","c":"","tip":"Baker Hughes\nnot listed under Marine"},{"t":"","c":"","tip":"Baker Hughes\nnot listed under Chemist"},{"t":"●","c":"s3","tip":"Baker Hughes\nDrilling"},{"t":"","c":"","tip":"Baker Hughes\nnot listed under Catering"},{"t":"","c":"","tip":"Baker Hughes\nnot listed under Surveyors"},{"t":"","c":"","tip":"Baker Hughes\nnot listed under Maintenance"},{"t":"","c":"","tip":"Baker Hughes\nnot listed under Helicopters"},{"t":"","c":"","tip":"Baker Hughes\nnot listed under ROV"},{"t":"","c":"","tip":"Baker Hughes\nnot listed under Construction"},{"t":"","c":"","tip":"Baker Hughes\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Baker Hughes\nnot listed under Decomm"}]},{"label":"CHC","tip":"CHC\n1 scope\n· Helicopters","search":"Helicopters","cells":[{"t":"","c":"","tip":"CHC\nnot listed under Marine"},{"t":"","c":"","tip":"CHC\nnot listed under Chemist"},{"t":"","c":"","tip":"CHC\nnot listed under Drilling"},{"t":"","c":"","tip":"CHC\nnot listed under Catering"},{"t":"","c":"","tip":"CHC\nnot listed under Surveyors"},{"t":"","c":"","tip":"CHC\nnot listed under Maintenance"},{"t":"●","c":"s3","tip":"CHC\nHelicopters"},{"t":"","c":"","tip":"CHC\nnot listed under ROV"},{"t":"","c":"","tip":"CHC\nnot listed under Construction"},{"t":"","c":"","tip":"CHC\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"CHC\nnot listed under Decomm"}]},{"label":"Cyan","tip":"Cyan\n1 scope\n· Marine","search":"Marine","cells":[{"t":"●","c":"s3","tip":"Cyan\nMarine"},{"t":"","c":"","tip":"Cyan\nnot listed under Chemist"},{"t":"","c":"","tip":"Cyan\nnot listed under Drilling"},{"t":"","c":"","tip":"Cyan\nnot listed under Catering"},{"t":"","c":"","tip":"Cyan\nnot listed under Surveyors"},{"t":"","c":"","tip":"Cyan\nnot listed under Maintenance"},{"t":"","c":"","tip":"Cyan\nnot listed under Helicopters"},{"t":"","c":"","tip":"Cyan\nnot listed under ROV"},{"t":"","c":"","tip":"Cyan\nnot listed under Construction"},{"t":"","c":"","tip":"Cyan\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Cyan\nnot listed under Decomm"}]},{"label":"DOF","tip":"DOF\n2 scopes\n· Marine\n· ROV","search":"Marine ROV","cells":[{"t":"●","c":"s3","tip":"DOF\nMarine"},{"t":"","c":"","tip":"DOF\nnot listed under Chemist"},{"t":"","c":"","tip":"DOF\nnot listed under Drilling"},{"t":"","c":"","tip":"DOF\nnot listed under Catering"},{"t":"","c":"","tip":"DOF\nnot listed under Surveyors"},{"t":"","c":"","tip":"DOF\nnot listed under Maintenance"},{"t":"","c":"","tip":"DOF\nnot listed under Helicopters"},{"t":"●","c":"s3","tip":"DOF\nROV"},{"t":"","c":"","tip":"DOF\nnot listed under Construction"},{"t":"","c":"","tip":"DOF\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"DOF\nnot listed under Decomm"}]},{"label":"Enemech","tip":"Enemech\n1 scope\n· Maintenance","search":"Maintenance","cells":[{"t":"","c":"","tip":"Enemech\nnot listed under Marine"},{"t":"","c":"","tip":"Enemech\nnot listed under Chemist"},{"t":"","c":"","tip":"Enemech\nnot listed under Drilling"},{"t":"","c":"","tip":"Enemech\nnot listed under Catering"},{"t":"","c":"","tip":"Enemech\nnot listed under Surveyors"},{"t":"●","c":"s3","tip":"Enemech\nMaintenance"},{"t":"","c":"","tip":"Enemech\nnot listed under Helicopters"},{"t":"","c":"","tip":"Enemech\nnot listed under ROV"},{"t":"","c":"","tip":"Enemech\nnot listed under Construction"},{"t":"","c":"","tip":"Enemech\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Enemech\nnot listed under Decomm"}]},{"label":"Entier","tip":"Entier\n1 scope\n· Catering","search":"Catering","cells":[{"t":"","c":"","tip":"Entier\nnot listed under Marine"},{"t":"","c":"","tip":"Entier\nnot listed under Chemist"},{"t":"","c":"","tip":"Entier\nnot listed under Drilling"},{"t":"●","c":"s3","tip":"Entier\nCatering"},{"t":"","c":"","tip":"Entier\nnot listed under Surveyors"},{"t":"","c":"","tip":"Entier\nnot listed under Maintenance"},{"t":"","c":"","tip":"Entier\nnot listed under Helicopters"},{"t":"","c":"","tip":"Entier\nnot listed under ROV"},{"t":"","c":"","tip":"Entier\nnot listed under Construction"},{"t":"","c":"","tip":"Entier\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Entier\nnot listed under Decomm"}]},{"label":"Eris (Kuiper)","tip":"Eris (Kuiper)\n3 scopes\n· Maintenance\n· Construction\n· Decomm","search":"Maintenance Construction Decomm","cells":[{"t":"","c":"","tip":"Eris (Kuiper)\nnot listed under Marine"},{"t":"","c":"","tip":"Eris (Kuiper)\nnot listed under Chemist"},{"t":"","c":"","tip":"Eris (Kuiper)\nnot listed under Drilling"},{"t":"","c":"","tip":"Eris (Kuiper)\nnot listed under Catering"},{"t":"","c":"","tip":"Eris (Kuiper)\nnot listed under Surveyors"},{"t":"●","c":"s3","tip":"Eris (Kuiper)\nMaintenance"},{"t":"","c":"","tip":"Eris (Kuiper)\nnot listed under Helicopters"},{"t":"","c":"","tip":"Eris (Kuiper)\nnot listed under ROV"},{"t":"●","c":"s3","tip":"Eris (Kuiper)\nConstruction"},{"t":"","c":"","tip":"Eris (Kuiper)\nnot listed under Hookup/Commissioning"},{"t":"●","c":"s3","tip":"Eris (Kuiper)\nDecomm"}]},{"label":"ESS","tip":"ESS\n1 scope\n· Catering","search":"Catering","cells":[{"t":"","c":"","tip":"ESS\nnot listed under Marine"},{"t":"","c":"","tip":"ESS\nnot listed under Chemist"},{"t":"","c":"","tip":"ESS\nnot listed under Drilling"},{"t":"●","c":"s3","tip":"ESS\nCatering"},{"t":"","c":"","tip":"ESS\nnot listed under Surveyors"},{"t":"","c":"","tip":"ESS\nnot listed under Maintenance"},{"t":"","c":"","tip":"ESS\nnot listed under Helicopters"},{"t":"","c":"","tip":"ESS\nnot listed under ROV"},{"t":"","c":"","tip":"ESS\nnot listed under Construction"},{"t":"","c":"","tip":"ESS\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"ESS\nnot listed under Decomm"}]},{"label":"Fugro","tip":"Fugro\n2 scopes\n· Surveyors\n· ROV","search":"Surveyors ROV","cells":[{"t":"","c":"","tip":"Fugro\nnot listed under Marine"},{"t":"","c":"","tip":"Fugro\nnot listed under Chemist"},{"t":"","c":"","tip":"Fugro\nnot listed under Drilling"},{"t":"","c":"","tip":"Fugro\nnot listed under Catering"},{"t":"●","c":"s3","tip":"Fugro\nSurveyors"},{"t":"","c":"","tip":"Fugro\nnot listed under Maintenance"},{"t":"","c":"","tip":"Fugro\nnot listed under Helicopters"},{"t":"●","c":"s3","tip":"Fugro\nROV"},{"t":"","c":"","tip":"Fugro\nnot listed under Construction"},{"t":"","c":"","tip":"Fugro\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Fugro\nnot listed under Decomm"}]},{"label":"GGC","tip":"GGC\n1 scope\n· Decomm","search":"Decomm","cells":[{"t":"","c":"","tip":"GGC\nnot listed under Marine"},{"t":"","c":"","tip":"GGC\nnot listed under Chemist"},{"t":"","c":"","tip":"GGC\nnot listed under Drilling"},{"t":"","c":"","tip":"GGC\nnot listed under Catering"},{"t":"","c":"","tip":"GGC\nnot listed under Surveyors"},{"t":"","c":"","tip":"GGC\nnot listed under Maintenance"},{"t":"","c":"","tip":"GGC\nnot listed under Helicopters"},{"t":"","c":"","tip":"GGC\nnot listed under ROV"},{"t":"","c":"","tip":"GGC\nnot listed under Construction"},{"t":"","c":"","tip":"GGC\nnot listed under Hookup/Commissioning"},{"t":"●","c":"s3","tip":"GGC\nDecomm"}]},{"label":"Go Offshore","tip":"Go Offshore\n1 scope\n· Marine","search":"Marine","cells":[{"t":"●","c":"s3","tip":"Go Offshore\nMarine"},{"t":"","c":"","tip":"Go Offshore\nnot listed under Chemist"},{"t":"","c":"","tip":"Go Offshore\nnot listed under Drilling"},{"t":"","c":"","tip":"Go Offshore\nnot listed under Catering"},{"t":"","c":"","tip":"Go Offshore\nnot listed under Surveyors"},{"t":"","c":"","tip":"Go Offshore\nnot listed under Maintenance"},{"t":"","c":"","tip":"Go Offshore\nnot listed under Helicopters"},{"t":"","c":"","tip":"Go Offshore\nnot listed under ROV"},{"t":"","c":"","tip":"Go Offshore\nnot listed under Construction"},{"t":"","c":"","tip":"Go Offshore\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Go Offshore\nnot listed under Decomm"}]},{"label":"Hjelix","tip":"Hjelix\n1 scope\n· ROV","search":"ROV","cells":[{"t":"","c":"","tip":"Hjelix\nnot listed under Marine"},{"t":"","c":"","tip":"Hjelix\nnot listed under Chemist"},{"t":"","c":"","tip":"Hjelix\nnot listed under Drilling"},{"t":"","c":"","tip":"Hjelix\nnot listed under Catering"},{"t":"","c":"","tip":"Hjelix\nnot listed under Surveyors"},{"t":"","c":"","tip":"Hjelix\nnot listed under Maintenance"},{"t":"","c":"","tip":"Hjelix\nnot listed under Helicopters"},{"t":"●","c":"s3","tip":"Hjelix\nROV"},{"t":"","c":"","tip":"Hjelix\nnot listed under Construction"},{"t":"","c":"","tip":"Hjelix\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Hjelix\nnot listed under Decomm"}]},{"label":"Kaefer (ISOLOGIC)","tip":"Kaefer (ISOLOGIC)\n1 scope\n· Maintenance","search":"Maintenance","cells":[{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under Marine"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under Chemist"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under Drilling"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under Catering"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under Surveyors"},{"t":"●","c":"s3","tip":"Kaefer (ISOLOGIC)\nMaintenance"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under Helicopters"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under ROV"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under Construction"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Kaefer (ISOLOGIC)\nnot listed under Decomm"}]},{"label":"Legeneering","tip":"Legeneering\n2 scopes\n· Maintenance\n· Hookup/Commissioning","search":"Maintenance Hookup/Commissioning","cells":[{"t":"","c":"","tip":"Legeneering\nnot listed under Marine"},{"t":"","c":"","tip":"Legeneering\nnot listed under Chemist"},{"t":"","c":"","tip":"Legeneering\nnot listed under Drilling"},{"t":"","c":"","tip":"Legeneering\nnot listed under Catering"},{"t":"","c":"","tip":"Legeneering\nnot listed under Surveyors"},{"t":"●","c":"s3","tip":"Legeneering\nMaintenance"},{"t":"","c":"","tip":"Legeneering\nnot listed under Helicopters"},{"t":"","c":"","tip":"Legeneering\nnot listed under ROV"},{"t":"","c":"","tip":"Legeneering\nnot listed under Construction"},{"t":"●","c":"s3","tip":"Legeneering\nHookup/Commissioning"},{"t":"","c":"","tip":"Legeneering\nnot listed under Decomm"}]},{"label":"Lifeflight","tip":"Lifeflight\n1 scope\n· Helicopters","search":"Helicopters","cells":[{"t":"","c":"","tip":"Lifeflight\nnot listed under Marine"},{"t":"","c":"","tip":"Lifeflight\nnot listed under Chemist"},{"t":"","c":"","tip":"Lifeflight\nnot listed under Drilling"},{"t":"","c":"","tip":"Lifeflight\nnot listed under Catering"},{"t":"","c":"","tip":"Lifeflight\nnot listed under Surveyors"},{"t":"","c":"","tip":"Lifeflight\nnot listed under Maintenance"},{"t":"●","c":"s3","tip":"Lifeflight\nHelicopters"},{"t":"","c":"","tip":"Lifeflight\nnot listed under ROV"},{"t":"","c":"","tip":"Lifeflight\nnot listed under Construction"},{"t":"","c":"","tip":"Lifeflight\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Lifeflight\nnot listed under Decomm"}]},{"label":"McDermott","tip":"McDermott\n1 scope\n· Construction","search":"Construction","cells":[{"t":"","c":"","tip":"McDermott\nnot listed under Marine"},{"t":"","c":"","tip":"McDermott\nnot listed under Chemist"},{"t":"","c":"","tip":"McDermott\nnot listed under Drilling"},{"t":"","c":"","tip":"McDermott\nnot listed under Catering"},{"t":"","c":"","tip":"McDermott\nnot listed under Surveyors"},{"t":"","c":"","tip":"McDermott\nnot listed under Maintenance"},{"t":"","c":"","tip":"McDermott\nnot listed under Helicopters"},{"t":"","c":"","tip":"McDermott\nnot listed under ROV"},{"t":"●","c":"s3","tip":"McDermott\nConstruction"},{"t":"","c":"","tip":"McDermott\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"McDermott\nnot listed under Decomm"}]},{"label":"MEA","tip":"MEA\n1 scope\n· Decomm","search":"Decomm","cells":[{"t":"","c":"","tip":"MEA\nnot listed under Marine"},{"t":"","c":"","tip":"MEA\nnot listed under Chemist"},{"t":"","c":"","tip":"MEA\nnot listed under Drilling"},{"t":"","c":"","tip":"MEA\nnot listed under Catering"},{"t":"","c":"","tip":"MEA\nnot listed under Surveyors"},{"t":"","c":"","tip":"MEA\nnot listed under Maintenance"},{"t":"","c":"","tip":"MEA\nnot listed under Helicopters"},{"t":"","c":"","tip":"MEA\nnot listed under ROV"},{"t":"","c":"","tip":"MEA\nnot listed under Construction"},{"t":"","c":"","tip":"MEA\nnot listed under Hookup/Commissioning"},{"t":"●","c":"s3","tip":"MEA\nDecomm"}]},{"label":"Monadelphous","tip":"Monadelphous\n2 scopes\n· Maintenance\n· Hookup/Commissioning","search":"Maintenance Hookup/Commissioning","cells":[{"t":"","c":"","tip":"Monadelphous\nnot listed under Marine"},{"t":"","c":"","tip":"Monadelphous\nnot listed under Chemist"},{"t":"","c":"","tip":"Monadelphous\nnot listed under Drilling"},{"t":"","c":"","tip":"Monadelphous\nnot listed under Catering"},{"t":"","c":"","tip":"Monadelphous\nnot listed under Surveyors"},{"t":"●","c":"s3","tip":"Monadelphous\nMaintenance"},{"t":"","c":"","tip":"Monadelphous\nnot listed under Helicopters"},{"t":"","c":"","tip":"Monadelphous\nnot listed under ROV"},{"t":"","c":"","tip":"Monadelphous\nnot listed under Construction"},{"t":"●","c":"s3","tip":"Monadelphous\nHookup/Commissioning"},{"t":"","c":"","tip":"Monadelphous\nnot listed under Decomm"}]},{"label":"Noble","tip":"Noble\n1 scope\n· Drilling","search":"Drilling","cells":[{"t":"","c":"","tip":"Noble\nnot listed under Marine"},{"t":"","c":"","tip":"Noble\nnot listed under Chemist"},{"t":"●","c":"s3","tip":"Noble\nDrilling"},{"t":"","c":"","tip":"Noble\nnot listed under Catering"},{"t":"","c":"","tip":"Noble\nnot listed under Surveyors"},{"t":"","c":"","tip":"Noble\nnot listed under Maintenance"},{"t":"","c":"","tip":"Noble\nnot listed under Helicopters"},{"t":"","c":"","tip":"Noble\nnot listed under ROV"},{"t":"","c":"","tip":"Noble\nnot listed under Construction"},{"t":"","c":"","tip":"Noble\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Noble\nnot listed under Decomm"}]},{"label":"Oceaneering","tip":"Oceaneering\n1 scope\n· ROV","search":"ROV","cells":[{"t":"","c":"","tip":"Oceaneering\nnot listed under Marine"},{"t":"","c":"","tip":"Oceaneering\nnot listed under Chemist"},{"t":"","c":"","tip":"Oceaneering\nnot listed under Drilling"},{"t":"","c":"","tip":"Oceaneering\nnot listed under Catering"},{"t":"","c":"","tip":"Oceaneering\nnot listed under Surveyors"},{"t":"","c":"","tip":"Oceaneering\nnot listed under Maintenance"},{"t":"","c":"","tip":"Oceaneering\nnot listed under Helicopters"},{"t":"●","c":"s3","tip":"Oceaneering\nROV"},{"t":"","c":"","tip":"Oceaneering\nnot listed under Construction"},{"t":"","c":"","tip":"Oceaneering\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Oceaneering\nnot listed under Decomm"}]},{"label":"OSA","tip":"OSA\n1 scope\n· Helicopters","search":"Helicopters","cells":[{"t":"","c":"","tip":"OSA\nnot listed under Marine"},{"t":"","c":"","tip":"OSA\nnot listed under Chemist"},{"t":"","c":"","tip":"OSA\nnot listed under Drilling"},{"t":"","c":"","tip":"OSA\nnot listed under Catering"},{"t":"","c":"","tip":"OSA\nnot listed under Surveyors"},{"t":"","c":"","tip":"OSA\nnot listed under Maintenance"},{"t":"●","c":"s3","tip":"OSA\nHelicopters"},{"t":"","c":"","tip":"OSA\nnot listed under ROV"},{"t":"","c":"","tip":"OSA\nnot listed under Construction"},{"t":"","c":"","tip":"OSA\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"OSA\nnot listed under Decomm"}]},{"label":"OSM","tip":"OSM\n5 scopes\n· Marine\n· Drilling\n· ROV\n· Construction\n· Decomm","search":"Marine Drilling ROV Construction Decomm","cells":[{"t":"●","c":"s3","tip":"OSM\nMarine"},{"t":"","c":"","tip":"OSM\nnot listed under Chemist"},{"t":"●","c":"s3","tip":"OSM\nDrilling"},{"t":"","c":"","tip":"OSM\nnot listed under Catering"},{"t":"","c":"","tip":"OSM\nnot listed under Surveyors"},{"t":"","c":"","tip":"OSM\nnot listed under Maintenance"},{"t":"","c":"","tip":"OSM\nnot listed under Helicopters"},{"t":"●","c":"s3","tip":"OSM\nROV"},{"t":"●","c":"s3","tip":"OSM\nConstruction"},{"t":"","c":"","tip":"OSM\nnot listed under Hookup/Commissioning"},{"t":"●","c":"s3","tip":"OSM\nDecomm"}]},{"label":"PHI","tip":"PHI\n1 scope\n· Helicopters","search":"Helicopters","cells":[{"t":"","c":"","tip":"PHI\nnot listed under Marine"},{"t":"","c":"","tip":"PHI\nnot listed under Chemist"},{"t":"","c":"","tip":"PHI\nnot listed under Drilling"},{"t":"","c":"","tip":"PHI\nnot listed under Catering"},{"t":"","c":"","tip":"PHI\nnot listed under Surveyors"},{"t":"","c":"","tip":"PHI\nnot listed under Maintenance"},{"t":"●","c":"s3","tip":"PHI\nHelicopters"},{"t":"","c":"","tip":"PHI\nnot listed under ROV"},{"t":"","c":"","tip":"PHI\nnot listed under Construction"},{"t":"","c":"","tip":"PHI\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"PHI\nnot listed under Decomm"}]},{"label":"Programmed","tip":"Programmed\n8 scopes\n· Marine\n· Drilling\n· Catering\n· Maintenance\n· ROV\n· Construction\n· Hookup/Commissioning\n· Decomm","search":"Marine Drilling Catering Maintenance ROV Construction Hookup/Commissioning Decomm","cells":[{"t":"●","c":"s3","tip":"Programmed\nMarine"},{"t":"","c":"","tip":"Programmed\nnot listed under Chemist"},{"t":"●","c":"s3","tip":"Programmed\nDrilling"},{"t":"●","c":"s3","tip":"Programmed\nCatering"},{"t":"","c":"","tip":"Programmed\nnot listed under Surveyors"},{"t":"●","c":"s3","tip":"Programmed\nMaintenance"},{"t":"","c":"","tip":"Programmed\nnot listed under Helicopters"},{"t":"●","c":"s3","tip":"Programmed\nROV"},{"t":"●","c":"s3","tip":"Programmed\nConstruction"},{"t":"●","c":"s3","tip":"Programmed\nHookup/Commissioning"},{"t":"●","c":"s3","tip":"Programmed\nDecomm"}]},{"label":"Reach","tip":"Reach\n1 scope\n· ROV","search":"ROV","cells":[{"t":"","c":"","tip":"Reach\nnot listed under Marine"},{"t":"","c":"","tip":"Reach\nnot listed under Chemist"},{"t":"","c":"","tip":"Reach\nnot listed under Drilling"},{"t":"","c":"","tip":"Reach\nnot listed under Catering"},{"t":"","c":"","tip":"Reach\nnot listed under Surveyors"},{"t":"","c":"","tip":"Reach\nnot listed under Maintenance"},{"t":"","c":"","tip":"Reach\nnot listed under Helicopters"},{"t":"●","c":"s3","tip":"Reach\nROV"},{"t":"","c":"","tip":"Reach\nnot listed under Construction"},{"t":"","c":"","tip":"Reach\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Reach\nnot listed under Decomm"}]},{"label":"SGS","tip":"SGS\n1 scope\n· Chemist","search":"Chemist","cells":[{"t":"","c":"","tip":"SGS\nnot listed under Marine"},{"t":"●","c":"s3","tip":"SGS\nChemist"},{"t":"","c":"","tip":"SGS\nnot listed under Drilling"},{"t":"","c":"","tip":"SGS\nnot listed under Catering"},{"t":"","c":"","tip":"SGS\nnot listed under Surveyors"},{"t":"","c":"","tip":"SGS\nnot listed under Maintenance"},{"t":"","c":"","tip":"SGS\nnot listed under Helicopters"},{"t":"","c":"","tip":"SGS\nnot listed under ROV"},{"t":"","c":"","tip":"SGS\nnot listed under Construction"},{"t":"","c":"","tip":"SGS\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"SGS\nnot listed under Decomm"}]},{"label":"Sierra","tip":"Sierra\n1 scope\n· Marine","search":"Marine","cells":[{"t":"●","c":"s3","tip":"Sierra\nMarine"},{"t":"","c":"","tip":"Sierra\nnot listed under Chemist"},{"t":"","c":"","tip":"Sierra\nnot listed under Drilling"},{"t":"","c":"","tip":"Sierra\nnot listed under Catering"},{"t":"","c":"","tip":"Sierra\nnot listed under Surveyors"},{"t":"","c":"","tip":"Sierra\nnot listed under Maintenance"},{"t":"","c":"","tip":"Sierra\nnot listed under Helicopters"},{"t":"","c":"","tip":"Sierra\nnot listed under ROV"},{"t":"","c":"","tip":"Sierra\nnot listed under Construction"},{"t":"","c":"","tip":"Sierra\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Sierra\nnot listed under Decomm"}]},{"label":"Sodexo","tip":"Sodexo\n1 scope\n· Catering","search":"Catering","cells":[{"t":"","c":"","tip":"Sodexo\nnot listed under Marine"},{"t":"","c":"","tip":"Sodexo\nnot listed under Chemist"},{"t":"","c":"","tip":"Sodexo\nnot listed under Drilling"},{"t":"●","c":"s3","tip":"Sodexo\nCatering"},{"t":"","c":"","tip":"Sodexo\nnot listed under Surveyors"},{"t":"","c":"","tip":"Sodexo\nnot listed under Maintenance"},{"t":"","c":"","tip":"Sodexo\nnot listed under Helicopters"},{"t":"","c":"","tip":"Sodexo\nnot listed under ROV"},{"t":"","c":"","tip":"Sodexo\nnot listed under Construction"},{"t":"","c":"","tip":"Sodexo\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Sodexo\nnot listed under Decomm"}]},{"label":"Tidewater","tip":"Tidewater\n1 scope\n· Marine","search":"Marine","cells":[{"t":"●","c":"s3","tip":"Tidewater\nMarine"},{"t":"","c":"","tip":"Tidewater\nnot listed under Chemist"},{"t":"","c":"","tip":"Tidewater\nnot listed under Drilling"},{"t":"","c":"","tip":"Tidewater\nnot listed under Catering"},{"t":"","c":"","tip":"Tidewater\nnot listed under Surveyors"},{"t":"","c":"","tip":"Tidewater\nnot listed under Maintenance"},{"t":"","c":"","tip":"Tidewater\nnot listed under Helicopters"},{"t":"","c":"","tip":"Tidewater\nnot listed under ROV"},{"t":"","c":"","tip":"Tidewater\nnot listed under Construction"},{"t":"","c":"","tip":"Tidewater\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Tidewater\nnot listed under Decomm"}]},{"label":"TMT","tip":"TMT\n1 scope\n· ROV","search":"ROV","cells":[{"t":"","c":"","tip":"TMT\nnot listed under Marine"},{"t":"","c":"","tip":"TMT\nnot listed under Chemist"},{"t":"","c":"","tip":"TMT\nnot listed under Drilling"},{"t":"","c":"","tip":"TMT\nnot listed under Catering"},{"t":"","c":"","tip":"TMT\nnot listed under Surveyors"},{"t":"","c":"","tip":"TMT\nnot listed under Maintenance"},{"t":"","c":"","tip":"TMT\nnot listed under Helicopters"},{"t":"●","c":"s3","tip":"TMT\nROV"},{"t":"","c":"","tip":"TMT\nnot listed under Construction"},{"t":"","c":"","tip":"TMT\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"TMT\nnot listed under Decomm"}]},{"label":"Transocean (sedco forex)","tip":"Transocean (sedco forex)\n1 scope\n· Drilling","search":"Drilling","cells":[{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under Marine"},{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under Chemist"},{"t":"●","c":"s3","tip":"Transocean (sedco forex)\nDrilling"},{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under Catering"},{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under Surveyors"},{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under Maintenance"},{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under Helicopters"},{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under ROV"},{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under Construction"},{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Transocean (sedco forex)\nnot listed under Decomm"}]},{"label":"UGL","tip":"UGL\n1 scope\n· Maintenance","search":"Maintenance","cells":[{"t":"","c":"","tip":"UGL\nnot listed under Marine"},{"t":"","c":"","tip":"UGL\nnot listed under Chemist"},{"t":"","c":"","tip":"UGL\nnot listed under Drilling"},{"t":"","c":"","tip":"UGL\nnot listed under Catering"},{"t":"","c":"","tip":"UGL\nnot listed under Surveyors"},{"t":"●","c":"s3","tip":"UGL\nMaintenance"},{"t":"","c":"","tip":"UGL\nnot listed under Helicopters"},{"t":"","c":"","tip":"UGL\nnot listed under ROV"},{"t":"","c":"","tip":"UGL\nnot listed under Construction"},{"t":"","c":"","tip":"UGL\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"UGL\nnot listed under Decomm"}]},{"label":"UPS","tip":"UPS\n1 scope\n· Decomm","search":"Decomm","cells":[{"t":"","c":"","tip":"UPS\nnot listed under Marine"},{"t":"","c":"","tip":"UPS\nnot listed under Chemist"},{"t":"","c":"","tip":"UPS\nnot listed under Drilling"},{"t":"","c":"","tip":"UPS\nnot listed under Catering"},{"t":"","c":"","tip":"UPS\nnot listed under Surveyors"},{"t":"","c":"","tip":"UPS\nnot listed under Maintenance"},{"t":"","c":"","tip":"UPS\nnot listed under Helicopters"},{"t":"","c":"","tip":"UPS\nnot listed under ROV"},{"t":"","c":"","tip":"UPS\nnot listed under Construction"},{"t":"","c":"","tip":"UPS\nnot listed under Hookup/Commissioning"},{"t":"●","c":"s3","tip":"UPS\nDecomm"}]},{"label":"Valaris (Ensco","tip":"Valaris (Ensco\n1 scope\n· Drilling","search":"Drilling","cells":[{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under Marine"},{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under Chemist"},{"t":"●","c":"s3","tip":"Valaris (Ensco\nDrilling"},{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under Catering"},{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under Surveyors"},{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under Maintenance"},{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under Helicopters"},{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under ROV"},{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under Construction"},{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Valaris (Ensco\nnot listed under Decomm"}]},{"label":"vertech","tip":"vertech\n1 scope\n· Helicopters","search":"Helicopters","cells":[{"t":"","c":"","tip":"vertech\nnot listed under Marine"},{"t":"","c":"","tip":"vertech\nnot listed under Chemist"},{"t":"","c":"","tip":"vertech\nnot listed under Drilling"},{"t":"","c":"","tip":"vertech\nnot listed under Catering"},{"t":"","c":"","tip":"vertech\nnot listed under Surveyors"},{"t":"","c":"","tip":"vertech\nnot listed under Maintenance"},{"t":"●","c":"s3","tip":"vertech\nHelicopters"},{"t":"","c":"","tip":"vertech\nnot listed under ROV"},{"t":"","c":"","tip":"vertech\nnot listed under Construction"},{"t":"","c":"","tip":"vertech\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"vertech\nnot listed under Decomm"}]},{"label":"Wood","tip":"Wood\n1 scope\n· Helicopters","search":"Helicopters","cells":[{"t":"","c":"","tip":"Wood\nnot listed under Marine"},{"t":"","c":"","tip":"Wood\nnot listed under Chemist"},{"t":"","c":"","tip":"Wood\nnot listed under Drilling"},{"t":"","c":"","tip":"Wood\nnot listed under Catering"},{"t":"","c":"","tip":"Wood\nnot listed under Surveyors"},{"t":"","c":"","tip":"Wood\nnot listed under Maintenance"},{"t":"●","c":"s3","tip":"Wood\nHelicopters"},{"t":"","c":"","tip":"Wood\nnot listed under ROV"},{"t":"","c":"","tip":"Wood\nnot listed under Construction"},{"t":"","c":"","tip":"Wood\nnot listed under Hookup/Commissioning"},{"t":"","c":"","tip":"Wood\nnot listed under Decomm"}]},{"label":"WPF(Duratech)","tip":"WPF(Duratech)\n1 scope\n· Decomm","search":"Decomm","cells":[{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under Marine"},{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under Chemist"},{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under Drilling"},{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under Catering"},{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under Surveyors"},{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under Maintenance"},{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under Helicopters"},{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under ROV"},{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under Construction"},{"t":"","c":"","tip":"WPF(Duratech)\nnot listed under Hookup/Commissioning"},{"t":"●","c":"s3","tip":"WPF(Duratech)\nDecomm"}]}],"legend":[{"label":"Listed under this scope","cls":"s3"},{"label":"Not listed","cls":""}]}]}],"table":{"columns":["Scope of work","—"],"rows":[["Marine","DOF"],["","Sierra"],["","Cyan"],["","Go Offshore"],["","AOS"],["","Programmed"],["","OSM"],["","Tidewater"],["Chemist","SGS"],["Drilling","Transocean (sedco forex)"],["","Valaris (Ensco"],["","Programmed"],["","OSM"],["","Baker Hughes"],["","Noble"],["Catering","ESS"],["","Entier"],["","Sodexo"],["","AOS"],["","Programmed"],["Surveyors","Fugro"],["Maintenance","Monadelphous"],["","Legeneering"],["","UGL"],["","Altrad"],["","Eris (Kuiper)"],["","Programmed"],["","Enemech"],["","Kaefer (ISOLOGIC)"],["Helicopters","PHI"],["","OSA"],["","CHC"],["","vertech"],["","Wood"],["","Lifeflight"],["ROV","DOF"],["","Oceaneering"],["","TMT"],["","Fugro"],["","AOS"],["","Programmed"],["","OSM"],["","Hjelix"],["","Reach"],["Construction","Eris (Kuiper)"],["","McDermott"],["","OSM"],["","AOS"],["","Programmed"],["Hookup/Commissioning","Monadelphous"],["","Programmed"],["","Legeneering"],["Decomm","UPS"],["","Eris (Kuiper)"],["","Programmed"],["","OSM"],["","MEA"],["","WPF(Duratech)"],["","GGC"]],"emptyColumns":[],"emptyIdx":[]}};</script>
+<script>
+(function () {
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem('oa-viz-theme'); } catch (e) {}
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+
+  function themeLabel() {
+    var t = root.getAttribute('data-theme');
+    return t === 'dark' ? 'Dark' : (t === 'light' ? 'Light' : 'Auto');
+  }
+  var btn = document.getElementById('theme');
+  if (btn) {
+    btn.textContent = themeLabel();
+    btn.addEventListener('click', function () {
+      var t = root.getAttribute('data-theme');
+      var next = t === 'dark' ? 'light' : (t === 'light' ? null : 'dark');
+      if (next) { root.setAttribute('data-theme', next); } else { root.removeAttribute('data-theme'); }
+      try { next ? localStorage.setItem('oa-viz-theme', next) : localStorage.removeItem('oa-viz-theme'); } catch (e) {}
+      btn.textContent = themeLabel();
+    });
+  }
+
+  // ---- tooltip layer -------------------------------------------------------
+  var tip = document.createElement('div');
+  tip.id = 'tip';
+  document.body.appendChild(tip);
+  function showTip(text, x, y) {
+    tip.textContent = text;
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var left = Math.min(Math.max(8, x + 14), window.innerWidth - r.width - 8);
+    var top = y - r.height - 12;
+    if (top < 8) top = y + 18;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  document.addEventListener('mousemove', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el) { tip.classList.remove('on'); return; }
+    showTip(el.getAttribute('data-tip'), e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+
+  var PAGE = window.OA_PAGE;
+  if (!PAGE) return;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function fmt(n) { return (typeof n === 'number' ? n : 0).toLocaleString('en-AU'); }
+
+  // ---- charts --------------------------------------------------------------
+  function barChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var max = c.max || Math.max.apply(null, c.items.map(function (i) { return i.value; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      var fill = el('div', 'bar-fill');
+      fill.style.width = (max ? (item.value / max) * 100 : 0) + '%';
+      if (c.color) fill.style.background = 'var(--' + c.color + ')';
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.value)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    if (c.foot) card.appendChild(el('p', 'sub', c.foot)).style.margin = '14px 0 0';
+    return card;
+  }
+
+  function stackChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var legend = el('div', 'legend');
+    c.series.forEach(function (s) {
+      var span = el('span');
+      var sw = el('i');
+      sw.style.background = 'var(--' + s.color + ')';
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(s.name));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+    var max = Math.max.apply(null, c.items.map(function (i) { return i.total; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      item.values.forEach(function (v, i) {
+        if (!v) return;
+        var seg = el('div', 'seg');
+        seg.style.width = 'calc(' + (v / max) * 100 + '% - 2px)';
+        seg.style.background = 'var(--' + c.series[i].color + ')';
+        track.appendChild(seg);
+      });
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.total)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    return card;
+  }
+
+  function heatChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var tools = el('div', 'heat-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = c.filter || 'Filter rows…';
+    tools.appendChild(search);
+    var count = el('span', 'toolnote', '');
+    tools.appendChild(count);
+    card.appendChild(tools);
+
+    var legend = el('div', 'legend');
+    c.legend.forEach(function (l) {
+      var span = el('span');
+      var sw = el('i');
+      if (l.cls) { sw.className = 'cell ' + l.cls; sw.style.borderRadius = '3px'; }
+      else { sw.style.boxShadow = 'inset 0 0 0 1px var(--grid)'; }
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(l.label));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+
+    var scroll = el('div', 'heat-scroll');
+    var grid = el('div', 'heat');
+    grid.style.gridTemplateColumns = 'minmax(128px, 210px) repeat(' + c.cols.length + ', minmax(' + (c.cols.length > 12 ? 58 : 66) + 'px, 1fr))';
+    grid.appendChild(el('div', 'corner'));
+    c.cols.forEach(function (col) {
+      var h = el('div', 'hh', col.label);
+      if (col.tip) h.setAttribute('data-tip', col.tip);
+      grid.appendChild(h);
+    });
+    var rowNodes = [];
+    c.rows.forEach(function (r) {
+      var nodes = [];
+      var rh = el('div', 'rh', r.label);
+      if (r.tip) rh.setAttribute('data-tip', r.tip);
+      nodes.push(rh);
+      r.cells.forEach(function (cell, i) {
+        var cn = el('div', 'cell' + (cell.c ? ' ' + cell.c : ' empty'), cell.t || '');
+        cn.setAttribute('data-tip', (cell.tip || (r.label + ' × ' + c.cols[i].label + '\nno linkage recorded')));
+        nodes.push(cn);
+      });
+      nodes.forEach(function (n) { grid.appendChild(n); });
+      rowNodes.push({ text: (r.label + ' ' + (r.search || '')).toLowerCase(), nodes: nodes });
+    });
+    scroll.appendChild(grid);
+    card.appendChild(scroll);
+
+    function apply() {
+      var q = search.value.trim().toLowerCase();
+      var shown = 0;
+      rowNodes.forEach(function (r) {
+        var hit = !q || r.text.indexOf(q) !== -1;
+        if (hit) shown++;
+        r.nodes.forEach(function (n) { n.style.display = hit ? '' : 'none'; });
+      });
+      count.textContent = shown + ' of ' + rowNodes.length + ' rows';
+    }
+    search.addEventListener('input', apply);
+    apply();
+    return card;
+  }
+
+  function renderChart(c) {
+    if (c.type === 'stack') return stackChart(c);
+    if (c.type === 'heat') return heatChart(c);
+    return barChart(c);
+  }
+
+  // ---- page assembly -------------------------------------------------------
+  var statsHost = document.getElementById('stats');
+  if (statsHost && PAGE.stats) {
+    PAGE.stats.forEach(function (s) {
+      var n = el('div', 'stat');
+      n.appendChild(el('div', 'v', s.v));
+      n.appendChild(el('div', 'k', s.k));
+      if (s.h) n.appendChild(el('div', 'h', s.h));
+      statsHost.appendChild(n);
+    });
+  }
+
+  var chartHost = document.getElementById('sections');
+  if (chartHost && PAGE.sections) {
+    PAGE.sections.forEach(function (sec) {
+      var s = el('section');
+      s.appendChild(el('h2', null, sec.title));
+      var grid = el('div', 'chart-grid' + (sec.wide ? ' one' : ''));
+      sec.charts.forEach(function (c) { grid.appendChild(renderChart(c)); });
+      s.appendChild(grid);
+      chartHost.appendChild(s);
+    });
+  }
+
+  // ---- table ---------------------------------------------------------------
+  var T = PAGE.table;
+  var tableHost = document.getElementById('table-host');
+  if (T && tableHost) {
+    var escapeHTML = function (s) {
+      return String(s).replace(/[&<>"]/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+      });
+    };
+    var chipFor = function (letter) {
+      var map = { H: ['chip-h', 'High'], M: ['chip-m', 'Medium'], L: ['chip-l', 'Low'] };
+      var m = map[letter];
+      return '<span class="chip ' + m[0] + '" title="' + m[1] + ' confidence">' + letter + '</span>';
+    };
+    var decorate = function (raw) {
+      var t = escapeHTML(raw);
+      if (/^[HML]$/.test(raw)) return chipFor(raw);
+      t = t.replace(/\((H|M|L)\)/g, function (_, l) { return chipFor(l); });
+      t = t.replace(/\[WB\]/g, '<span class="tag" title="From the colleague’s whiteboard">WB</span>');
+      return t;
+    };
+
+    var showAll = false;
+    var tools = el('div', 'table-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Search all columns…';
+    tools.appendChild(search);
+    var note = el('span', 'toolnote', '');
+    var toggle = null;
+    if (T.emptyColumns && T.emptyColumns.length) {
+      toggle = el('button', 'toolbtn', 'Show ' + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : ''));
+      toggle.setAttribute('data-tip', 'Columns with no values in any row:\n' + T.emptyColumns.join(', '));
+      tools.appendChild(toggle);
+    }
+    tools.appendChild(note);
+    tableHost.appendChild(tools);
+
+    var scroll = el('div', 'table-scroll');
+    var table = document.createElement('table');
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    thead.appendChild(headRow);
+    var tbody = document.createElement('tbody');
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    tableHost.appendChild(scroll);
+
+    var sortCol = -1, sortDir = 1, query = '';
+
+    function visibleCols() {
+      return T.columns.map(function (c, i) { return i; }).filter(function (i) {
+        return showAll || T.emptyIdx.indexOf(i) === -1;
+      });
+    }
+    function draw() {
+      var cols = visibleCols();
+      headRow.innerHTML = '';
+      cols.forEach(function (i) {
+        var th = el('th', null, T.columns[i] || '—');
+        if (sortCol === i) {
+          var ind = el('span', 'ind', sortDir > 0 ? ' ↑' : ' ↓');
+          th.appendChild(ind);
+        }
+        th.addEventListener('click', function () {
+          if (sortCol === i) { sortDir = -sortDir; } else { sortCol = i; sortDir = 1; }
+          draw();
+        });
+        headRow.appendChild(th);
+      });
+      var terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      var rows = T.rows.filter(function (r) {
+        if (!terms.length) return true;
+        var hay = r.join(' ').toLowerCase();
+        return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+      });
+      if (sortCol >= 0) {
+        rows = rows.slice().sort(function (a, b) {
+          var x = a[sortCol] || '', y = b[sortCol] || '';
+          var nx = parseFloat(x), ny = parseFloat(y);
+          var numeric = !isNaN(nx) && !isNaN(ny) && /^[\d.,\s]+$/.test(x) && /^[\d.,\s]+$/.test(y);
+          if (numeric) return (nx - ny) * sortDir;
+          if (!x) return 1;
+          if (!y) return -1;
+          return x.localeCompare(y) * sortDir;
+        });
+      }
+      tbody.innerHTML = rows.map(function (r) {
+        return '<tr>' + cols.map(function (i) {
+          var v = r[i] || '';
+          var cls = /^[\d.]+$/.test(v) ? ' class="num"' : '';
+          return '<td' + cls + '>' + decorate(v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      note.textContent = rows.length === T.rows.length
+        ? fmt(T.rows.length) + ' rows · ' + cols.length + ' of ' + T.columns.length + ' columns'
+        : fmt(rows.length) + ' of ' + fmt(T.rows.length) + ' rows';
+    }
+    search.addEventListener('input', function () { query = search.value; draw(); });
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        showAll = !showAll;
+        toggle.textContent = (showAll ? 'Hide ' : 'Show ') + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : '');
+        draw();
+      });
+    }
+    draw();
+  }
+})();
+</script>
+</body>
+</html>

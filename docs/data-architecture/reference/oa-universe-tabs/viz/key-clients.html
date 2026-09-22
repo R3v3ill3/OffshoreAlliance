@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marine key clients — OA Universe</title>
+<meta name="description" content="The marine and subsea fleet: vessels, shore bases, service lines and whether the work is current, recent or historical.">
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.05);
+  --track: #f0efec;
+  --seq-1: #104281;
+  --seq-2: #1c5cab;
+  --seq-3: #2a78d6;
+  --seq-4: #5598e7;
+  --seq-5: #86b6ef;
+  --seq-0: #cde2fb;
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --shadow: none;
+    --track: #232322;
+    --seq-1: #9ec5f4;
+    --seq-2: #6da7ec;
+    --seq-3: #3987e5;
+    --seq-4: #256abf;
+    --seq-5: #184f95;
+    --seq-0: #12345f;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --neutral: #383835;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --shadow: none;
+  --track: #232322;
+  --seq-1: #9ec5f4;
+  --seq-2: #6da7ec;
+  --seq-3: #3987e5;
+  --seq-4: #256abf;
+  --seq-5: #184f95;
+  --seq-0: #12345f;
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+  --neutral: #383835;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 72px; }
+
+/* ---- masthead ---- */
+.masthead { border-bottom: 1px solid var(--border); background: var(--surface); }
+.masthead-in {
+  max-width: 1180px; margin: 0 auto; padding: 14px 16px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.brand { font-weight: 640; letter-spacing: -0.01em; text-decoration: none; }
+.brand span { color: var(--muted); font-weight: 400; }
+.masthead nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.masthead nav a {
+  text-decoration: none; color: var(--ink-2); font-size: 13px;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid transparent;
+}
+.masthead nav a:hover { background: var(--track); }
+.masthead nav a[aria-current="page"] { border-color: var(--border); color: var(--ink); font-weight: 560; }
+.theme-toggle {
+  font: inherit; font-size: 13px; cursor: pointer; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+}
+.theme-toggle:hover { background: var(--track); }
+
+/* ---- page head ---- */
+header.page { padding: 34px 0 10px; }
+header.page h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+header.page .blurb { margin: 0; color: var(--ink-2); max-width: 74ch; }
+.crumbs { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.crumbs a { color: var(--ink-2); }
+.srcline { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.srcline code { font-size: 12px; background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+/* ---- stat tiles ---- */
+.stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); margin: 26px 0 8px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; box-shadow: var(--shadow);
+}
+.stat .v { font-size: 30px; line-height: 1.05; letter-spacing: -0.02em; font-weight: 600; }
+.stat .k { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.stat .h { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ---- sections & charts ---- */
+section { margin-top: 34px; }
+section > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px; font-weight: 620; }
+.chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.chart-grid.one { grid-template-columns: 1fr; }
+.chart-grid.one .bar-row { grid-template-columns: minmax(84px, 230px) 1fr auto; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px 18px; box-shadow: var(--shadow); min-width: 0;
+}
+.card h3 { font-size: 15px; margin: 0 0 3px; letter-spacing: -0.01em; }
+.card .sub { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 12px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: minmax(84px, 38%) 1fr auto; gap: 10px; align-items: center; }
+.bar-label { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.bar-track { height: 14px; background: var(--track); border-radius: 0 4px 4px 0; display: flex; }
+.bar-fill { background: var(--seq-3); border-radius: 0 4px 4px 0; min-width: 2px; height: 100%; }
+.bar-track .seg { height: 100%; min-width: 2px; margin-right: 2px; border-radius: 0; }
+.bar-track .seg:last-child { margin-right: 0; border-radius: 0 4px 4px 0; }
+.bar-value { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; }
+.bar-row:hover .bar-label, .bar-row:hover .bar-value { color: var(--ink); }
+
+/* ---- heatmap ---- */
+.heat-tools { display: flex; gap: 10px; align-items: center; margin: 0 0 12px; flex-wrap: wrap; }
+.heat-scroll { overflow: auto; max-height: 620px; border: 1px solid var(--border); border-radius: 8px; }
+.heat { display: grid; gap: 2px; padding: 2px; background: var(--surface); }
+.heat .hh, .heat .rh {
+  position: sticky; background: var(--surface); z-index: 2; font-size: 11.5px; color: var(--ink-2);
+}
+.heat .hh { top: 0; padding: 6px 4px; text-align: center; line-height: 1.25; align-self: stretch; border-bottom: 1px solid var(--grid); overflow-wrap: break-word; hyphens: none; }
+.heat .rh { left: 0; z-index: 1; padding: 4px 8px 4px 6px; display: flex; align-items: center; border-right: 1px solid var(--grid); overflow-wrap: break-word; }
+.heat .corner { position: sticky; top: 0; left: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid); }
+.heat .cell { min-height: 22px; border-radius: 3px; background: var(--track); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; }
+.heat .cell.empty { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); }
+.heat .cell:hover { outline: 2px solid var(--ink); outline-offset: -2px; }
+.heat.dim .row-off { display: none; }
+
+/* ---- table ---- */
+.table-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+input[type="search"], input[type="text"] {
+  font: inherit; font-size: 13px; padding: 6px 10px; min-width: 220px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink);
+}
+.toolbtn {
+  font: inherit; font-size: 13px; cursor: pointer; padding: 6px 11px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink-2);
+}
+.toolbtn:hover { background: var(--track); }
+.toolnote { font-size: 13px; color: var(--muted); }
+.table-scroll { overflow: auto; max-height: 720px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface); text-align: left; font-weight: 600;
+  padding: 9px 12px; border-bottom: 1px solid var(--axis); white-space: nowrap; cursor: pointer; color: var(--ink-2);
+}
+thead th:hover { color: var(--ink); }
+thead th .ind { color: var(--muted); font-weight: 400; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid var(--grid); vertical-align: top; color: var(--ink-2); }
+tbody td:first-child { color: var(--ink); font-weight: 560; }
+tbody tr:hover td { background: var(--track); }
+tbody td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+.chip { display: inline-block; font-size: 11px; font-weight: 640; line-height: 1.6; padding: 0 6px; border-radius: 4px; color: #fff; vertical-align: 1px; }
+.chip-h { background: var(--seq-2); }
+.chip-m { background: var(--seq-3); }
+.chip-l { background: var(--seq-5); color: #0b0b0b; }
+:root[data-theme="dark"] .chip-l, :root:where(:not([data-theme="light"])) .chip-l { color: #0b0b0b; }
+.tag { display: inline-block; font-size: 10.5px; letter-spacing: 0.04em; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.status i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ---- notes ---- */
+.notes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px 14px; }
+.notes li { margin: 8px 0; color: var(--ink-2); font-size: 13.5px; }
+
+/* ---- index cards ---- */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.tabcard {
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px 20px; box-shadow: var(--shadow);
+}
+.tabcard:hover { border-color: var(--axis); }
+.tabcard h3 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.tabcard p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.tabcard .meta { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.tabcard .go { font-size: 13px; color: var(--seq-3); font-weight: 560; }
+
+/* ---- tooltip ---- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .09s;
+  max-width: 320px; background: var(--ink); color: var(--plane); font-size: 12.5px; line-height: 1.45;
+  padding: 7px 10px; border-radius: 7px; white-space: pre-line;
+}
+#tip.on { opacity: 1; }
+
+footer.page { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+footer.page code { background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+@media (max-width: 640px) {
+  header.page h1 { font-size: 24px; }
+  .bar-row { grid-template-columns: minmax(70px, 44%) 1fr auto; }
+}
+@media print {
+  .masthead nav, .theme-toggle, .table-tools, .heat-tools { display: none; }
+  .table-scroll, .heat-scroll { max-height: none; }
+  .card, .stat { break-inside: avoid; }
+}
+
+.cell.s1 { background: #104281; color: #fff; }
+.cell.s2 { background: #1c5cab; color: #fff; }
+.cell.s3 { background: #2a78d6; color: #fff; }
+.cell.s4 { background: #5598e7; color: #0b0b0b; }
+.cell.s5 { background: #86b6ef; color: #0b0b0b; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s3 { background: #3987e5; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s4 { background: #256abf; color: #fff; }
+  :root:where(:not([data-theme="light"])) .cell.s5 { background: #184f95; color: #fff; }
+}
+:root[data-theme="dark"] .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s3 { background: #3987e5; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s4 { background: #256abf; color: #fff; }
+:root[data-theme="dark"] .cell.s5 { background: #184f95; color: #fff; }
+</style>
+</head>
+<body>
+<div class="masthead"><div class="masthead-in">
+  <a class="brand" href="index.html">OA Universe <span>&middot; tab visualisations</span></a>
+  <nav><a href="index.html">Index</a><a href="key-assets.html">Key assets</a><a href="asset-contractors.html">Asset → contractors</a><a href="contractor-linkages.html">Contractor linkages</a><a href="contractor-x-tier-1.html">Contractor × Tier-1</a><a href="contractors.html">Contractors by scope</a><a href="facility-x-scope.html">Facility × scope</a><a href="key-clients.html" aria-current="page">Marine key clients</a><a href="operator-companies.html">Operator → companies</a><a href="reconciliation.html">Reconciliation</a><a href="onshore.html">Onshore</a><button class="theme-toggle" id="theme" type="button" title="Light / dark / follow the system">Auto</button></nav>
+</div></div>
+<div class="wrap">
+
+<header class="page">
+  <p class="crumbs"><a href="index.html">OA Universe tabs</a> &rsaquo; Marine key clients</p>
+  <h1>Marine key clients</h1>
+  <p class="blurb">One row per vessel or shore facility for the marine key clients — the pipelay, subsea and survey contractors that mobilise into the North West per campaign rather than holding a standing local workforce.</p>
+  <p class="srcline">Source: <code>Offshore_key_clients.csv</code> &middot;
+     <a href="../Offshore_key_clients.csv">open the CSV</a></p>
+</header>
+<div class="stats" id="stats"></div>
+<div id="sections"></div>
+<section><h2>Every row</h2><div id="table-host"></div></section>
+<section><h2>Legend &amp; method notes (from the tab itself)</h2><div class="notes"><ul><li>LEGEND &amp; METHOD</li><li>Current — on station / based here now</li><li>Recent — worked NW region ~2023–2025</li><li>Likely / upcoming — awarded or expected next ~year</li><li>Historical / capability / overseas-fabrication (context)</li><li>SCOPE: NW Australia offshore oil &amp; gas (Carnarvon / North West Shelf, Browse, Bonaparte / Timor Sea; offshore WA &amp; NT). Vessels/facilities now, recently, or likely next ~year + key historical NW context, flagged by Presence.</li><li>Columns parallel your &#x27;Offshore - Key Assets&#x27; tab: Contractor (client) = the marine employer/organising unit; NW project &amp; Tier-1 client links to your operators; &#x27;Service line&#x27; is the marine sub-sector (pipelay / survey / diving-IMR / rock &amp; dredging / decommissioning). scope + worker#/member#/EBA columns match your other tabs — blank to populate.</li><li>Reality check: the NW marine universe now is dominated by (1) Scarborough &amp; Barossa installation (mostly WRAPPING UP 2024–25), (2) Jansz-Io Compression (Saipem, LIVE now), and (3) a wave of WA decommissioning (Stybarrow/Griffin/Campbell/Northern Endeavour + DeepOcean&#x27;s undisclosed 2026 award). Greenfield installation is thin; decommissioning is the growth area.</li><li>Bases matter for organising: Fugro and DeepOcean (via Shelf Subsea) have PERMANENT Perth workforces; Subsea7 &amp; McDermott run Perth project offices; Saipem/Allseas/Van Oord/Vantris mobilise vessels TRANSIENTLY (crew changes via Dampier/Broome/Darwin).</li><li>OUT OF NW REGION (excluded): Allseas &#x27;Pioneering Spirit&#x27; → Bass Strait/Gippsland decom (ExxonMobil, 2027); Fugro &#x27;Fugro Mariner&#x27; → Gippsland offshore WIND; Helix (Q7000, Bass Strait BMG). All SE Australia, not NW.</li><li>ADJACENT contractors in the NW universe NOT on your 8 (say the word and I&#x27;ll add them): DOF (Skandi Hercules — Stybarrow), TechnipFMC (Deep Orient — Griffin), Heerema, Boskalis (Scarborough FPU tow), CNOOC (Crux jacket T&amp;I), Aker Solutions (Jansz-Io subsea compression supply), DEME (Van Oord&#x27;s Barossa JV partner), Petrofac (Northern Endeavour Phase-1 manager). NB several already appear on your &#x27;Offshore - contractors&#x27; Marine list (DOF, etc.).</li><li>&#x27;Vantris&#x27; = the 1 Aug 2025 rebrand of Sapura Energy (Malaysia); vessels keep their Sapura names. Its six Sapura PLSVs are all on charter to Petrobras in Brazil (not in region).</li><li>Status as at Sep 2026, from contractor sites, NOPSEMA and offshore trade press. Vessel presence is transient — confirm current on-station status before publishing.</li><li>Colour key on the tab: Presence colours:</li></ul></div></section>
+
+<footer class="page">
+  Generated from <code>Offshore_key_clients.csv</code> on 22 September 2026 by
+  <code>scripts/data-hygiene/oa-universe/build_tab_visualisations.py</code>.
+  The CSVs are the source of truth &mdash; edit those and re-run the script.
+</footer>
+</div>
+<script>window.OA_PAGE = {"stats":[{"v":8,"k":"Marine key clients"},{"v":38,"k":"Vessel and facility rows"},{"v":11,"k":"Current in the North West","h":"presence column reads 'current'"},{"v":18,"k":"Transient (no standing base)"}],"sections":[{"title":"The marine fleet","charts":[{"type":"bar","title":"Vessels and facilities per client","sub":"Rows on the tab, one per vessel or shore facility","color":"seq-3","foot":null,"items":[{"label":"Fugro","value":7,"tip":"Fugro\n7 rows\n· Fugro Australia (Perth HQ)\n· Fugro Remote Operations Centre (ROC), Perth\n· Fugro Etive\n· Blue Essence USV fleet + eROV (incl. 'Fugro Maali')\n· Fugro Equator\n· Fugro decommissioning survey / positioning spread\n· Fugro geophysical/geotech vessels (e.g. Supporter, Voyager/Scout)"},{"label":"Subsea7","value":6,"tip":"Subsea7\n6 rows\n· Seven Oceans\n· Seven Oceanic\n· Bintan spoolbase (Indonesia)\n· Subsea7 Australia (Perth office)\n· Gorgon Stage 3 spread (vessel TBD)\n· Seven Seas + Rockwater 2"},{"label":"Allseas","value":5,"tip":"Allseas\n5 rows\n· Audacia\n· Sandpiper\n· Fortitude (+ Alegria, Felicity, Fortress)\n· Solitaire\n· Lorelay"},{"label":"DeepOcean","value":5,"tip":"DeepOcean\n5 rows\n· DeepOcean APAC / Shelf Subsea (Perth HQ)\n· Southern Star\n· Southern Nova\n· Oriental Dragon\n· 2026 WA subsea decommissioning campaign (vessel TBD)"},{"label":"McDermott","value":4,"tip":"McDermott\n4 rows\n· DLV 2000\n· Scarborough FPU hook-up / commissioning spread\n· Crux jacket + topsides (fabrication)\n· McDermott Australia (Perth office)"},{"label":"Saipem","value":4,"tip":"Saipem\n4 rows\n· Castorone\n· Saipem Endeavour\n· Saipem Constellation\n· Castorone (Ichthys)"},{"label":"Vantris (Sapura)","value":4,"tip":"Vantris (Sapura)\n4 rows\n· Sapura Constructor\n· Sapura 3500\n· Sapura 1200\n· Dorado WHP (FEED)"},{"label":"Van Oord","value":3,"tip":"Van Oord\n3 rows\n· Subsea rock-installation (fallpipe) vessel — unit undisclosed (Bravenes/Stornes/Nordnes class)\n· Dredger + shore-crossing spread (CSD/TSHD/backhoe + pull winch)\n· CSD 'Athena' + hopper dredgers (Ichthys)"}]},{"type":"bar","title":"Presence in the region","sub":"Presence text bucketed by its leading term","color":"seq-3","foot":null,"items":[{"label":"Recent","value":16,"tip":"Recent\n16"},{"label":"Current","value":11,"tip":"Current\n11"},{"label":"Historical","value":6,"tip":"Historical\n6"},{"label":"Likely / upcoming","value":4,"tip":"Likely / upcoming\n4"},{"label":"Fabrication only (overseas)","value":1,"tip":"Fabrication only (overseas)\n1"}]}]},{"title":"Where the work and the people sit","charts":[{"type":"bar","title":"Tier-1 client behind the work","sub":"Parsed from the project column","color":"seq-3","foot":null,"items":[{"label":"Not stated","value":18,"tip":"Not stated\n18"},{"label":"Santos","value":6,"tip":"Santos\n6"},{"label":"Chevron","value":5,"tip":"Chevron\n5"},{"label":"Woodside","value":3,"tip":"Woodside\n3"},{"label":"INPEX","value":2,"tip":"INPEX\n2"},{"label":"Australian Govt (via Petrofac)","value":1,"tip":"Australian Govt (via Petrofac)\n1"},{"label":"Shell (Browse Basin)","value":1,"tip":"Shell (Browse Basin)\n1"},{"label":"client/project not publicly disclosed","value":1,"tip":"client/project not publicly disclosed\n1"},{"label":"operator not disclosed","value":1,"tip":"operator not disclosed\n1"}]},{"type":"bar","title":"Australian base","sub":"Transient means mobilised per campaign — no standing local workforce","color":"seq-3","foot":null,"items":[{"label":"Transient (mobilised per campaign)","value":18,"tip":"Transient (mobilised per campaign)\n18"},{"label":"Perth","value":15,"tip":"Perth\n15"},{"label":"Australia-managed","value":2,"tip":"Australia-managed\n2"},{"label":"Not stated","value":2,"tip":"Not stated\n2"},{"label":"Indonesia (not Australia)","value":1,"tip":"Indonesia (not Australia)\n1"}]}]}],"table":{"columns":["Contractor (client)","Vessel / facility","NW project & Tier-1 client","Vessel / facility type","Service line","Presence","scope","worker#","member#","EBA status","eba expiry","other unions?","Australian base","Notes","Sources"],"rows":[["Saipem","Castorone","Scarborough trunkline — Woodside","DP3 S-lay pipelay ship","Deepwater large-diameter trunkline pipelay","Recent (2022–24)","","","","","","","Transient (mob. Dampier/Broome)","433 km trunkline to Pluto LNG; completed Oct 2024. Trunkline-damage incident Jan 2024, NOPSEMA cleared restart.","saipem.com Scarborough project; worldoil.com 2024-10-14"],["Saipem","Saipem Endeavour","Scarborough nearshore segment — Woodside","S-lay / heavy-lift pipelay barge","Nearshore / shallow-water pipelay","Recent (2023)","","","","","","","Transient","Installed ~33 km shore-approach segment the Castorone couldn't reach.","saipem.com Scarborough project"],["Saipem","Saipem Constellation","Jansz-Io Compression — Chevron","DP3 ultra-deepwater pipelay + heavy-lift construction","Subsea transport & installation (compression station, moorings, umbilical)","Current (2024–26)","","","","","","","Transient","LIVE 2026 (NOPSEMA OHS notice Apr 2026). Installs subsea compression station + ~135 km power umbilical from Barrow Is. Accommodation flotel Belait CSS1 (Nortrans).","lngprime.com; energynewsbulletin.net; offshore-mag.com"],["Saipem","Castorone (Ichthys)","Ichthys 889 km GEP — INPEX","DP3 S-lay pipelay ship","Deepwater gas export pipeline","Historical (2014–16)","","","","","","","Transient","Saipem's flagship historical NW/Timor Sea job (~US$1.8bn E&C). Ichthys pipelay was Saipem (not Allseas).","saipem.com Ichthys; gcaptain.com"],["Allseas","Audacia","Barossa gas export pipeline — Santos","S-lay pipelay vessel","Offshore rigid pipelay","Recent (2023–24)","","","","","","","Transient","262 km line toward Darwin. Paused Nov 2023–Jan 2024 (court dispute); main lay done Jun 2024.","marinelink.com; offshore-mag.com"],["Allseas","Sandpiper","Darwin Pipeline Duplication (Barossa) — Santos","Shallow-water pipelay barge","Nearshore pipelay / shore approach","Recent (2024–25)","","","","","","","Transient","~32 km shallow section + tie-in to Darwin LNG. Completed ~Mar 2025.","offshore-energy.biz; offshore-mag.com"],["Allseas","Fortitude (+ Alegria, Felicity, Fortress)","Barossa GEP support spread — Santos","DP3 heavy construction / support vessels","Survey, pre/post-lay support, testing","Recent (2023–24)","","","","","","","Transient","Support fleet for the Barossa pipelay campaign.","spglobal.com; marinelink.com"],["Allseas","Solitaire","Gorgon/Jansz (2014) & Wheatstone 44in trunkline (2015) — Chevron","S-lay pipelay ship (one of world's largest)","Deepwater large-diameter pipelay","Historical","","","","","","","Transient","Correct attribution: Gorgon/Wheatstone pipelay was Allseas. In major upgrade 2025, not on an Aus job.","allseas.com project pages"],["Allseas","Lorelay","Gorgon/Jansz development (2014) — Chevron","S-lay pipelay ship","Deepwater rigid pipelay","Historical","","","","","","","Transient","Worked alongside Solitaire on 660 km of Greater Gorgon lines.","allseas.com Gorgon-Jansz"],["Subsea7","Seven Oceans","Scarborough (Woodside) + Barossa in-field SURF (Santos); Julimar-Brunello Ph2 2021","Rigid reel-lay pipelay vessel (PLSV)","Deepwater rigid reel-lay flowlines","Recent (2023–24)","","","","","","","Perth (PM office)","Rigid pipe fabricated at Bintan spoolbase (Indonesia) then loaded to vessel.","offshore-mag.com; offshore-technology.com"],["Subsea7","Seven Oceanic","Scarborough (Woodside) + Barossa (Santos)","Flex-lay construction vessel","Flexible flowline/riser/umbilical lay","Recent (2024)","","","","","","","Perth (PM office)","Worked alongside Seven Oceans in the 2024 campaigns.","offshore-mag.com"],["Subsea7","Bintan spoolbase (Indonesia)","Scarborough & Barossa rigid flowlines","Spoolbase / rigid-pipe fabrication facility","Girth-welding & spooling of rigid pipeline strings","Recent/Current","","","","","","","Indonesia (not Australia)","Key shore facility feeding NW reel-lay. Subsea7 has NO Australian spoolbase.","offshore-mag.com"],["Subsea7","Subsea7 Australia (Perth office)","Australian SURF scopes (Scarborough, Barossa, Gorgon Stage 3)","Shore base / project office","Project management & engineering","Current","","","","","","","Perth","Local PM/engineering hub; no Aus spoolbase or home-ported fleet.","subsea7.com"],["Subsea7","Gorgon Stage 3 spread (vessel TBD)","Gorgon Stage 3 — Chevron","SURF / subsea installation (vessel unnamed)","EPIC subsea infrastructure install","Likely / upcoming","","","","","","","Perth (engineering now)","Awarded 18 Dec 2025 (US$150–300m). Offshore install scheduled 2028 (beyond a year) but a committed award. (Trade reports naming 'DLV2000' are wrong — that's McDermott's.)","subsea7.com company news"],["Subsea7","Seven Seas + Rockwater 2","Original Gorgon/Jansz umbilicals (~2013) — Chevron","Flex-lay + trenching vessels","Umbilical/structure install + trenching","Historical","","","","","","","Transient","Distinct from the current Jansz-Io Compression (which is Saipem, not Subsea7).","offshore-energy.biz"],["McDermott","DLV 2000","Stybarrow & Griffin decom (Woodside); Campbell removal (Santos, Varanus)","Derrick lay vessel (2,200 t crane + S-lay)","Heavy-lift removal, pipelay, decommissioning","Recent → paused (2023–25)","","","","","","","Transient","NOPSEMA suspended Woodside Stybarrow/Griffin decom Aug 2025 after DLV 2000 lift incidents. Also historical Ichthys subsea 2016–17, GWF-2 2016.","mcdermott.com; abc.net.au 2025-08-07"],["McDermott","Scarborough FPU hook-up / commissioning spread","Scarborough — Woodside","Offshore HUC spread","Hook-up & commissioning of the FPU","Current (2026)","","","","","","","Perth (subsea team)","FPU fabricated in China; towed by Boskalis. McDermott's physical NW presence = Perth team + HUC on the moored FPU.","offshore-mag.com; mcdermott.com"],["McDermott","Crux jacket + topsides (fabrication)","Crux — Shell (Browse Basin)","EPC fabrication (Batam yard) — NOT an in-region vessel","Structural fabrication","Fabrication only (overseas)","","","","","","","n/a","FLAG: overseas fabrication only; no confirmed McDermott vessel in Browse Basin (jacket T&I by a CNOOC HLV). A fabrication/EPC link, not vessel presence.","offshore-energy.biz; energynewsbulletin.net"],["McDermott","McDermott Australia (Perth office)","WA decommissioning + Scarborough HUC","Shore base / project office","Project management, subsea engineering","Current","","","","","","","Perth","Local hub coordinating DLV 2000 campaigns & Scarborough hook-up.","mcdermott.com"],["Fugro","Fugro Australia (Perth HQ)","Woodside (rig positioning since 1995), Chevron/Gorgon, Santos, Saipem","Shore base / regional HQ","Survey, geotech, positioning, ROV/USV, IMR support","Current","","","","","","","Perth (+ Jandakot; Dampier/Fremantle)","Anchor of Fugro's NW presence. Workforce incl. ROV pilots in OA (AWU/MUA) EA bargaining — FWC majority-support determination Jan 2022. Union-relevant.","fugro.com; offshorealliance.org.au"],["Fugro","Fugro Remote Operations Centre (ROC), Perth","North West Shelf uncrewed ops (Woodside & others)","Shore facility (remote control centre)","24/7 remote piloting of USVs & eROVs","Current (since 2022)","","","","","","","Perth","Nerve centre for NW uncrewed ops; crewing / labour-displacement angle relevant to a union map.","infraco.telstra.com.au; fugro.com"],["Fugro","Fugro Etive","NW Shelf site-investigation & subsea support — client/project not publicly disclosed","Multipurpose geotechnical / survey & subsea (ROV/IMR) support vessel (IMO 9379686)","Geotechnical site investigation, survey, ROV & IMR support","Current","","","","","","","In-region (Fugro Perth-managed)","Fugro's MAIN NW-region operating vessel at present (flagged by Troy). Bahamas-flag MPSV; specific current campaign not publicly disclosed — confirm client/scope via Fugro/NOPSEMA.","VesselFinder / MarineTraffic IMO 9379686"],["Fugro","Blue Essence USV fleet + eROV (incl. 'Fugro Maali')","NWS trunkline inspection (Woodside); Scarborough 433 km trunkline survey (for Saipem/Woodside)","Uncrewed surface vessel (USV) + electric ROV","Remote pipeline/trunkline inspection & pipelay survey","Recent / Current","","","","","","","Australia-based (Perth-controlled)","Australia's first fully-remote USV inspection (NWS 2021); Scarborough survey publicised 2025.","fugro.com case studies"],["Fugro","Fugro Equator","Greater Sunrise (Woodside) + Bayu-Undan CCS (Santos) pipeline surveys","Geophysical / AUV survey vessel","Deepwater site & pipeline-route survey","Likely / upcoming (2026)","","","","","","","Transient (Fremantle mob.)","Mobilising Q2 2026, offshore Q4 2026 (~3 months), Timor Sea. Data processed at Fugro Perth.","offshore-mag.com 2026"],["Fugro","Fugro decommissioning survey / positioning spread","Woodside WA decom (Enfield, Griffin, Stybarrow, Echo-Yodel)","Survey / positioning / IMR support","Survey & positioning for subsea decommissioning","Recent (2023–26)","","","","","","","Perth","Named among decom specialists (with TechnipFMC, Heerema, McDermott, DOF); specific vessel not itemised.","rigzone.com 2023-06-02"],["Fugro","Fugro geophysical/geotech vessels (e.g. Supporter, Voyager/Scout)","NW Shelf site surveys (regional capability)","Crewed geophysical & geotechnical drilling vessels","Site survey, seabed sampling/CPT for foundations & pipelines","Historical / capability","","","","","","","Asia-Pacific (Singapore/Perth)","NW site-survey now largely USV/AUV-based; crewed geotech-drilling is regional-fleet capability, no confirmed current NW deployment.","docs.nopsema.gov.au; offshore-energy.biz"],["DeepOcean","DeepOcean APAC / Shelf Subsea (Perth HQ)","NW Shelf IMR & 2026 WA decommissioning","Shore base / regional HQ","Diving, ROV, IMR, subsea construction, decommissioning","Current","","","","","","","Perth","DeepOcean acquired Shelf Subsea May 2025 (now 'DeepOcean APAC'). NOPSEMA-approved dive mgmt. DeepOcean's North Sea fleet does NOT work NW Australia.","offshore-technology.com; worldoil.com"],["DeepOcean","Southern Star","NW Shelf IMR/decom (roams APAC)","DP3 dive support vessel (sat diving + ROV)","IMR, subsea construction, decommissioning","Current (Aus-based)","","","","","","","Perth / Australia","Flagship DSV; 300 m sat system; 150 t crane. Recent jobs Thailand/NZ — likely candidate for the 2026 WA decom.","shelfsubsea.com"],["DeepOcean","Southern Nova","NW Shelf DSV fleet (Perth-managed)","DP2 dive support vessel (sat diving + ROV)","Diving, IMR, subsea support","Current","","","","","","","Australia-managed","300 m sat system; no specific named in-window NW project confirmed.","shelfsubsea.com"],["DeepOcean","Oriental Dragon","NW Shelf (Perth-managed); candidate for major decom/construction","DP3 sat diving & subsea construction vessel (twin ROV)","Heavy IMR, construction, decommissioning","Current","","","","","","","Australia-managed","Largest/most modern DSV in the fleet (2019); twin-bell 24-man sat system.","shelfsubsea.com"],["DeepOcean","2026 WA subsea decommissioning campaign (vessel TBD)","Undisclosed WA field — operator not disclosed","Decommissioning / IMR / ROV campaign","Suspend subsea trees; remove flowlines/riser/umbilical; recover DTM buoy","Likely / upcoming (2026)","","","","","","","Perth-managed","First major DeepOcean Aus decom award (announced Oct 2025); 300–400 m WD; client/field/vessel undisclosed.","worldoil.com; offshore-energy.biz"],["Van Oord","Subsea rock-installation (fallpipe) vessel — unit undisclosed (Bravenes/Stornes/Nordnes class)","Barossa GEP / Darwin Pipeline Duplication (DEME+Van Oord JV for Allseas) — Santos","Flexible fallpipe rock-installation vessel","Rock placement / pipeline stabilisation & protection","Recent (2023–25)","","","","","","","Transient","JV with DEME under Allseas; nearshore/rock works completed 2025. Specific hull not disclosed.","deme-group.com; vanoord.com annual report"],["Van Oord","Dredger + shore-crossing spread (CSD/TSHD/backhoe + pull winch)","Darwin Pipeline Duplication landfall, Wickham Point (Barossa) — Santos","Dredging / trenching / landfall spread","Seabed prep, trenching, shore-crossing, pipe-pull","Recent (2023–25)","","","","","","","Transient","Same DEME/Van Oord JV; landfall works completed 2025.","splash247.com; vanoord.com"],["Van Oord","CSD 'Athena' + hopper dredgers (Ichthys)","Ichthys LNG, Darwin Harbour (Walker Shoal) — INPEX","Capital dredging spread","Hard-rock capital dredging for LNG marine access","Historical (2014)","","","","","","","Transient","~15 Mm³ dredged; 8-month campaign. Establishes a long NW dredging track record.","bairdmaritime.com"],["Vantris (Sapura)","Sapura Constructor","Northern Endeavour / Laminaria-Corallina decom — Australian Govt (via Petrofac)","Subsea construction / DSV (sat diving, 2× ROV)","Well suspension/flushing, subsea construction, decom","Recent / Current (2024–25)","","","","","","","Transient (Darwin ops)","Vantris's clearest NW deployment. Well suspension & pipeline flushing; FPSO disconnect H2 2025. Decom of an orphaned govt asset (not a Tier-1 project).","industry.gov.au; vantrisenergy.com"],["Vantris (Sapura)","Sapura 3500","Australian decommissioning (field unspecified)","DP3 heavy-lift pipelay vessel (3,500 t crane)","Heavy-lift, pipelay, decommissioning","Recent (2023–25); departing","","","","","","","Transient","Vantris signalling redeployment to Brazil as Aus decom matures. Field not stated in sources.","offsnet.com; vantrisenergy.com"],["Vantris (Sapura)","Sapura 1200","Australian decommissioning (with Sapura 3500)","Derrick lay barge / heavy-lift-pipelay","Heavy-lift, pipelay, structure install/removal","Recent (2023–25); departing","","","","","","","Transient","Field not stated; intended redeployment to Brazil.","offsnet.com"],["Vantris (Sapura)","Dorado WHP (FEED)","Dorado, Bedout Sub-basin — Santos","Wellhead-platform EPCI — FEED only (no vessel yet)","Design / build / install of unmanned WHP (~90 m WD)","Likely / upcoming (stalled)","","","","","","","n/a","FEED won Aug 2021; Santos deferred FID (paused 2024–25). Contingent future award, not current work.","offshore-technology.com; nsenergybusiness.com"]],"emptyColumns":["scope","worker#","member#","EBA status","eba expiry","other unions?"],"emptyIdx":[6,7,8,9,10,11]}};</script>
+<script>
+(function () {
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem('oa-viz-theme'); } catch (e) {}
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+
+  function themeLabel() {
+    var t = root.getAttribute('data-theme');
+    return t === 'dark' ? 'Dark' : (t === 'light' ? 'Light' : 'Auto');
+  }
+  var btn = document.getElementById('theme');
+  if (btn) {
+    btn.textContent = themeLabel();
+    btn.addEventListener('click', function () {
+      var t = root.getAttribute('data-theme');
+      var next = t === 'dark' ? 'light' : (t === 'light' ? null : 'dark');
+      if (next) { root.setAttribute('data-theme', next); } else { root.removeAttribute('data-theme'); }
+      try { next ? localStorage.setItem('oa-viz-theme', next) : localStorage.removeItem('oa-viz-theme'); } catch (e) {}
+      btn.textContent = themeLabel();
+    });
+  }
+
+  // ---- tooltip layer -------------------------------------------------------
+  var tip = document.createElement('div');
+  tip.id = 'tip';
+  document.body.appendChild(tip);
+  function showTip(text, x, y) {
+    tip.textContent = text;
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var left = Math.min(Math.max(8, x + 14), window.innerWidth - r.width - 8);
+    var top = y - r.height - 12;
+    if (top < 8) top = y + 18;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  document.addEventListener('mousemove', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el) { tip.classList.remove('on'); return; }
+    showTip(el.getAttribute('data-tip'), e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+
+  var PAGE = window.OA_PAGE;
+  if (!PAGE) return;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function fmt(n) { return (typeof n === 'number' ? n : 0).toLocaleString('en-AU'); }
+
+  // ---- charts --------------------------------------------------------------
+  function barChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var max = c.max || Math.max.apply(null, c.items.map(function (i) { return i.value; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      var fill = el('div', 'bar-fill');
+      fill.style.width = (max ? (item.value / max) * 100 : 0) + '%';
+      if (c.color) fill.style.background = 'var(--' + c.color + ')';
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.value)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    if (c.foot) card.appendChild(el('p', 'sub', c.foot)).style.margin = '14px 0 0';
+    return card;
+  }
+
+  function stackChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var legend = el('div', 'legend');
+    c.series.forEach(function (s) {
+      var span = el('span');
+      var sw = el('i');
+      sw.style.background = 'var(--' + s.color + ')';
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(s.name));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+    var max = Math.max.apply(null, c.items.map(function (i) { return i.total; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      item.values.forEach(function (v, i) {
+        if (!v) return;
+        var seg = el('div', 'seg');
+        seg.style.width = 'calc(' + (v / max) * 100 + '% - 2px)';
+        seg.style.background = 'var(--' + c.series[i].color + ')';
+        track.appendChild(seg);
+      });
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.total)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    return card;
+  }
+
+  function heatChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var tools = el('div', 'heat-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = c.filter || 'Filter rows…';
+    tools.appendChild(search);
+    var count = el('span', 'toolnote', '');
+    tools.appendChild(count);
+    card.appendChild(tools);
+
+    var legend = el('div', 'legend');
+    c.legend.forEach(function (l) {
+      var span = el('span');
+      var sw = el('i');
+      if (l.cls) { sw.className = 'cell ' + l.cls; sw.style.borderRadius = '3px'; }
+      else { sw.style.boxShadow = 'inset 0 0 0 1px var(--grid)'; }
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(l.label));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+
+    var scroll = el('div', 'heat-scroll');
+    var grid = el('div', 'heat');
+    grid.style.gridTemplateColumns = 'minmax(128px, 210px) repeat(' + c.cols.length + ', minmax(' + (c.cols.length > 12 ? 58 : 66) + 'px, 1fr))';
+    grid.appendChild(el('div', 'corner'));
+    c.cols.forEach(function (col) {
+      var h = el('div', 'hh', col.label);
+      if (col.tip) h.setAttribute('data-tip', col.tip);
+      grid.appendChild(h);
+    });
+    var rowNodes = [];
+    c.rows.forEach(function (r) {
+      var nodes = [];
+      var rh = el('div', 'rh', r.label);
+      if (r.tip) rh.setAttribute('data-tip', r.tip);
+      nodes.push(rh);
+      r.cells.forEach(function (cell, i) {
+        var cn = el('div', 'cell' + (cell.c ? ' ' + cell.c : ' empty'), cell.t || '');
+        cn.setAttribute('data-tip', (cell.tip || (r.label + ' × ' + c.cols[i].label + '\nno linkage recorded')));
+        nodes.push(cn);
+      });
+      nodes.forEach(function (n) { grid.appendChild(n); });
+      rowNodes.push({ text: (r.label + ' ' + (r.search || '')).toLowerCase(), nodes: nodes });
+    });
+    scroll.appendChild(grid);
+    card.appendChild(scroll);
+
+    function apply() {
+      var q = search.value.trim().toLowerCase();
+      var shown = 0;
+      rowNodes.forEach(function (r) {
+        var hit = !q || r.text.indexOf(q) !== -1;
+        if (hit) shown++;
+        r.nodes.forEach(function (n) { n.style.display = hit ? '' : 'none'; });
+      });
+      count.textContent = shown + ' of ' + rowNodes.length + ' rows';
+    }
+    search.addEventListener('input', apply);
+    apply();
+    return card;
+  }
+
+  function renderChart(c) {
+    if (c.type === 'stack') return stackChart(c);
+    if (c.type === 'heat') return heatChart(c);
+    return barChart(c);
+  }
+
+  // ---- page assembly -------------------------------------------------------
+  var statsHost = document.getElementById('stats');
+  if (statsHost && PAGE.stats) {
+    PAGE.stats.forEach(function (s) {
+      var n = el('div', 'stat');
+      n.appendChild(el('div', 'v', s.v));
+      n.appendChild(el('div', 'k', s.k));
+      if (s.h) n.appendChild(el('div', 'h', s.h));
+      statsHost.appendChild(n);
+    });
+  }
+
+  var chartHost = document.getElementById('sections');
+  if (chartHost && PAGE.sections) {
+    PAGE.sections.forEach(function (sec) {
+      var s = el('section');
+      s.appendChild(el('h2', null, sec.title));
+      var grid = el('div', 'chart-grid' + (sec.wide ? ' one' : ''));
+      sec.charts.forEach(function (c) { grid.appendChild(renderChart(c)); });
+      s.appendChild(grid);
+      chartHost.appendChild(s);
+    });
+  }
+
+  // ---- table ---------------------------------------------------------------
+  var T = PAGE.table;
+  var tableHost = document.getElementById('table-host');
+  if (T && tableHost) {
+    var escapeHTML = function (s) {
+      return String(s).replace(/[&<>"]/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+      });
+    };
+    var chipFor = function (letter) {
+      var map = { H: ['chip-h', 'High'], M: ['chip-m', 'Medium'], L: ['chip-l', 'Low'] };
+      var m = map[letter];
+      return '<span class="chip ' + m[0] + '" title="' + m[1] + ' confidence">' + letter + '</span>';
+    };
+    var decorate = function (raw) {
+      var t = escapeHTML(raw);
+      if (/^[HML]$/.test(raw)) return chipFor(raw);
+      t = t.replace(/\((H|M|L)\)/g, function (_, l) { return chipFor(l); });
+      t = t.replace(/\[WB\]/g, '<span class="tag" title="From the colleague’s whiteboard">WB</span>');
+      return t;
+    };
+
+    var showAll = false;
+    var tools = el('div', 'table-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Search all columns…';
+    tools.appendChild(search);
+    var note = el('span', 'toolnote', '');
+    var toggle = null;
+    if (T.emptyColumns && T.emptyColumns.length) {
+      toggle = el('button', 'toolbtn', 'Show ' + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : ''));
+      toggle.setAttribute('data-tip', 'Columns with no values in any row:\n' + T.emptyColumns.join(', '));
+      tools.appendChild(toggle);
+    }
+    tools.appendChild(note);
+    tableHost.appendChild(tools);
+
+    var scroll = el('div', 'table-scroll');
+    var table = document.createElement('table');
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    thead.appendChild(headRow);
+    var tbody = document.createElement('tbody');
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    tableHost.appendChild(scroll);
+
+    var sortCol = -1, sortDir = 1, query = '';
+
+    function visibleCols() {
+      return T.columns.map(function (c, i) { return i; }).filter(function (i) {
+        return showAll || T.emptyIdx.indexOf(i) === -1;
+      });
+    }
+    function draw() {
+      var cols = visibleCols();
+      headRow.innerHTML = '';
+      cols.forEach(function (i) {
+        var th = el('th', null, T.columns[i] || '—');
+        if (sortCol === i) {
+          var ind = el('span', 'ind', sortDir > 0 ? ' ↑' : ' ↓');
+          th.appendChild(ind);
+        }
+        th.addEventListener('click', function () {
+          if (sortCol === i) { sortDir = -sortDir; } else { sortCol = i; sortDir = 1; }
+          draw();
+        });
+        headRow.appendChild(th);
+      });
+      var terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      var rows = T.rows.filter(function (r) {
+        if (!terms.length) return true;
+        var hay = r.join(' ').toLowerCase();
+        return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+      });
+      if (sortCol >= 0) {
+        rows = rows.slice().sort(function (a, b) {
+          var x = a[sortCol] || '', y = b[sortCol] || '';
+          var nx = parseFloat(x), ny = parseFloat(y);
+          var numeric = !isNaN(nx) && !isNaN(ny) && /^[\d.,\s]+$/.test(x) && /^[\d.,\s]+$/.test(y);
+          if (numeric) return (nx - ny) * sortDir;
+          if (!x) return 1;
+          if (!y) return -1;
+          return x.localeCompare(y) * sortDir;
+        });
+      }
+      tbody.innerHTML = rows.map(function (r) {
+        return '<tr>' + cols.map(function (i) {
+          var v = r[i] || '';
+          var cls = /^[\d.]+$/.test(v) ? ' class="num"' : '';
+          return '<td' + cls + '>' + decorate(v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      note.textContent = rows.length === T.rows.length
+        ? fmt(T.rows.length) + ' rows · ' + cols.length + ' of ' + T.columns.length + ' columns'
+        : fmt(rows.length) + ' of ' + fmt(T.rows.length) + ' rows';
+    }
+    search.addEventListener('input', function () { query = search.value; draw(); });
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        showAll = !showAll;
+        toggle.textContent = (showAll ? 'Hide ' : 'Show ') + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : '');
+        draw();
+      });
+    }
+    draw();
+  }
+})();
+</script>
+</body>
+</html>

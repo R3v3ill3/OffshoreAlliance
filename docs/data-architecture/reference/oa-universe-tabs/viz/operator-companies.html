@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operator → companies — OA Universe</title>
+<meta name="description" content="One row per operator-company pair, tiered and categorised — the long table the whole universe reduces to.">
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.05);
+  --track: #f0efec;
+  --seq-1: #104281;
+  --seq-2: #1c5cab;
+  --seq-3: #2a78d6;
+  --seq-4: #5598e7;
+  --seq-5: #86b6ef;
+  --seq-0: #cde2fb;
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --shadow: none;
+    --track: #232322;
+    --seq-1: #9ec5f4;
+    --seq-2: #6da7ec;
+    --seq-3: #3987e5;
+    --seq-4: #256abf;
+    --seq-5: #184f95;
+    --seq-0: #12345f;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --neutral: #383835;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --shadow: none;
+  --track: #232322;
+  --seq-1: #9ec5f4;
+  --seq-2: #6da7ec;
+  --seq-3: #3987e5;
+  --seq-4: #256abf;
+  --seq-5: #184f95;
+  --seq-0: #12345f;
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+  --neutral: #383835;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 72px; }
+
+/* ---- masthead ---- */
+.masthead { border-bottom: 1px solid var(--border); background: var(--surface); }
+.masthead-in {
+  max-width: 1180px; margin: 0 auto; padding: 14px 16px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.brand { font-weight: 640; letter-spacing: -0.01em; text-decoration: none; }
+.brand span { color: var(--muted); font-weight: 400; }
+.masthead nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.masthead nav a {
+  text-decoration: none; color: var(--ink-2); font-size: 13px;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid transparent;
+}
+.masthead nav a:hover { background: var(--track); }
+.masthead nav a[aria-current="page"] { border-color: var(--border); color: var(--ink); font-weight: 560; }
+.theme-toggle {
+  font: inherit; font-size: 13px; cursor: pointer; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+}
+.theme-toggle:hover { background: var(--track); }
+
+/* ---- page head ---- */
+header.page { padding: 34px 0 10px; }
+header.page h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+header.page .blurb { margin: 0; color: var(--ink-2); max-width: 74ch; }
+.crumbs { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.crumbs a { color: var(--ink-2); }
+.srcline { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.srcline code { font-size: 12px; background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+/* ---- stat tiles ---- */
+.stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); margin: 26px 0 8px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; box-shadow: var(--shadow);
+}
+.stat .v { font-size: 30px; line-height: 1.05; letter-spacing: -0.02em; font-weight: 600; }
+.stat .k { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.stat .h { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ---- sections & charts ---- */
+section { margin-top: 34px; }
+section > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px; font-weight: 620; }
+.chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.chart-grid.one { grid-template-columns: 1fr; }
+.chart-grid.one .bar-row { grid-template-columns: minmax(84px, 230px) 1fr auto; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px 18px; box-shadow: var(--shadow); min-width: 0;
+}
+.card h3 { font-size: 15px; margin: 0 0 3px; letter-spacing: -0.01em; }
+.card .sub { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 12px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: minmax(84px, 38%) 1fr auto; gap: 10px; align-items: center; }
+.bar-label { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.bar-track { height: 14px; background: var(--track); border-radius: 0 4px 4px 0; display: flex; }
+.bar-fill { background: var(--seq-3); border-radius: 0 4px 4px 0; min-width: 2px; height: 100%; }
+.bar-track .seg { height: 100%; min-width: 2px; margin-right: 2px; border-radius: 0; }
+.bar-track .seg:last-child { margin-right: 0; border-radius: 0 4px 4px 0; }
+.bar-value { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; }
+.bar-row:hover .bar-label, .bar-row:hover .bar-value { color: var(--ink); }
+
+/* ---- heatmap ---- */
+.heat-tools { display: flex; gap: 10px; align-items: center; margin: 0 0 12px; flex-wrap: wrap; }
+.heat-scroll { overflow: auto; max-height: 620px; border: 1px solid var(--border); border-radius: 8px; }
+.heat { display: grid; gap: 2px; padding: 2px; background: var(--surface); }
+.heat .hh, .heat .rh {
+  position: sticky; background: var(--surface); z-index: 2; font-size: 11.5px; color: var(--ink-2);
+}
+.heat .hh { top: 0; padding: 6px 4px; text-align: center; line-height: 1.25; align-self: stretch; border-bottom: 1px solid var(--grid); overflow-wrap: break-word; hyphens: none; }
+.heat .rh { left: 0; z-index: 1; padding: 4px 8px 4px 6px; display: flex; align-items: center; border-right: 1px solid var(--grid); overflow-wrap: break-word; }
+.heat .corner { position: sticky; top: 0; left: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid); }
+.heat .cell { min-height: 22px; border-radius: 3px; background: var(--track); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; }
+.heat .cell.empty { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); }
+.heat .cell:hover { outline: 2px solid var(--ink); outline-offset: -2px; }
+.heat.dim .row-off { display: none; }
+
+/* ---- table ---- */
+.table-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+input[type="search"], input[type="text"] {
+  font: inherit; font-size: 13px; padding: 6px 10px; min-width: 220px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink);
+}
+.toolbtn {
+  font: inherit; font-size: 13px; cursor: pointer; padding: 6px 11px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink-2);
+}
+.toolbtn:hover { background: var(--track); }
+.toolnote { font-size: 13px; color: var(--muted); }
+.table-scroll { overflow: auto; max-height: 720px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface); text-align: left; font-weight: 600;
+  padding: 9px 12px; border-bottom: 1px solid var(--axis); white-space: nowrap; cursor: pointer; color: var(--ink-2);
+}
+thead th:hover { color: var(--ink); }
+thead th .ind { color: var(--muted); font-weight: 400; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid var(--grid); vertical-align: top; color: var(--ink-2); }
+tbody td:first-child { color: var(--ink); font-weight: 560; }
+tbody tr:hover td { background: var(--track); }
+tbody td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+.chip { display: inline-block; font-size: 11px; font-weight: 640; line-height: 1.6; padding: 0 6px; border-radius: 4px; color: #fff; vertical-align: 1px; }
+.chip-h { background: var(--seq-2); }
+.chip-m { background: var(--seq-3); }
+.chip-l { background: var(--seq-5); color: #0b0b0b; }
+:root[data-theme="dark"] .chip-l, :root:where(:not([data-theme="light"])) .chip-l { color: #0b0b0b; }
+.tag { display: inline-block; font-size: 10.5px; letter-spacing: 0.04em; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.status i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ---- notes ---- */
+.notes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px 14px; }
+.notes li { margin: 8px 0; color: var(--ink-2); font-size: 13.5px; }
+
+/* ---- index cards ---- */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.tabcard {
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px 20px; box-shadow: var(--shadow);
+}
+.tabcard:hover { border-color: var(--axis); }
+.tabcard h3 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.tabcard p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.tabcard .meta { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.tabcard .go { font-size: 13px; color: var(--seq-3); font-weight: 560; }
+
+/* ---- tooltip ---- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .09s;
+  max-width: 320px; background: var(--ink); color: var(--plane); font-size: 12.5px; line-height: 1.45;
+  padding: 7px 10px; border-radius: 7px; white-space: pre-line;
+}
+#tip.on { opacity: 1; }
+
+footer.page { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+footer.page code { background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+@media (max-width: 640px) {
+  header.page h1 { font-size: 24px; }
+  .bar-row { grid-template-columns: minmax(70px, 44%) 1fr auto; }
+}
+@media print {
+  .masthead nav, .theme-toggle, .table-tools, .heat-tools { display: none; }
+  .table-scroll, .heat-scroll { max-height: none; }
+  .card, .stat { break-inside: avoid; }
+}
+
+.cell.s1 { background: #104281; color: #fff; }
+.cell.s2 { background: #1c5cab; color: #fff; }
+.cell.s3 { background: #2a78d6; color: #fff; }
+.cell.s4 { background: #5598e7; color: #0b0b0b; }
+.cell.s5 { background: #86b6ef; color: #0b0b0b; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s3 { background: #3987e5; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s4 { background: #256abf; color: #fff; }
+  :root:where(:not([data-theme="light"])) .cell.s5 { background: #184f95; color: #fff; }
+}
+:root[data-theme="dark"] .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s3 { background: #3987e5; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s4 { background: #256abf; color: #fff; }
+:root[data-theme="dark"] .cell.s5 { background: #184f95; color: #fff; }
+</style>
+</head>
+<body>
+<div class="masthead"><div class="masthead-in">
+  <a class="brand" href="index.html">OA Universe <span>&middot; tab visualisations</span></a>
+  <nav><a href="index.html">Index</a><a href="key-assets.html">Key assets</a><a href="asset-contractors.html">Asset → contractors</a><a href="contractor-linkages.html">Contractor linkages</a><a href="contractor-x-tier-1.html">Contractor × Tier-1</a><a href="contractors.html">Contractors by scope</a><a href="facility-x-scope.html">Facility × scope</a><a href="key-clients.html">Marine key clients</a><a href="operator-companies.html" aria-current="page">Operator → companies</a><a href="reconciliation.html">Reconciliation</a><a href="onshore.html">Onshore</a><button class="theme-toggle" id="theme" type="button" title="Light / dark / follow the system">Auto</button></nav>
+</div></div>
+<div class="wrap">
+
+<header class="page">
+  <p class="crumbs"><a href="index.html">OA Universe tabs</a> &rsaquo; Operator → companies</p>
+  <h1>Operator → companies</h1>
+  <p class="blurb">The long form of the universe: one row per operator and company, with tier, category, scope, the basis of the link, the assets behind it and a confidence rating. This is the shape the database should hold.</p>
+  <p class="srcline">Source: <code>Offshore_operator_companies.csv</code> &middot;
+     <a href="../Offshore_operator_companies.csv">open the CSV</a></p>
+</header>
+<div class="stats" id="stats"></div>
+<div id="sections"></div>
+<section><h2>Every row</h2><div id="table-host"></div></section>
+<section><h2>Legend &amp; method notes (from the tab itself)</h2><div class="notes"><ul><li>LEGEND &amp; METHOD</li><li>M — company/industry evidence, facility or currency unconfirmed</li><li>ONE ROW PER OPERATOR–COMPANY PAIR (filter col B). Tiers as you specified: Tier 1 = Chevron, Shell, Woodside, Inpex; Tier 2 = Santos, Jadestone, MODEC, BW Opal; &#x27;Other&#x27; = Australian Govt (DISR) for Northern Endeavour. Esso/Bass Strait links are folded under Woodside.</li><li>Categories: Marine key client (your 8) · Offshore contractor (your 39) · Added employer (16) · Onshore contractor (from your onshore tab). Green &#x27;onshore&#x27; = onshore-tab link only. Basis: &#x27;contract/EA&#x27; = explicit operator link; &#x27;via asset&#x27; = derived from an asset that operator runs; where your Key Assets tab lists a vessel operator (BW Offshore/Barossa, MODEC/Pyrenees) the asset attributes to BOTH vessel and field operator.</li><li>Company counts — Chevron: 36; Shell: 19; Woodside: 44; Inpex: 19; Santos: 25; Jadestone: 7; MODEC: 5; BW Opal (BW Offshore): 10; Aus Govt (DISR) — Northern Endeavour: 8.</li><li>Companies with NO operator link found (DeepOcean/Shelf Subsea, Tidewater, TMT, Oceaneering, Entier, Auriga, LifeFlight) do not appear here.</li><li>Colour key on the tab: Confidence: · H — documented contract/EA · L — inferred / historic-only</li></ul></div></section>
+
+<footer class="page">
+  Generated from <code>Offshore_operator_companies.csv</code> on 22 September 2026 by
+  <code>scripts/data-hygiene/oa-universe/build_tab_visualisations.py</code>.
+  The CSVs are the source of truth &mdash; edit those and re-run the script.
+</footer>
+</div>
+<script>window.OA_PAGE = {"stats":[{"v":173,"k":"Operator × company pairs"},{"v":9,"k":"Operators"},{"v":69,"k":"Distinct companies"},{"v":83,"k":"High-confidence pairs","h":"48% of all pairs"}],"sections":[{"title":"Each operator's company base","charts":[{"type":"stack","title":"Companies per operator, by category","sub":"How each operator's base splits across the universe's company categories","series":[{"name":"Offshore contractor","color":"cat-1"},{"name":"Added employer","color":"cat-2"},{"name":"Onshore contractor","color":"cat-3"},{"name":"Marine key client","color":"cat-4"},{"name":"Offshore contractor / marine key client","color":"cat-5"}],"items":[{"label":"Woodside","values":[27,10,3,2,2],"total":44,"tip":"Woodside\n44 companies\n27 offshore contractor, 10 added employer, 3 onshore contractor, 2 marine key client, 2 offshore contractor / marine key client"},{"label":"Chevron","values":[17,5,10,3,1],"total":36,"tip":"Chevron\n36 companies\n17 offshore contractor, 5 added employer, 10 onshore contractor, 3 marine key client, 1 offshore contractor / marine key client"},{"label":"Santos","values":[15,3,1,4,2],"total":25,"tip":"Santos\n25 companies\n15 offshore contractor, 3 added employer, 1 onshore contractor, 4 marine key client, 2 offshore contractor / marine key client"},{"label":"Inpex","values":[12,4,1,1,1],"total":19,"tip":"Inpex\n19 companies\n12 offshore contractor, 4 added employer, 1 onshore contractor, 1 marine key client, 1 offshore contractor / marine key client"},{"label":"Shell","values":[14,4,0,0,1],"total":19,"tip":"Shell\n19 companies\n14 offshore contractor, 4 added employer, 1 offshore contractor / marine key client"},{"label":"BW Opal (BW Offshore)","values":[6,1,0,3,0],"total":10,"tip":"BW Opal (BW Offshore)\n10 companies\n6 offshore contractor, 1 added employer, 3 marine key client"},{"label":"Aus Govt (DISR) — Northern Endeavour","values":[5,2,0,1,0],"total":8,"tip":"Aus Govt (DISR) — Northern Endeavour\n8 companies\n5 offshore contractor, 2 added employer, 1 marine key client"},{"label":"Jadestone","values":[6,1,0,0,0],"total":7,"tip":"Jadestone\n7 companies\n6 offshore contractor, 1 added employer"},{"label":"MODEC","values":[4,1,0,0,0],"total":5,"tip":"MODEC\n5 companies\n4 offshore contractor, 1 added employer"}]},{"type":"stack","title":"Companies per operator, by confidence","sub":"The same pairs, shaded by how well evidenced they are","series":[{"name":"High","color":"seq-2"},{"name":"Medium","color":"seq-3"},{"name":"Low","color":"seq-5"},{"name":"Unrated","color":"neutral"}],"items":[{"label":"Woodside","values":[26,9,6,3],"total":44,"tip":"Woodside\n44 companies\n26 high, 9 medium, 6 low, 3 unrated"},{"label":"Chevron","values":[11,8,7,10],"total":36,"tip":"Chevron\n36 companies\n11 high, 8 medium, 7 low, 10 unrated"},{"label":"Santos","values":[14,6,4,1],"total":25,"tip":"Santos\n25 companies\n14 high, 6 medium, 4 low, 1 unrated"},{"label":"Inpex","values":[11,4,3,1],"total":19,"tip":"Inpex\n19 companies\n11 high, 4 medium, 3 low, 1 unrated"},{"label":"Shell","values":[9,5,5,0],"total":19,"tip":"Shell\n19 companies\n9 high, 5 medium, 5 low"},{"label":"BW Opal (BW Offshore)","values":[6,1,3,0],"total":10,"tip":"BW Opal (BW Offshore)\n10 companies\n6 high, 1 medium, 3 low"},{"label":"Aus Govt (DISR) — Northern Endeavour","values":[4,2,2,0],"total":8,"tip":"Aus Govt (DISR) — Northern Endeavour\n8 companies\n4 high, 2 medium, 2 low"},{"label":"Jadestone","values":[2,3,2,0],"total":7,"tip":"Jadestone\n7 companies\n2 high, 3 medium, 2 low"},{"label":"MODEC","values":[0,4,1,0],"total":5,"tip":"MODEC\n5 companies\n4 medium, 1 low"}]}]},{"title":"Scopes and the companies working most operators","charts":[{"type":"bar","title":"Pairs per scope of work","sub":"A pair carrying several scopes counts once under each","color":"seq-3","foot":null,"items":[{"label":"Maintenance","value":34,"tip":"Maintenance\n34"},{"label":"Marine","value":32,"tip":"Marine\n32"},{"label":"Helicopters","value":23,"tip":"Helicopters\n23"},{"label":"Decomm","value":22,"tip":"Decomm\n22"},{"label":"ROV","value":19,"tip":"ROV\n19"},{"label":"Drilling","value":18,"tip":"Drilling\n18"},{"label":"Construction","value":17,"tip":"Construction\n17"},{"label":"Hookup/Commissioning","value":15,"tip":"Hookup/Commissioning\n15"},{"label":"Onshore","value":15,"tip":"Onshore\n15"},{"label":"Catering","value":14,"tip":"Catering\n14"},{"label":"SURF / reel-lay","value":4,"tip":"SURF / reel-lay\n4"},{"label":"Emergency services / medical","value":3,"tip":"Emergency services / medical\n3"},{"label":"Pipelay","value":3,"tip":"Pipelay\n3"},{"label":"Pipelay / heavy-lift construction","value":3,"tip":"Pipelay / heavy-lift construction\n3"},{"label":"Surveyors","value":3,"tip":"Surveyors\n3"},{"label":"Construction / HUC / subsea / decom","value":2,"tip":"Construction / HUC / subsea / decom\n2"}]},{"type":"bar","title":"Companies working the most operators","sub":"Count of operator pairs each company holds","color":"seq-3","foot":null,"items":[{"label":"Monadelphous","value":7,"tip":"Monadelphous\n7"},{"label":"vertech","value":7,"tip":"vertech\n7"},{"label":"Eris (Kuiper)","value":6,"tip":"Eris (Kuiper)\n6"},{"label":"Bhagwan Marine","value":5,"tip":"Bhagwan Marine\n5"},{"label":"ESS","value":5,"tip":"ESS\n5"},{"label":"Go Offshore","value":5,"tip":"Go Offshore\n5"},{"label":"Solstad Australia","value":5,"tip":"Solstad Australia\n5"},{"label":"CHC","value":4,"tip":"CHC\n4"},{"label":"DOF","value":4,"tip":"DOF\n4"},{"label":"Kaefer (ISOLOGIC)","value":4,"tip":"Kaefer (ISOLOGIC)\n4"},{"label":"Legeneering","value":4,"tip":"Legeneering\n4"},{"label":"MEA","value":4,"tip":"MEA\n4"},{"label":"McDermott","value":4,"tip":"McDermott\n4"},{"label":"Noble","value":4,"tip":"Noble\n4"},{"label":"PHI","value":4,"tip":"PHI\n4"},{"label":"Programmed","value":4,"tip":"Programmed\n4"}]}]}],"table":{"columns":["Tier","Operator","Company","Category","Scope(s)","Basis","Offshore assets linked (this operator)","Onshore facilities (this operator)","Confidence","Note"],"rows":[["Tier 1","Chevron","Saipem","Marine key client","Pipelay / heavy-lift construction","contract/EA, via asset","Jansz-Io Compression (Field Control Station) (H)","","H",""],["Tier 1","Chevron","Subsea7","Marine key client","SURF / reel-lay","contract/EA, via asset","Gorgon / Jansz-Io subsea (M)","","M",""],["Tier 1","Chevron","Allseas","Marine key client","Pipelay","contract/EA, via asset","Gorgon / Jansz-Io subsea (L); Wheatstone Platform (L)","","L",""],["Tier 1","Chevron","Altrad","Offshore contractor","Maintenance","contract/EA, via asset + onshore tab","Wheatstone Platform (H); Barrow Island oil (WA Oil) (H); Thevenard Island (legacy) (M)","Gorgon Chevron (Barrow); Wheatstone (Onslow)","H",""],["Tier 1","Chevron","Baker Hughes","Offshore contractor","Drilling","contract/EA, via asset + onshore tab","Gorgon / Jansz-Io subsea (H); Jansz-Io Compression (Field Control Station) (H)","Gorgon Chevron (Barrow)","H",""],["Tier 1","Chevron","Cyan","Offshore contractor","Marine","contract/EA, via asset","Wheatstone Platform (H); Barrow Island oil (WA Oil) (H); Gorgon / Jansz-Io subsea (M)","","H",""],["Tier 1","Chevron","Eris (Kuiper)","Offshore contractor","Maintenance; Construction; Decomm","contract/EA, via asset","Gorgon / Jansz-Io subsea (M); Jansz-Io Compression (Field Control Station) (H)","","H",""],["Tier 1","Chevron","ESS","Offshore contractor","Catering","contract/EA, via asset","Wheatstone Platform (H)","","H",""],["Tier 1","Chevron","Legeneering","Offshore contractor","Maintenance; Hookup/Commissioning","contract/EA, via asset","Thevenard Island (legacy) (H)","","H",""],["Tier 1","Chevron","MEA","Offshore contractor","Decomm","contract/EA, via asset","Jansz-Io Compression (Field Control Station) (H)","","H",""],["Tier 1","Chevron","Noble","Offshore contractor","Drilling","contract/EA, via asset","Gorgon / Jansz-Io subsea (M); Wheatstone Platform (M)","","H",""],["Tier 1","Chevron","DOF","Offshore contractor","Marine; ROV","contract/EA, via asset","Gorgon / Jansz-Io subsea (M); Wheatstone Platform (M)","","M",""],["Tier 1","Chevron","Go Offshore","Offshore contractor","Marine","contract/EA","","","M",""],["Tier 1","Chevron","OSA","Offshore contractor","Helicopters","contract/EA, via asset","Wheatstone Platform (M); Barrow Island oil (WA Oil) (M); Gorgon / Jansz-Io subsea (M)","","M",""],["Tier 1","Chevron","UGL","Offshore contractor","Maintenance","contract/EA, via asset + onshore tab","Wheatstone Platform (M)","Gorgon Chevron (Barrow); Co2 (Barrow); Wheatstone (Onslow)","M",""],["Tier 1","Chevron","vertech","Offshore contractor","Helicopters","contract/EA","","","M",""],["Tier 1","Chevron","Fugro","Offshore contractor / marine key client","Surveyors; ROV","contract/EA","","","L",""],["Tier 1","Chevron","GGC","Offshore contractor","Decomm","contract/EA, via asset","Gorgon / Jansz-Io subsea (L)","","L",""],["Tier 1","Chevron","Kaefer (ISOLOGIC)","Offshore contractor","Maintenance","via asset + onshore tab","Wheatstone Platform (L)","Gorgon Chevron (Barrow)","L",""],["Tier 1","Chevron","Monadelphous","Offshore contractor","Maintenance; Hookup/Commissioning","contract/EA, via asset","Jansz-Io Compression (Field Control Station) (L)","","L",""],["Tier 1","Chevron","Oceaneering","Offshore contractor","ROV","contract/EA","","","L",""],["Tier 1","Chevron","Altrad Sparrows","Added employer","(not on your contractors tab — ADDED) Cranes / lifting (Maintenance)","contract/EA, via asset","Wheatstone Platform (H); Barrow Island oil (WA Oil) (M)","","H",""],["Tier 1","Chevron","Bhagwan Marine","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA, via asset","Barrow Island oil (WA Oil) (M); Thevenard Island (legacy) (H)","","H",""],["Tier 1","Chevron","IAS","Added employer","(not on your contractors tab — ADDED) Maintenance (fabric)","contract/EA, via asset","Wheatstone Platform (M)","","M",""],["Tier 1","Chevron","Parabellum","Added employer","(not on your contractors tab — ADDED) Emergency services / medical","contract/EA, via asset","Barrow Island oil (WA Oil) (M); Gorgon / Jansz-Io subsea (L); Wheatstone Platform (L)","","M",""],["Tier 1","Chevron","Solstad Australia","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA","","","L",""],["Tier 1","Chevron","Cleanaway","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Gorgon Chevron (Barrow); Wheatstone (Onslow)","onshore",""],["Tier 1","Chevron","CRMS","Onshore contractor","Onshore (see onshore tab)","onshore tab","","JIC Construction (Barrow)","onshore",""],["Tier 1","Chevron","Downer","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Gorgon Chevron (Barrow); Wheatstone (Onslow)","onshore",""],["Tier 1","Chevron","Ertech","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Gorgon Chevron (Barrow); Co2 (Barrow); JIC Construction (Barrow); Wheatstone (Onslow)","onshore",""],["Tier 1","Chevron","GRMS","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Co2 (Barrow)","onshore",""],["Tier 1","Chevron","KBSS","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Gorgon Chevron (Barrow); Wheatstone (Onslow)","onshore",""],["Tier 1","Chevron","NESS Fircroft","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Gorgon Chevron (Barrow)","onshore",""],["Tier 1","Chevron","Powertech","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Gorgon Chevron (Barrow); Co2 (Barrow); Wheatstone (Onslow)","onshore",""],["Tier 1","Chevron","UGL (WA Oil)","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Gorgon Chevron (Barrow)","onshore",""],["Tier 1","Chevron","Ventia","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Gorgon Chevron (Barrow); Wheatstone (Onslow)","onshore",""],["Tier 1","Shell","Eris (Kuiper)","Offshore contractor","Maintenance; Construction; Decomm","contract/EA, via asset","Prelude FLNG (H); Crux (H)","","H",""],["Tier 1","Shell","McDermott","Offshore contractor / marine key client","Construction","contract/EA, via asset","Crux (H)","","H",""],["Tier 1","Shell","MEA","Offshore contractor","Decomm","contract/EA, via asset","Crux (H); Prelude FLNG (M)","","H",""],["Tier 1","Shell","Monadelphous","Offshore contractor","Maintenance; Hookup/Commissioning","contract/EA, via asset","Prelude FLNG (H); Crux (H)","","H",""],["Tier 1","Shell","PHI","Offshore contractor","Helicopters","contract/EA, via asset","Prelude FLNG (H)","","H",""],["Tier 1","Shell","SGS","Offshore contractor","Chemist","contract/EA, via asset","Prelude FLNG (H)","","H",""],["Tier 1","Shell","Sodexo","Offshore contractor","Catering","contract/EA, via asset","Prelude FLNG (H)","","H",""],["Tier 1","Shell","DOF","Offshore contractor","Marine; ROV","contract/EA, via asset","Prelude FLNG (M)","","M",""],["Tier 1","Shell","ESS","Offshore contractor","Catering","contract/EA","","","M",""],["Tier 1","Shell","Go Offshore","Offshore contractor","Marine","contract/EA","","","M",""],["Tier 1","Shell","Programmed","Offshore contractor","Marine; Drilling; Catering; Maintenance; ROV; Construction; Hookup/Commissioning; Decomm","contract/EA, via asset","Prelude FLNG (M)","","M",""],["Tier 1","Shell","Transocean (sedco forex)","Offshore contractor","Drilling","contract/EA, via asset","Crux (M)","","M",""],["Tier 1","Shell","CHC","Offshore contractor","Helicopters","contract/EA, via asset","Prelude FLNG (L)","","L",""],["Tier 1","Shell","Enemech","Offshore contractor","Maintenance","contract/EA, via asset","Prelude FLNG (L); Crux (L)","","L",""],["Tier 1","Shell","Oceaneering","Offshore contractor","ROV","contract/EA","","","L",""],["Tier 1","Shell","Atlas Professionals","Added employer","(not on your contractors tab — ADDED) Crewing / labour hire (Marine; Drilling; Catering; HUC)","contract/EA, via asset","Prelude FLNG (H)","","H",""],["Tier 1","Shell","Technip Energies / TechnipFMC","Added employer","(not on your contractors tab — ADDED) Construction / HUC / subsea / decom","contract/EA, via asset","Crux (H); Prelude FLNG (H)","","H",""],["Tier 1","Shell","Parabellum","Added employer","(not on your contractors tab — ADDED) Emergency services / medical","contract/EA","","","L",""],["Tier 1","Shell","Solstad Australia","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA","","","L",""],["Tier 1","Woodside","Saipem","Marine key client","Pipelay / heavy-lift construction","contract/EA, via asset","Scarborough FPU (H)","","H",""],["Tier 1","Woodside","Subsea7","Marine key client","SURF / reel-lay","contract/EA, via asset","Scarborough FPU (H); Julimar-Brunello (H)","","H",""],["Tier 1","Woodside","AOS","Offshore contractor","Marine; Catering; ROV; Construction","contract/EA, via asset","Scarborough FPU (H); Enfield (Nganhurra FPSO – removed) (L)","","H",""],["Tier 1","Woodside","Cyan","Offshore contractor","Marine","contract/EA, via asset","Scarborough FPU (H); North Rankin Complex (North Rankin A & B) (H); Goodwyn A (H); Angel (H); Pluto A (H); Okha FPSO (CWLH) (M); Ngujima-Yin FPSO (M)","","H",""],["Tier 1","Woodside","DOF","Offshore contractor","Marine; ROV","contract/EA, via asset","Okha FPSO (CWLH) (H); Enfield (Nganhurra FPSO – removed) (H); Stybarrow (Stybarrow Venture FPSO – removed) (H); Griffin (Griffin Venture FPSO – departed) (H); Bass Strait platforms (GBJV + Kipper Unit JV) (H)","","H","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","Enemech","Offshore contractor","Maintenance","contract/EA, via asset","Okha FPSO (CWLH) (M); Ngujima-Yin FPSO (M); Bass Strait platforms (GBJV + Kipper Unit JV) (M)","","H","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","Eris (Kuiper)","Offshore contractor","Maintenance; Construction; Decomm","contract/EA, via asset","Pluto A (M); Scarborough FPU (H); Bass Strait platforms (GBJV + Kipper Unit JV) (L)","","H","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","ESS","Offshore contractor","Catering","contract/EA, via asset","North Rankin Complex (North Rankin A & B) (H); Goodwyn A (H); Ngujima-Yin FPSO (M); Okha FPSO (CWLH) (M); Scarborough FPU (M)","","H",""],["Tier 1","Woodside","Fugro","Offshore contractor / marine key client","Surveyors; ROV","contract/EA, via asset","Scarborough FPU (H); Greater Sunrise (Sunrise, Troubadour) (M); NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor) (M); Enfield (Nganhurra FPSO – removed) (M); Griffin (Griffin Venture FPSO – departed) (M); Stybarrow (Stybarrow Venture FPSO – removed) (M)","","H",""],["Tier 1","Woodside","Go Offshore","Offshore contractor","Marine","contract/EA, via asset","North Rankin Complex (North Rankin A & B) (H); Goodwyn A (H); Angel (H)","","H",""],["Tier 1","Woodside","Hjelix","Offshore contractor","ROV","contract/EA, via asset","Bass Strait platforms (GBJV + Kipper Unit JV) (H)","","H","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","Legeneering","Offshore contractor","Maintenance; Hookup/Commissioning","contract/EA, via asset","Ngujima-Yin FPSO (H); Okha FPSO (CWLH) (H); North Rankin Complex (North Rankin A & B) (H); Goodwyn A (H); Pluto A (H)","","H",""],["Tier 1","Woodside","McDermott","Offshore contractor / marine key client","Construction","contract/EA, via asset","Scarborough FPU (H); Stybarrow (Stybarrow Venture FPSO – removed) (H); Griffin (Griffin Venture FPSO – departed) (M)","","H",""],["Tier 1","Woodside","MEA","Offshore contractor","Decomm","contract/EA, via asset","North Rankin Complex (North Rankin A & B) (H); Goodwyn A (H); Angel (H)","","H",""],["Tier 1","Woodside","Monadelphous","Offshore contractor","Maintenance; Hookup/Commissioning","contract/EA, via asset + onshore tab","North Rankin Complex (North Rankin A & B) (H); Goodwyn A (H); Angel (H); Pluto A (H); Okha FPSO (CWLH) (H); Scarborough FPU (H)","Woodside Gas Plant (Karratha); Woodside Pluto 1 (Karratha); Woodside Pluto 2 (Karratha)","H",""],["Tier 1","Woodside","Noble","Offshore contractor","Drilling","contract/EA","","","H",""],["Tier 1","Woodside","PHI","Offshore contractor","Helicopters","contract/EA, via asset","Scarborough FPU (H); North Rankin Complex (North Rankin A & B) (M); Goodwyn A (M); Angel (M); NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor) (M); Pluto A (M); Okha FPSO (CWLH) (L); Ngujima-Yin FPSO (L); Pyrenees Venture FPSO (L)","","H",""],["Tier 1","Woodside","Reach","Offshore contractor","ROV","contract/EA, via asset","Scarborough FPU (H)","","H",""],["Tier 1","Woodside","Transocean (sedco forex)","Offshore contractor","Drilling","contract/EA, via asset","Enfield (Nganhurra FPSO – removed) (H); Stybarrow (Stybarrow Venture FPSO – removed) (H); Julimar-Brunello (H); NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor) (H); North Rankin Complex (North Rankin A & B) (M); Angel (M)","","H",""],["Tier 1","Woodside","Valaris (Ensco","Offshore contractor","Drilling","contract/EA, via asset","Scarborough FPU (H); Bass Strait platforms (GBJV + Kipper Unit JV) (H)","","H","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","vertech","Offshore contractor","Helicopters","contract/EA, via asset","North Rankin Complex (North Rankin A & B) (H); Goodwyn A (H); Angel (H); Okha FPSO (CWLH) (H); Ngujima-Yin FPSO (M); Pyrenees Venture FPSO (M); Scarborough FPU (L)","","H",""],["Tier 1","Woodside","Wood","Offshore contractor","Helicopters","contract/EA, via asset","North Rankin Complex (North Rankin A & B) (H); Goodwyn A (H); Okha FPSO (CWLH) (H); Bass Strait platforms (GBJV + Kipper Unit JV) (H); Greater Sunrise (Sunrise, Troubadour) (L)","","H","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","CHC","Offshore contractor","Helicopters","contract/EA, via asset","North Rankin Complex (North Rankin A & B) (M); Goodwyn A (M); Angel (M); NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor) (M); Okha FPSO (CWLH) (M); Ngujima-Yin FPSO (M); Pyrenees Venture FPSO (M); Macedon (M)","","M",""],["Tier 1","Woodside","OSM","Offshore contractor","Marine; Drilling; ROV; Construction; Decomm","contract/EA, via asset","North Rankin Complex (North Rankin A & B) (M); Goodwyn A (M); Angel (M); Pluto A (M); Scarborough FPU (L)","","M",""],["Tier 1","Woodside","Sierra","Offshore contractor","Marine","contract/EA, via asset","Scarborough FPU (M); Enfield (Nganhurra FPSO – removed) (M); Stybarrow (Stybarrow Venture FPSO – removed) (M); NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor) (M); Okha FPSO (CWLH) (M)","","M",""],["Tier 1","Woodside","UGL","Offshore contractor","Maintenance","contract/EA, via asset + onshore tab","Bass Strait platforms (GBJV + Kipper Unit JV) (M); Scarborough FPU (L)","Woodside Gas Plant (Karratha); Woodside Pluto 1 (Karratha)","M","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","GGC","Offshore contractor","Decomm","contract/EA, via asset","Julimar-Brunello (L); Bass Strait platforms (GBJV + Kipper Unit JV) (L)","","L","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","Kaefer (ISOLOGIC)","Offshore contractor","Maintenance","via asset","Bass Strait platforms (GBJV + Kipper Unit JV) (L)","","L","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","Oceaneering","Offshore contractor","ROV","contract/EA","","","L",""],["Tier 1","Woodside","Programmed","Offshore contractor","Marine; Drilling; Catering; Maintenance; ROV; Construction; Hookup/Commissioning; Decomm","contract/EA, via asset","Scarborough FPU (L)","","L",""],["Tier 1","Woodside","Sodexo","Offshore contractor","Catering","contract/EA, via asset","Bass Strait platforms (GBJV + Kipper Unit JV) (L)","","L","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","Applus+","Added employer","(not on your contractors tab — ADDED) Inspection / Integrity","contract/EA, via asset + onshore tab","Okha FPSO (CWLH) (H); Ngujima-Yin FPSO (H); Pyrenees Venture FPSO (M); North Rankin Complex (North Rankin A & B) (M); Goodwyn A (M); Angel (M); Pluto A (M)","Woodside Gas Plant (Karratha)","H",""],["Tier 1","Woodside","Boskalis","Added employer","(not on your contractors tab — ADDED) Marine (dredging / towage)","contract/EA, via asset","Scarborough FPU (H)","","H",""],["Tier 1","Woodside","Condex","Added employer","(not on your contractors tab — ADDED) Electrical / instrumentation","contract/EA, via asset","Bass Strait platforms (GBJV + Kipper Unit JV) (H)","","H","Bass Strait = ex-Esso, Woodside-operated from 1 Jul 2026"],["Tier 1","Woodside","Technip Energies / TechnipFMC","Added employer","(not on your contractors tab — ADDED) Construction / HUC / subsea / decom","contract/EA, via asset","Griffin (Griffin Venture FPSO – departed) (H); Julimar-Brunello (H); Pluto A (M); Enfield (Nganhurra FPSO – removed) (M); Stybarrow (Stybarrow Venture FPSO – removed) (M)","","H",""],["Tier 1","Woodside","Atlas Professionals","Added employer","(not on your contractors tab — ADDED) Crewing / labour hire (Marine; Drilling; Catering; HUC)","contract/EA, via asset","North Rankin Complex (North Rankin A & B) (L); Goodwyn A (L); Angel (L)","","M",""],["Tier 1","Woodside","Bhagwan Marine","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA, via asset","Angel (M)","","M",""],["Tier 1","Woodside","Heerema","Added employer","(not on your contractors tab — ADDED) Heavy lift / construction","contract/EA, via asset","Enfield (Nganhurra FPSO – removed) (M); Griffin (Griffin Venture FPSO – departed) (M); Stybarrow (Stybarrow Venture FPSO – removed) (M)","","M",""],["Tier 1","Woodside","IAS","Added employer","(not on your contractors tab — ADDED) Maintenance (fabric)","contract/EA","","","M",""],["Tier 1","Woodside","Solstad Australia","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA, via asset","Scarborough FPU (M); Enfield (Nganhurra FPSO – removed) (M); NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor) (M); Angel (M)","","M",""],["Tier 1","Woodside","SEA1 Offshore (ex-Siem)","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA, via asset","North Rankin Complex (North Rankin A & B) (L); Goodwyn A (L); Angel (L); Pluto A (L)","","L",""],["Tier 1","Woodside","Bechtel","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Woodside Pluto 2 (Karratha)","onshore",""],["Tier 1","Woodside","C2O","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Woodside Pluto 2 (Karratha)","onshore",""],["Tier 1","Woodside","KBSS","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Woodside Pluto 2 (Karratha)","onshore",""],["Tier 1","Inpex","Saipem","Marine key client","Pipelay / heavy-lift construction","contract/EA, via asset","Ichthys Explorer (CPF) (L)","","L",""],["Tier 1","Inpex","Baker Hughes","Offshore contractor","Drilling","contract/EA, via asset","Ichthys Explorer (CPF) (H)","","H",""],["Tier 1","Inpex","Cyan","Offshore contractor","Marine","contract/EA, via asset","Ichthys Explorer (CPF) (H); Ichthys Venturer (FPSO) (H)","","H",""],["Tier 1","Inpex","Enemech","Offshore contractor","Maintenance","contract/EA, via asset","Ichthys Explorer (CPF) (H); Ichthys Venturer (FPSO) (H)","","H",""],["Tier 1","Inpex","ESS","Offshore contractor","Catering","contract/EA, via asset","Ichthys Explorer (CPF) (H); Ichthys Venturer (FPSO) (H)","","H",""],["Tier 1","Inpex","Go Offshore","Offshore contractor","Marine","contract/EA, via asset","Ichthys Explorer (CPF) (H); Ichthys Venturer (FPSO) (H)","","H",""],["Tier 1","Inpex","Monadelphous","Offshore contractor","Maintenance; Hookup/Commissioning","contract/EA, via asset + onshore tab","Ichthys Explorer (CPF) (H); Ichthys Venturer (FPSO) (H)","Inpex (Darwin)","H",""],["Tier 1","Inpex","Noble","Offshore contractor","Drilling","contract/EA, via asset","Ichthys Explorer (CPF) (H)","","H",""],["Tier 1","Inpex","PHI","Offshore contractor","Helicopters","contract/EA, via asset","Ichthys Explorer (CPF) (H); Ichthys Venturer (FPSO) (H)","","H",""],["Tier 1","Inpex","vertech","Offshore contractor","Helicopters","contract/EA, via asset","Ichthys Explorer (CPF) (H); Ichthys Venturer (FPSO) (H)","","H",""],["Tier 1","Inpex","Eris (Kuiper)","Offshore contractor","Maintenance; Construction; Decomm","contract/EA, via asset","Ichthys Explorer (CPF) (M)","","M",""],["Tier 1","Inpex","Kaefer (ISOLOGIC)","Offshore contractor","Maintenance","contract/EA, via asset","Ichthys Venturer (FPSO) (M)","","M",""],["Tier 1","Inpex","McDermott","Offshore contractor / marine key client","Construction","contract/EA, via asset","Ichthys Explorer (CPF) (M)","","M",""],["Tier 1","Inpex","GGC","Offshore contractor","Decomm","contract/EA, via asset","Ichthys Explorer (CPF) (L)","","L",""],["Tier 1","Inpex","GR Production Services","Added employer","(not on your contractors tab — ADDED) Operations personnel / maintenance","contract/EA, via asset","Ichthys Explorer (CPF) (M); Ichthys Venturer (FPSO) (M)","","H",""],["Tier 1","Inpex","Heerema","Added employer","(not on your contractors tab — ADDED) Heavy lift / construction","contract/EA, via asset","Ichthys Explorer (CPF) (H); Ichthys Venturer (FPSO) (H)","","H",""],["Tier 1","Inpex","Solstad Australia","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA, via asset","Ichthys Explorer (CPF) (M)","","M",""],["Tier 1","Inpex","Parabellum","Added employer","(not on your contractors tab — ADDED) Emergency services / medical","contract/EA","","","L",""],["Tier 1","Inpex","Inpex","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Inpex (Darwin)","onshore",""],["Tier 2","Santos","Allseas","Marine key client","Pipelay","contract/EA, via asset","Barossa (BW Opal FPSO) (H)","","H",""],["Tier 2","Santos","Subsea7","Marine key client","SURF / reel-lay","contract/EA, via asset","Barossa (BW Opal FPSO) (H)","","H",""],["Tier 2","Santos","Van Oord","Marine key client","Rock installation / dredging","contract/EA, via asset","Barossa (BW Opal FPSO) (H)","","H",""],["Tier 2","Santos","Vantris (Sapura)","Marine key client","Construction / decommissioning","contract/EA, via asset","Dorado (L)","","L",""],["Tier 2","Santos","Eris (Kuiper)","Offshore contractor","Maintenance; Construction; Decomm","contract/EA, via asset","Barossa (BW Opal FPSO) (H)","","H",""],["Tier 2","Santos","Go Offshore","Offshore contractor","Marine","contract/EA, via asset","Ningaloo Vision FPSO (H)","","H",""],["Tier 2","Santos","McDermott","Offshore contractor / marine key client","Construction","contract/EA, via asset","Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab (H); Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab (H)","","H",""],["Tier 2","Santos","Monadelphous","Offshore contractor","Maintenance; Hookup/Commissioning","via asset","Barossa (BW Opal FPSO) (H)","","H",""],["Tier 2","Santos","Noble","Offshore contractor","Drilling","contract/EA, via asset","Halyard (H); Spar / Greater East Spar (H); Bayu-Undan (M); Dorado (L)","","H",""],["Tier 2","Santos","OSA","Offshore contractor","Helicopters","contract/EA, via asset","Bayu-Undan (H); John Brookes (M); Spar / Greater East Spar (M); Halyard (M); Reindeer (M)","","H",""],["Tier 2","Santos","Sodexo","Offshore contractor","Catering","contract/EA","","","H",""],["Tier 2","Santos","Transocean (sedco forex)","Offshore contractor","Drilling","contract/EA","","","H",""],["Tier 2","Santos","Valaris (Ensco","Offshore contractor","Drilling","contract/EA, via asset","Barossa (BW Opal FPSO) (H)","","H",""],["Tier 2","Santos","WPF(Duratech)","Offshore contractor","Decomm","contract/EA, via asset + onshore tab","Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab (H); Ningaloo Vision FPSO (H); John Brookes (M); Spar / Greater East Spar (M); Halyard (M)","Santos Onshore (Varanus Island); Santos Onshore (Varanus Island)","H",""],["Tier 2","Santos","Fugro","Offshore contractor / marine key client","Surveyors; ROV","contract/EA, via asset","Bayu-Undan (M)","","M",""],["Tier 2","Santos","Kaefer (ISOLOGIC)","Offshore contractor","Maintenance","contract/EA, via asset","John Brookes (M); Spar / Greater East Spar (M); Spartan (M)","","M",""],["Tier 2","Santos","UGL","Offshore contractor","Maintenance","contract/EA, via asset + onshore tab","John Brookes (M); Spar / Greater East Spar (M); Halyard (M)","Santos Onshore (Varanus Island); Santos Offshore (Varanus Island)","M",""],["Tier 2","Santos","vertech","Offshore contractor","Helicopters","contract/EA, via asset","Ningaloo Vision FPSO (M); Barossa (BW Opal FPSO) (L)","","M",""],["Tier 2","Santos","Wood","Offshore contractor","Helicopters","via asset","Barossa (BW Opal FPSO) (M)","","M",""],["Tier 2","Santos","AOS","Offshore contractor","Marine; Catering; ROV; Construction","contract/EA","","","L",""],["Tier 2","Santos","Programmed","Offshore contractor","Marine; Drilling; Catering; Maintenance; ROV; Construction; Hookup/Commissioning; Decomm","via asset","Barossa (BW Opal FPSO) (L)","","L",""],["Tier 2","Santos","Weststar-GAP","Added employer","(not on your contractors tab — ADDED) Helicopters","contract/EA, via asset","Bayu-Undan (H); Barossa (BW Opal FPSO) (L)","","H",""],["Tier 2","Santos","Bhagwan Marine","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA, via asset","Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab (M)","","M",""],["Tier 2","Santos","Solstad Australia","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA, via asset","Bayu-Undan (L)","","L",""],["Tier 2","Santos","Santos","Onshore contractor","Onshore (see onshore tab)","onshore tab","","Santos Onshore (Varanus Island); Santos Offshore (Varanus Island)","onshore",""],["Tier 2","Jadestone","Valaris (Ensco","Offshore contractor","Drilling","contract/EA, via asset","Montara (Montara Venture FPSO + WHP) (H)","","H",""],["Tier 2","Jadestone","CHC","Offshore contractor","Helicopters","contract/EA, via asset","Stag (M)","","M",""],["Tier 2","Jadestone","vertech","Offshore contractor","Helicopters","contract/EA, via asset","Montara (Montara Venture FPSO + WHP) (M)","","M",""],["Tier 2","Jadestone","WPF(Duratech)","Offshore contractor","Decomm","contract/EA, via asset","Stag (L)","","M",""],["Tier 2","Jadestone","DOF","Offshore contractor","Marine; ROV","contract/EA, via asset","Montara (Montara Venture FPSO + WHP) (L)","","L",""],["Tier 2","Jadestone","OSA","Offshore contractor","Helicopters","contract/EA, via asset","Montara (Montara Venture FPSO + WHP) (L)","","L",""],["Tier 2","Jadestone","Bhagwan Marine","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA, via asset","Montara (Montara Venture FPSO + WHP) (H); Stag (H)","","H",""],["Tier 2","MODEC","CHC","Offshore contractor","Helicopters","via asset","Pyrenees Venture FPSO (M)","","M","via Pyrenees Venture FPSO (MODEC-operated vessel on a Woodside field)"],["Tier 2","MODEC","Legeneering","Offshore contractor","Maintenance; Hookup/Commissioning","contract/EA","","","M",""],["Tier 2","MODEC","vertech","Offshore contractor","Helicopters","contract/EA, via asset","Pyrenees Venture FPSO (M)","","M","via Pyrenees Venture FPSO (MODEC-operated vessel on a Woodside field)"],["Tier 2","MODEC","PHI","Offshore contractor","Helicopters","via asset","Pyrenees Venture FPSO (L)","","L","via Pyrenees Venture FPSO (MODEC-operated vessel on a Woodside field)"],["Tier 2","MODEC","Applus+","Added employer","(not on your contractors tab — ADDED) Inspection / Integrity","via asset","Pyrenees Venture FPSO (M)","","M","via Pyrenees Venture FPSO (MODEC-operated vessel on a Woodside field)"],["Tier 2","BW Opal (BW Offshore)","Allseas","Marine key client","Pipelay","via asset","Barossa (BW Opal FPSO) (H)","","H","Barossa FIELD development contractor (Santos-contracted); listed here because your Key Assets tab puts Barossa under BW Offshore"],["Tier 2","BW Opal (BW Offshore)","Subsea7","Marine key client","SURF / reel-lay","via asset","Barossa (BW Opal FPSO) (H)","","H","Barossa FIELD development contractor (Santos-contracted); listed here because your Key Assets tab puts Barossa under BW Offshore"],["Tier 2","BW Opal (BW Offshore)","Van Oord","Marine key client","Rock installation / dredging","via asset","Barossa (BW Opal FPSO) (H)","","H","Barossa FIELD development contractor (Santos-contracted); listed here because your Key Assets tab puts Barossa under BW Offshore"],["Tier 2","BW Opal (BW Offshore)","Eris (Kuiper)","Offshore contractor","Maintenance; Construction; Decomm","via asset","Barossa (BW Opal FPSO) (H)","","H","Barossa FIELD development contractor (Santos-contracted); listed here because your Key Assets tab puts Barossa under BW Offshore"],["Tier 2","BW Opal (BW Offshore)","Monadelphous","Offshore contractor","Maintenance; Hookup/Commissioning","contract/EA, via asset","Barossa (BW Opal FPSO) (H)","","H",""],["Tier 2","BW Opal (BW Offshore)","Valaris (Ensco","Offshore contractor","Drilling","via asset","Barossa (BW Opal FPSO) (H)","","H","Barossa FIELD development contractor (Santos-contracted); listed here because your Key Assets tab puts Barossa under BW Offshore"],["Tier 2","BW Opal (BW Offshore)","Wood","Offshore contractor","Helicopters","contract/EA, via asset","Barossa (BW Opal FPSO) (M)","","M",""],["Tier 2","BW Opal (BW Offshore)","Programmed","Offshore contractor","Marine; Drilling; Catering; Maintenance; ROV; Construction; Hookup/Commissioning; Decomm","via asset","Barossa (BW Opal FPSO) (L)","","L",""],["Tier 2","BW Opal (BW Offshore)","vertech","Offshore contractor","Helicopters","via asset","Barossa (BW Opal FPSO) (L)","","L","Barossa FIELD development contractor (Santos-contracted); listed here because your Key Assets tab puts Barossa under BW Offshore"],["Tier 2","BW Opal (BW Offshore)","Weststar-GAP","Added employer","(not on your contractors tab — ADDED) Helicopters","via asset","Barossa (BW Opal FPSO) (L)","","L",""],["Other","Aus Govt (DISR) — Northern Endeavour","Vantris (Sapura)","Marine key client","Construction / decommissioning","contract/EA, via asset","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab (H)","","H",""],["Other","Aus Govt (DISR) — Northern Endeavour","MEA","Offshore contractor","Decomm","contract/EA, via asset","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab (H)","","H",""],["Other","Aus Govt (DISR) — Northern Endeavour","UPS","Offshore contractor","Decomm","contract/EA, via asset","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab (H)","","H",""],["Other","Aus Govt (DISR) — Northern Endeavour","Monadelphous","Offshore contractor","Maintenance; Hookup/Commissioning","contract/EA, via asset","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab (M)","","M",""],["Other","Aus Govt (DISR) — Northern Endeavour","ESS","Offshore contractor","Catering","via asset","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab (L)","","L",""],["Other","Aus Govt (DISR) — Northern Endeavour","Legeneering","Offshore contractor","Maintenance; Hookup/Commissioning","via asset","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab (L)","","L",""],["Other","Aus Govt (DISR) — Northern Endeavour","Petrofac","Added employer","(not on your contractors tab — ADDED) Decomm (operator / manager)","contract/EA, via asset","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab (H)","","H",""],["Other","Aus Govt (DISR) — Northern Endeavour","Bhagwan Marine","Added employer","(not on your contractors tab — ADDED) Marine","contract/EA, via asset","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab (M)","","M",""]],"emptyColumns":[],"emptyIdx":[]}};</script>
+<script>
+(function () {
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem('oa-viz-theme'); } catch (e) {}
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+
+  function themeLabel() {
+    var t = root.getAttribute('data-theme');
+    return t === 'dark' ? 'Dark' : (t === 'light' ? 'Light' : 'Auto');
+  }
+  var btn = document.getElementById('theme');
+  if (btn) {
+    btn.textContent = themeLabel();
+    btn.addEventListener('click', function () {
+      var t = root.getAttribute('data-theme');
+      var next = t === 'dark' ? 'light' : (t === 'light' ? null : 'dark');
+      if (next) { root.setAttribute('data-theme', next); } else { root.removeAttribute('data-theme'); }
+      try { next ? localStorage.setItem('oa-viz-theme', next) : localStorage.removeItem('oa-viz-theme'); } catch (e) {}
+      btn.textContent = themeLabel();
+    });
+  }
+
+  // ---- tooltip layer -------------------------------------------------------
+  var tip = document.createElement('div');
+  tip.id = 'tip';
+  document.body.appendChild(tip);
+  function showTip(text, x, y) {
+    tip.textContent = text;
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var left = Math.min(Math.max(8, x + 14), window.innerWidth - r.width - 8);
+    var top = y - r.height - 12;
+    if (top < 8) top = y + 18;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  document.addEventListener('mousemove', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el) { tip.classList.remove('on'); return; }
+    showTip(el.getAttribute('data-tip'), e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+
+  var PAGE = window.OA_PAGE;
+  if (!PAGE) return;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function fmt(n) { return (typeof n === 'number' ? n : 0).toLocaleString('en-AU'); }
+
+  // ---- charts --------------------------------------------------------------
+  function barChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var max = c.max || Math.max.apply(null, c.items.map(function (i) { return i.value; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      var fill = el('div', 'bar-fill');
+      fill.style.width = (max ? (item.value / max) * 100 : 0) + '%';
+      if (c.color) fill.style.background = 'var(--' + c.color + ')';
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.value)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    if (c.foot) card.appendChild(el('p', 'sub', c.foot)).style.margin = '14px 0 0';
+    return card;
+  }
+
+  function stackChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var legend = el('div', 'legend');
+    c.series.forEach(function (s) {
+      var span = el('span');
+      var sw = el('i');
+      sw.style.background = 'var(--' + s.color + ')';
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(s.name));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+    var max = Math.max.apply(null, c.items.map(function (i) { return i.total; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      item.values.forEach(function (v, i) {
+        if (!v) return;
+        var seg = el('div', 'seg');
+        seg.style.width = 'calc(' + (v / max) * 100 + '% - 2px)';
+        seg.style.background = 'var(--' + c.series[i].color + ')';
+        track.appendChild(seg);
+      });
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.total)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    return card;
+  }
+
+  function heatChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var tools = el('div', 'heat-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = c.filter || 'Filter rows…';
+    tools.appendChild(search);
+    var count = el('span', 'toolnote', '');
+    tools.appendChild(count);
+    card.appendChild(tools);
+
+    var legend = el('div', 'legend');
+    c.legend.forEach(function (l) {
+      var span = el('span');
+      var sw = el('i');
+      if (l.cls) { sw.className = 'cell ' + l.cls; sw.style.borderRadius = '3px'; }
+      else { sw.style.boxShadow = 'inset 0 0 0 1px var(--grid)'; }
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(l.label));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+
+    var scroll = el('div', 'heat-scroll');
+    var grid = el('div', 'heat');
+    grid.style.gridTemplateColumns = 'minmax(128px, 210px) repeat(' + c.cols.length + ', minmax(' + (c.cols.length > 12 ? 58 : 66) + 'px, 1fr))';
+    grid.appendChild(el('div', 'corner'));
+    c.cols.forEach(function (col) {
+      var h = el('div', 'hh', col.label);
+      if (col.tip) h.setAttribute('data-tip', col.tip);
+      grid.appendChild(h);
+    });
+    var rowNodes = [];
+    c.rows.forEach(function (r) {
+      var nodes = [];
+      var rh = el('div', 'rh', r.label);
+      if (r.tip) rh.setAttribute('data-tip', r.tip);
+      nodes.push(rh);
+      r.cells.forEach(function (cell, i) {
+        var cn = el('div', 'cell' + (cell.c ? ' ' + cell.c : ' empty'), cell.t || '');
+        cn.setAttribute('data-tip', (cell.tip || (r.label + ' × ' + c.cols[i].label + '\nno linkage recorded')));
+        nodes.push(cn);
+      });
+      nodes.forEach(function (n) { grid.appendChild(n); });
+      rowNodes.push({ text: (r.label + ' ' + (r.search || '')).toLowerCase(), nodes: nodes });
+    });
+    scroll.appendChild(grid);
+    card.appendChild(scroll);
+
+    function apply() {
+      var q = search.value.trim().toLowerCase();
+      var shown = 0;
+      rowNodes.forEach(function (r) {
+        var hit = !q || r.text.indexOf(q) !== -1;
+        if (hit) shown++;
+        r.nodes.forEach(function (n) { n.style.display = hit ? '' : 'none'; });
+      });
+      count.textContent = shown + ' of ' + rowNodes.length + ' rows';
+    }
+    search.addEventListener('input', apply);
+    apply();
+    return card;
+  }
+
+  function renderChart(c) {
+    if (c.type === 'stack') return stackChart(c);
+    if (c.type === 'heat') return heatChart(c);
+    return barChart(c);
+  }
+
+  // ---- page assembly -------------------------------------------------------
+  var statsHost = document.getElementById('stats');
+  if (statsHost && PAGE.stats) {
+    PAGE.stats.forEach(function (s) {
+      var n = el('div', 'stat');
+      n.appendChild(el('div', 'v', s.v));
+      n.appendChild(el('div', 'k', s.k));
+      if (s.h) n.appendChild(el('div', 'h', s.h));
+      statsHost.appendChild(n);
+    });
+  }
+
+  var chartHost = document.getElementById('sections');
+  if (chartHost && PAGE.sections) {
+    PAGE.sections.forEach(function (sec) {
+      var s = el('section');
+      s.appendChild(el('h2', null, sec.title));
+      var grid = el('div', 'chart-grid' + (sec.wide ? ' one' : ''));
+      sec.charts.forEach(function (c) { grid.appendChild(renderChart(c)); });
+      s.appendChild(grid);
+      chartHost.appendChild(s);
+    });
+  }
+
+  // ---- table ---------------------------------------------------------------
+  var T = PAGE.table;
+  var tableHost = document.getElementById('table-host');
+  if (T && tableHost) {
+    var escapeHTML = function (s) {
+      return String(s).replace(/[&<>"]/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+      });
+    };
+    var chipFor = function (letter) {
+      var map = { H: ['chip-h', 'High'], M: ['chip-m', 'Medium'], L: ['chip-l', 'Low'] };
+      var m = map[letter];
+      return '<span class="chip ' + m[0] + '" title="' + m[1] + ' confidence">' + letter + '</span>';
+    };
+    var decorate = function (raw) {
+      var t = escapeHTML(raw);
+      if (/^[HML]$/.test(raw)) return chipFor(raw);
+      t = t.replace(/\((H|M|L)\)/g, function (_, l) { return chipFor(l); });
+      t = t.replace(/\[WB\]/g, '<span class="tag" title="From the colleague’s whiteboard">WB</span>');
+      return t;
+    };
+
+    var showAll = false;
+    var tools = el('div', 'table-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Search all columns…';
+    tools.appendChild(search);
+    var note = el('span', 'toolnote', '');
+    var toggle = null;
+    if (T.emptyColumns && T.emptyColumns.length) {
+      toggle = el('button', 'toolbtn', 'Show ' + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : ''));
+      toggle.setAttribute('data-tip', 'Columns with no values in any row:\n' + T.emptyColumns.join(', '));
+      tools.appendChild(toggle);
+    }
+    tools.appendChild(note);
+    tableHost.appendChild(tools);
+
+    var scroll = el('div', 'table-scroll');
+    var table = document.createElement('table');
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    thead.appendChild(headRow);
+    var tbody = document.createElement('tbody');
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    tableHost.appendChild(scroll);
+
+    var sortCol = -1, sortDir = 1, query = '';
+
+    function visibleCols() {
+      return T.columns.map(function (c, i) { return i; }).filter(function (i) {
+        return showAll || T.emptyIdx.indexOf(i) === -1;
+      });
+    }
+    function draw() {
+      var cols = visibleCols();
+      headRow.innerHTML = '';
+      cols.forEach(function (i) {
+        var th = el('th', null, T.columns[i] || '—');
+        if (sortCol === i) {
+          var ind = el('span', 'ind', sortDir > 0 ? ' ↑' : ' ↓');
+          th.appendChild(ind);
+        }
+        th.addEventListener('click', function () {
+          if (sortCol === i) { sortDir = -sortDir; } else { sortCol = i; sortDir = 1; }
+          draw();
+        });
+        headRow.appendChild(th);
+      });
+      var terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      var rows = T.rows.filter(function (r) {
+        if (!terms.length) return true;
+        var hay = r.join(' ').toLowerCase();
+        return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+      });
+      if (sortCol >= 0) {
+        rows = rows.slice().sort(function (a, b) {
+          var x = a[sortCol] || '', y = b[sortCol] || '';
+          var nx = parseFloat(x), ny = parseFloat(y);
+          var numeric = !isNaN(nx) && !isNaN(ny) && /^[\d.,\s]+$/.test(x) && /^[\d.,\s]+$/.test(y);
+          if (numeric) return (nx - ny) * sortDir;
+          if (!x) return 1;
+          if (!y) return -1;
+          return x.localeCompare(y) * sortDir;
+        });
+      }
+      tbody.innerHTML = rows.map(function (r) {
+        return '<tr>' + cols.map(function (i) {
+          var v = r[i] || '';
+          var cls = /^[\d.]+$/.test(v) ? ' class="num"' : '';
+          return '<td' + cls + '>' + decorate(v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      note.textContent = rows.length === T.rows.length
+        ? fmt(T.rows.length) + ' rows · ' + cols.length + ' of ' + T.columns.length + ' columns'
+        : fmt(rows.length) + ' of ' + fmt(T.rows.length) + ' rows';
+    }
+    search.addEventListener('input', function () { query = search.value; draw(); });
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        showAll = !showAll;
+        toggle.textContent = (showAll ? 'Hide ' : 'Show ') + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : '');
+        draw();
+      });
+    }
+    draw();
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asset → contractors — OA Universe</title>
+<meta name="description" content="The inverse view: for each asset, every employer with people on it, split by how well the linkage is evidenced.">
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.05);
+  --track: #f0efec;
+  --seq-1: #104281;
+  --seq-2: #1c5cab;
+  --seq-3: #2a78d6;
+  --seq-4: #5598e7;
+  --seq-5: #86b6ef;
+  --seq-0: #cde2fb;
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --shadow: none;
+    --track: #232322;
+    --seq-1: #9ec5f4;
+    --seq-2: #6da7ec;
+    --seq-3: #3987e5;
+    --seq-4: #256abf;
+    --seq-5: #184f95;
+    --seq-0: #12345f;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --neutral: #383835;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --shadow: none;
+  --track: #232322;
+  --seq-1: #9ec5f4;
+  --seq-2: #6da7ec;
+  --seq-3: #3987e5;
+  --seq-4: #256abf;
+  --seq-5: #184f95;
+  --seq-0: #12345f;
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+  --neutral: #383835;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 72px; }
+
+/* ---- masthead ---- */
+.masthead { border-bottom: 1px solid var(--border); background: var(--surface); }
+.masthead-in {
+  max-width: 1180px; margin: 0 auto; padding: 14px 16px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.brand { font-weight: 640; letter-spacing: -0.01em; text-decoration: none; }
+.brand span { color: var(--muted); font-weight: 400; }
+.masthead nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.masthead nav a {
+  text-decoration: none; color: var(--ink-2); font-size: 13px;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid transparent;
+}
+.masthead nav a:hover { background: var(--track); }
+.masthead nav a[aria-current="page"] { border-color: var(--border); color: var(--ink); font-weight: 560; }
+.theme-toggle {
+  font: inherit; font-size: 13px; cursor: pointer; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+}
+.theme-toggle:hover { background: var(--track); }
+
+/* ---- page head ---- */
+header.page { padding: 34px 0 10px; }
+header.page h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+header.page .blurb { margin: 0; color: var(--ink-2); max-width: 74ch; }
+.crumbs { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.crumbs a { color: var(--ink-2); }
+.srcline { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.srcline code { font-size: 12px; background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+/* ---- stat tiles ---- */
+.stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); margin: 26px 0 8px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; box-shadow: var(--shadow);
+}
+.stat .v { font-size: 30px; line-height: 1.05; letter-spacing: -0.02em; font-weight: 600; }
+.stat .k { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.stat .h { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ---- sections & charts ---- */
+section { margin-top: 34px; }
+section > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px; font-weight: 620; }
+.chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.chart-grid.one { grid-template-columns: 1fr; }
+.chart-grid.one .bar-row { grid-template-columns: minmax(84px, 230px) 1fr auto; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px 18px; box-shadow: var(--shadow); min-width: 0;
+}
+.card h3 { font-size: 15px; margin: 0 0 3px; letter-spacing: -0.01em; }
+.card .sub { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 12px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: minmax(84px, 38%) 1fr auto; gap: 10px; align-items: center; }
+.bar-label { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.bar-track { height: 14px; background: var(--track); border-radius: 0 4px 4px 0; display: flex; }
+.bar-fill { background: var(--seq-3); border-radius: 0 4px 4px 0; min-width: 2px; height: 100%; }
+.bar-track .seg { height: 100%; min-width: 2px; margin-right: 2px; border-radius: 0; }
+.bar-track .seg:last-child { margin-right: 0; border-radius: 0 4px 4px 0; }
+.bar-value { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; }
+.bar-row:hover .bar-label, .bar-row:hover .bar-value { color: var(--ink); }
+
+/* ---- heatmap ---- */
+.heat-tools { display: flex; gap: 10px; align-items: center; margin: 0 0 12px; flex-wrap: wrap; }
+.heat-scroll { overflow: auto; max-height: 620px; border: 1px solid var(--border); border-radius: 8px; }
+.heat { display: grid; gap: 2px; padding: 2px; background: var(--surface); }
+.heat .hh, .heat .rh {
+  position: sticky; background: var(--surface); z-index: 2; font-size: 11.5px; color: var(--ink-2);
+}
+.heat .hh { top: 0; padding: 6px 4px; text-align: center; line-height: 1.25; align-self: stretch; border-bottom: 1px solid var(--grid); overflow-wrap: break-word; hyphens: none; }
+.heat .rh { left: 0; z-index: 1; padding: 4px 8px 4px 6px; display: flex; align-items: center; border-right: 1px solid var(--grid); overflow-wrap: break-word; }
+.heat .corner { position: sticky; top: 0; left: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid); }
+.heat .cell { min-height: 22px; border-radius: 3px; background: var(--track); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; }
+.heat .cell.empty { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); }
+.heat .cell:hover { outline: 2px solid var(--ink); outline-offset: -2px; }
+.heat.dim .row-off { display: none; }
+
+/* ---- table ---- */
+.table-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+input[type="search"], input[type="text"] {
+  font: inherit; font-size: 13px; padding: 6px 10px; min-width: 220px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink);
+}
+.toolbtn {
+  font: inherit; font-size: 13px; cursor: pointer; padding: 6px 11px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink-2);
+}
+.toolbtn:hover { background: var(--track); }
+.toolnote { font-size: 13px; color: var(--muted); }
+.table-scroll { overflow: auto; max-height: 720px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface); text-align: left; font-weight: 600;
+  padding: 9px 12px; border-bottom: 1px solid var(--axis); white-space: nowrap; cursor: pointer; color: var(--ink-2);
+}
+thead th:hover { color: var(--ink); }
+thead th .ind { color: var(--muted); font-weight: 400; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid var(--grid); vertical-align: top; color: var(--ink-2); }
+tbody td:first-child { color: var(--ink); font-weight: 560; }
+tbody tr:hover td { background: var(--track); }
+tbody td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+.chip { display: inline-block; font-size: 11px; font-weight: 640; line-height: 1.6; padding: 0 6px; border-radius: 4px; color: #fff; vertical-align: 1px; }
+.chip-h { background: var(--seq-2); }
+.chip-m { background: var(--seq-3); }
+.chip-l { background: var(--seq-5); color: #0b0b0b; }
+:root[data-theme="dark"] .chip-l, :root:where(:not([data-theme="light"])) .chip-l { color: #0b0b0b; }
+.tag { display: inline-block; font-size: 10.5px; letter-spacing: 0.04em; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.status i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ---- notes ---- */
+.notes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px 14px; }
+.notes li { margin: 8px 0; color: var(--ink-2); font-size: 13.5px; }
+
+/* ---- index cards ---- */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.tabcard {
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px 20px; box-shadow: var(--shadow);
+}
+.tabcard:hover { border-color: var(--axis); }
+.tabcard h3 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.tabcard p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.tabcard .meta { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.tabcard .go { font-size: 13px; color: var(--seq-3); font-weight: 560; }
+
+/* ---- tooltip ---- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .09s;
+  max-width: 320px; background: var(--ink); color: var(--plane); font-size: 12.5px; line-height: 1.45;
+  padding: 7px 10px; border-radius: 7px; white-space: pre-line;
+}
+#tip.on { opacity: 1; }
+
+footer.page { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+footer.page code { background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+@media (max-width: 640px) {
+  header.page h1 { font-size: 24px; }
+  .bar-row { grid-template-columns: minmax(70px, 44%) 1fr auto; }
+}
+@media print {
+  .masthead nav, .theme-toggle, .table-tools, .heat-tools { display: none; }
+  .table-scroll, .heat-scroll { max-height: none; }
+  .card, .stat { break-inside: avoid; }
+}
+
+.cell.s1 { background: #104281; color: #fff; }
+.cell.s2 { background: #1c5cab; color: #fff; }
+.cell.s3 { background: #2a78d6; color: #fff; }
+.cell.s4 { background: #5598e7; color: #0b0b0b; }
+.cell.s5 { background: #86b6ef; color: #0b0b0b; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s3 { background: #3987e5; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s4 { background: #256abf; color: #fff; }
+  :root:where(:not([data-theme="light"])) .cell.s5 { background: #184f95; color: #fff; }
+}
+:root[data-theme="dark"] .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s3 { background: #3987e5; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s4 { background: #256abf; color: #fff; }
+:root[data-theme="dark"] .cell.s5 { background: #184f95; color: #fff; }
+</style>
+</head>
+<body>
+<div class="masthead"><div class="masthead-in">
+  <a class="brand" href="index.html">OA Universe <span>&middot; tab visualisations</span></a>
+  <nav><a href="index.html">Index</a><a href="key-assets.html">Key assets</a><a href="asset-contractors.html" aria-current="page">Asset → contractors</a><a href="contractor-linkages.html">Contractor linkages</a><a href="contractor-x-tier-1.html">Contractor × Tier-1</a><a href="contractors.html">Contractors by scope</a><a href="facility-x-scope.html">Facility × scope</a><a href="key-clients.html">Marine key clients</a><a href="operator-companies.html">Operator → companies</a><a href="reconciliation.html">Reconciliation</a><a href="onshore.html">Onshore</a><button class="theme-toggle" id="theme" type="button" title="Light / dark / follow the system">Auto</button></nav>
+</div></div>
+<div class="wrap">
+
+<header class="page">
+  <p class="crumbs"><a href="index.html">OA Universe tabs</a> &rsaquo; Asset → contractors</p>
+  <h1>Asset → contractors</h1>
+  <p class="blurb">For each offshore asset, the marine key clients, offshore contractors and newly added employers linked to it — with the confidence of each linkage in brackets. Assets with nothing linked are normally unmanned, planned or ceased.</p>
+  <p class="srcline">Source: <code>Offshore_asset_contractors.csv</code> &middot;
+     <a href="../Offshore_asset_contractors.csv">open the CSV</a></p>
+</header>
+<div class="stats" id="stats"></div>
+<div id="sections"></div>
+<section><h2>Every row</h2><div id="table-host"></div></section>
+<section><h2>Legend &amp; method notes (from the tab itself)</h2><div class="notes"><ul><li>LEGEND &amp; METHOD</li><li>Confidence in brackets after each company: H / M / L; [WB] = from the colleague&#x27;s whiteboard matrix; [MV] = member/Troy-verified (Sep 2026)</li><li>INVERSE VIEW of the contractor linkages: for each offshore key asset (in your Key Assets order), every company linked to it — your 8 marine key clients, the 39 contractors, and the 16 added employers. Sorted H → M → L within each cell.</li><li>Rows shaded orange = decommissioning assets carrying several employers that are NOT on your Key Assets tab (Northern Endeavour, Harriet Alpha, Campbell).</li><li>An asset with no linkage usually means a normally-unmanned/subsea/planned asset with no standing contractor workforce found. For WHO HOLDS WHICH SCOPE at each facility see &#x27;Offshore - facility x scope&#x27;.</li></ul></div></section>
+
+<footer class="page">
+  Generated from <code>Offshore_asset_contractors.csv</code> on 22 September 2026 by
+  <code>scripts/data-hygiene/oa-universe/build_tab_visualisations.py</code>.
+  The CSVs are the source of truth &mdash; edit those and re-run the script.
+</footer>
+</div>
+<script>window.OA_PAGE = {"stats":[{"v":46,"k":"Assets profiled"},{"v":275,"k":"Asset × employer linkages"},{"v":57,"k":"Distinct employers named"},{"v":7,"k":"Assets with no employer found","h":"usually unmanned or pre-FID"}],"sections":[{"title":"Where the employers concentrate","wide":true,"charts":[{"type":"stack","title":"Employers per asset","sub":"Marine key clients, offshore contractors and added employers combined, split by confidence","series":[{"name":"High","color":"seq-2"},{"name":"Medium","color":"seq-3"},{"name":"Low","color":"seq-5"},{"name":"Unrated","color":"neutral"}],"items":[{"label":"Scarborough FPU","values":[12,3,4,0],"total":19,"tip":"Scarborough FPU\n19 employers\n12 high, 3 medium, 4 low"},{"label":"Ichthys Explorer (CPF)","values":[10,4,2,0],"total":16,"tip":"Ichthys Explorer (CPF)\n16 employers\n10 high, 4 medium, 2 low"},{"label":"North Rankin Complex (North Rankin A & B)","values":[8,5,2,0],"total":15,"tip":"North Rankin Complex (North Rankin A & B)\n15 employers\n8 high, 5 medium, 2 low"},{"label":"Angel","values":[5,7,2,0],"total":14,"tip":"Angel\n14 employers\n5 high, 7 medium, 2 low"},{"label":"Goodwyn A","values":[8,4,2,0],"total":14,"tip":"Goodwyn A\n14 employers\n8 high, 4 medium, 2 low"},{"label":"Okha FPSO (CWLH)","values":[4,5,1,2],"total":12,"tip":"Okha FPSO (CWLH)\n12 employers\n4 high, 5 medium, 1 low, 2 unrated"},{"label":"Prelude FLNG","values":[6,3,2,1],"total":12,"tip":"Prelude FLNG\n12 employers\n6 high, 3 medium, 2 low, 1 unrated"},{"label":"Wheatstone Platform","values":[4,5,3,0],"total":12,"tip":"Wheatstone Platform\n12 employers\n4 high, 5 medium, 3 low"},{"label":"Bass Strait platforms (GBJV + Kipper Unit JV)","values":[5,2,4,0],"total":11,"tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\n11 employers\n5 high, 2 medium, 4 low"},{"label":"Barossa (BW Opal FPSO)","values":[6,1,3,0],"total":10,"tip":"Barossa (BW Opal FPSO)\n10 employers\n6 high, 1 medium, 3 low"},{"label":"Gorgon / Jansz-Io subsea","values":[1,6,3,0],"total":10,"tip":"Gorgon / Jansz-Io subsea\n10 employers\n1 high, 6 medium, 3 low"},{"label":"Ichthys Venturer (FPSO)","values":[8,2,0,0],"total":10,"tip":"Ichthys Venturer (FPSO)\n10 employers\n8 high, 2 medium"},{"label":"Pluto A","values":[3,5,1,0],"total":9,"tip":"Pluto A\n9 employers\n3 high, 5 medium, 1 low"},{"label":"Enfield (Nganhurra FPSO – removed)","values":[2,5,1,0],"total":8,"tip":"Enfield (Nganhurra FPSO – removed)\n8 employers\n2 high, 5 medium, 1 low"},{"label":"Ngujima-Yin FPSO","values":[2,5,1,0],"total":8,"tip":"Ngujima-Yin FPSO\n8 employers\n2 high, 5 medium, 1 low"},{"label":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab","values":[4,2,2,0],"total":8,"tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\n8 employers\n4 high, 2 medium, 2 low"},{"label":"Crux","values":[5,1,1,0],"total":7,"tip":"Crux\n7 employers\n5 high, 1 medium, 1 low"},{"label":"Stybarrow (Stybarrow Venture FPSO – removed)","values":[3,4,0,0],"total":7,"tip":"Stybarrow (Stybarrow Venture FPSO – removed)\n7 employers\n3 high, 4 medium"},{"label":"Barrow Island oil (WA Oil)","values":[2,4,0,0],"total":6,"tip":"Barrow Island oil (WA Oil)\n6 employers\n2 high, 4 medium"},{"label":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)","values":[1,5,0,0],"total":6,"tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\n6 employers\n1 high, 5 medium"}]}]},{"title":"Employer and operator reach","charts":[{"type":"stack","title":"Assets per employer","sub":"Top 18 employers by number of assets they appear on","series":[{"name":"High","color":"seq-2"},{"name":"Medium","color":"seq-3"},{"name":"Low","color":"seq-5"}],"items":[{"label":"Cyan","values":[9,3,0],"total":12,"tip":"Cyan\n12 assets\n· North Rankin Complex (North Rankin A & B)\n· Goodwyn A\n· Angel\n· Pluto A\n· Scarborough FPU\n· Ngujima-Yin FPSO\n· Okha FPSO (CWLH)\n· Wheatstone Platform\n… and 4 more"},{"label":"Monadelphous","values":[10,1,1],"total":12,"tip":"Monadelphous\n12 assets\n· North Rankin Complex (North Rankin A & B)\n· Goodwyn A\n· Angel\n· Pluto A\n· Scarborough FPU\n· Barossa (BW Opal FPSO)\n· Jansz-Io Compression (Field Control Station)\n· Ichthys Explorer (CPF)\n… and 4 more"},{"label":"PHI","values":[4,5,3],"total":12,"tip":"PHI\n12 assets\n· North Rankin Complex (North Rankin A & B)\n· Goodwyn A\n· Angel\n· NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\n· Pluto A\n· Scarborough FPU\n· Ngujima-Yin FPSO\n· Pyrenees Venture FPSO\n… and 4 more"},{"label":"vertech","values":[6,4,2],"total":12,"tip":"vertech\n12 assets\n· North Rankin Complex (North Rankin A & B)\n· Goodwyn A\n· Angel\n· Scarborough FPU\n· Ngujima-Yin FPSO\n· Pyrenees Venture FPSO\n· Okha FPSO (CWLH)\n· Barossa (BW Opal FPSO)\n… and 4 more"},{"label":"CHC","values":[0,9,1],"total":10,"tip":"CHC\n10 assets\n· North Rankin Complex (North Rankin A & B)\n· Goodwyn A\n· Angel\n· NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\n· Ngujima-Yin FPSO\n· Pyrenees Venture FPSO\n· Okha FPSO (CWLH)\n· Macedon\n… and 2 more"},{"label":"DOF","values":[5,3,1],"total":9,"tip":"DOF\n9 assets\n· Okha FPSO (CWLH)\n· Bass Strait platforms (GBJV + Kipper Unit JV)\n· Enfield (Nganhurra FPSO – removed)\n· Stybarrow (Stybarrow Venture FPSO – removed)\n· Griffin (Griffin Venture FPSO – departed)\n· Wheatstone Platform\n· Gorgon / Jansz-Io subsea\n· Prelude FLNG\n… and 1 more"},{"label":"ESS","values":[5,3,1],"total":9,"tip":"ESS\n9 assets\n· North Rankin Complex (North Rankin A & B)\n· Goodwyn A\n· Scarborough FPU\n· Ngujima-Yin FPSO\n· Okha FPSO (CWLH)\n· Wheatstone Platform\n· Ichthys Explorer (CPF)\n· Ichthys Venturer (FPSO)\n… and 1 more"},{"label":"Eris (Kuiper)","values":[5,3,1],"total":9,"tip":"Eris (Kuiper)\n9 assets\n· Pluto A\n· Scarborough FPU\n· Bass Strait platforms (GBJV + Kipper Unit JV)\n· Barossa (BW Opal FPSO)\n· Gorgon / Jansz-Io subsea\n· Jansz-Io Compression (Field Control Station)\n· Ichthys Explorer (CPF)\n· Prelude FLNG\n… and 1 more"},{"label":"OSA","values":[1,7,1],"total":9,"tip":"OSA\n9 assets\n· Bayu-Undan\n· John Brookes\n· Spar / Greater East Spar\n· Halyard\n· Reindeer\n· Wheatstone Platform\n· Gorgon / Jansz-Io subsea\n· Barrow Island oil (WA Oil)\n… and 1 more"},{"label":"Applus+","values":[2,5,0],"total":7,"tip":"Applus+\n7 assets\n· North Rankin Complex (North Rankin A & B)\n· Goodwyn A\n· Angel\n· Pluto A\n· Ngujima-Yin FPSO\n· Pyrenees Venture FPSO\n· Okha FPSO (CWLH)"},{"label":"Bhagwan Marine","values":[3,4,0],"total":7,"tip":"Bhagwan Marine\n7 assets\n· Angel\n· Barrow Island oil (WA Oil)\n· Thevenard Island (legacy)\n· Montara (Montara Venture FPSO + WHP)\n· Stag\n· Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\n· Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab"},{"label":"Enemech","values":[2,3,2],"total":7,"tip":"Enemech\n7 assets\n· Ngujima-Yin FPSO\n· Okha FPSO (CWLH)\n· Bass Strait platforms (GBJV + Kipper Unit JV)\n· Ichthys Explorer (CPF)\n· Ichthys Venturer (FPSO)\n· Prelude FLNG\n· Crux"},{"label":"Fugro","values":[1,6,0],"total":7,"tip":"Fugro\n7 assets\n· NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\n· Scarborough FPU\n· Enfield (Nganhurra FPSO – removed)\n· Stybarrow (Stybarrow Venture FPSO – removed)\n· Griffin (Griffin Venture FPSO – departed)\n· Greater Sunrise (Sunrise, Troubadour)\n· Bayu-Undan"},{"label":"MEA","values":[6,1,0],"total":7,"tip":"MEA\n7 assets\n· North Rankin Complex (North Rankin A & B)\n· Goodwyn A\n· Angel\n· Jansz-Io Compression (Field Control Station)\n· Prelude FLNG\n· Crux\n· Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab"},{"label":"McDermott","values":[5,2,0],"total":7,"tip":"McDermott\n7 assets\n· Scarborough FPU\n· Stybarrow (Stybarrow Venture FPSO – removed)\n· Griffin (Griffin Venture FPSO – departed)\n· Ichthys Explorer (CPF)\n· Crux\n· Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\n· Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab"},{"label":"Noble","values":[3,3,1],"total":7,"tip":"Noble\n7 assets\n· Bayu-Undan\n· Spar / Greater East Spar\n· Halyard\n· Dorado\n· Wheatstone Platform\n· Gorgon / Jansz-Io subsea\n· Ichthys Explorer (CPF)"},{"label":"Technip Energies / TechnipFMC","values":[4,3,0],"total":7,"tip":"Technip Energies / TechnipFMC\n7 assets\n· Pluto A\n· Julimar-Brunello\n· Enfield (Nganhurra FPSO – removed)\n· Stybarrow (Stybarrow Venture FPSO – removed)\n· Griffin (Griffin Venture FPSO – departed)\n· Prelude FLNG\n· Crux"},{"label":"Transocean (sedco forex)","values":[4,3,0],"total":7,"tip":"Transocean (sedco forex)\n7 assets\n· North Rankin Complex (North Rankin A & B)\n· Angel\n· NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\n· Julimar-Brunello\n· Enfield (Nganhurra FPSO – removed)\n· Stybarrow (Stybarrow Venture FPSO – removed)\n· Crux"}]},{"type":"stack","title":"Linkages per Tier-1 operator","sub":"Every asset-level employer linkage, grouped by operator","series":[{"name":"High","color":"seq-2"},{"name":"Medium","color":"seq-3"},{"name":"Low","color":"seq-5"},{"name":"Unrated","color":"neutral"}],"items":[{"label":"Woodside","values":[58,58,21,2],"total":139,"tip":"Woodside\n139 linkages\n58 high, 58 medium, 21 low, 2 unrated"},{"label":"Santos","values":[15,18,6,0],"total":39,"tip":"Santos\n39 linkages\n15 high, 18 medium, 6 low"},{"label":"Chevron","values":[13,16,7,0],"total":36,"tip":"Chevron\n36 linkages\n13 high, 16 medium, 7 low"},{"label":"Inpex","values":[18,6,2,0],"total":26,"tip":"Inpex\n26 linkages\n18 high, 6 medium, 2 low"},{"label":"Shell","values":[11,4,3,1],"total":19,"tip":"Shell\n19 linkages\n11 high, 4 medium, 3 low, 1 unrated"},{"label":"Aus Govt (DISR) — via Petrofac","values":[4,2,2,0],"total":8,"tip":"Aus Govt (DISR) — via Petrofac\n8 linkages\n4 high, 2 medium, 2 low"},{"label":"Jadestone","values":[3,2,3,0],"total":8,"tip":"Jadestone\n8 linkages\n3 high, 2 medium, 3 low"},{"label":"MODEC","values":[0,0,0,0],"total":0,"tip":"MODEC\n0 linkages\n"}]}]}],"table":{"columns":["Tier-1 operator (your tab)","Asset / Facility","Status","# companies","Marine key clients","Offshore contractors (your tab)","Added employers","Notes"],"rows":[["Woodside","North Rankin Complex (North Rankin A & B)","Operating","15","","Cyan (H); ESS (H); Go Offshore (H); Legeneering (H) [WB]; MEA (H); Monadelphous (H); vertech (H); Wood (H); CHC (M); OSM (M); PHI (M); Transocean (sedco forex) (M)","Applus+ (M); Atlas Professionals (L); SEA1 Offshore (ex-Siem) (L)",""],["Woodside","Goodwyn A","Operating","14","","Cyan (H); ESS (H); Go Offshore (H); Legeneering (H) [WB]; MEA (H); Monadelphous (H); vertech (H); Wood (H); CHC (M); OSM (M); PHI (M)","Applus+ (M); Atlas Professionals (L); SEA1 Offshore (ex-Siem) (L)",""],["Woodside","Angel","Operating","14","","Cyan (H); Go Offshore (H); MEA (H); Monadelphous (H); vertech (H); CHC (M); OSM (M); PHI (M); Transocean (sedco forex) (M)","Applus+ (M); Bhagwan Marine (M); Solstad Australia (M); Atlas Professionals (L); SEA1 Offshore (ex-Siem) (L)",""],["Woodside","NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)","Operating (GWF-4 under development)","6","","Transocean (sedco forex) (H); CHC (M); Fugro (M); PHI (M); Sierra (M)","Solstad Australia (M)",""],["Woodside","Pluto A","Operating","9","","Cyan (H); Legeneering (H) [WB]; Monadelphous (H); Eris (Kuiper) (M); OSM (M); PHI (M)","Applus+ (M); Technip Energies / TechnipFMC (M); SEA1 Offshore (ex-Siem) (L)",""],["Woodside","Scarborough FPU","Commissioning / ramp-up (first gas 29 Jul 2026; first LNG ~Q4 2026)","19","Saipem (H); Subsea7 (H)","AOS (H); Cyan (H); Eris (Kuiper) (H); Fugro (H); McDermott (H); Monadelphous (H); PHI (H); Reach (H); Valaris (Ensco (H); ESS (M) [WB]; Sierra (M); OSM (L); Programmed (L); UGL (L); vertech (L)","Boskalis (H); Solstad Australia (M)",""],["Woodside","Ngujima-Yin FPSO","Operating","8","","Legeneering (H); CHC (M); Cyan (M); Enemech (M); ESS (M) [WB]; vertech (M); PHI (L)","Applus+ (H)",""],["Woodside","Pyrenees Venture FPSO","Operating","4","","CHC (M); vertech (M); PHI (L)","Applus+ (M)",""],["Woodside","Okha FPSO (CWLH)","Operating (temp. offline mid-2026 for riser repair; restart ~Q3 2026)","12","","DOF (H); Legeneering (H) [MV]; Monadelphous (H) [MV]; vertech (H); Wood (H); CHC (M); Cyan (M); Enemech (M); ESS (M) [WB]; Sierra (M); PHI (L)","Applus+ (H)",""],["Woodside","Macedon","Operating","1","","CHC (M)","",""],["Woodside","Julimar-Brunello","Operating","4","Subsea7 (H)","Transocean (sedco forex) (H); GGC (L)","Technip Energies / TechnipFMC (H)",""],["Woodside","Bass Strait platforms (GBJV + Kipper Unit JV)","Operating (majority of platforms in decommissioning)","11","","DOF (H); Hjelix (H); Valaris (Ensco (H); Wood (H); Enemech (M); UGL (M); Eris (Kuiper) (L); GGC (L); Kaefer (ISOLOGIC) (L); Sodexo (L)","Condex (H)",""],["Woodside","Enfield (Nganhurra FPSO – removed)","Decommissioning (largely complete)","8","","DOF (H); Transocean (sedco forex) (H); Fugro (M); Sierra (M); AOS (L)","Heerema (M); Solstad Australia (M); Technip Energies / TechnipFMC (M)",""],["Woodside","Stybarrow (Stybarrow Venture FPSO – removed)","Decommissioning","7","","DOF (H); McDermott (H); Transocean (sedco forex) (H); Fugro (M); Sierra (M)","Heerema (M); Technip Energies / TechnipFMC (M)",""],["Woodside","Griffin (Griffin Venture FPSO – departed)","Decommissioning","5","","DOF (H); Fugro (M); McDermott (M)","Technip Energies / TechnipFMC (H); Heerema (M)",""],["Woodside","Minerva","Decommissioning (ceased ~2019)","0","","","","No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce"],["Woodside","Browse (Browse-to-NWS)","Planned (pre-FID)","0","","","","No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce"],["Woodside","Greater Sunrise (Sunrise, Troubadour)","Planned (pre-FID; long-stalled)","2","","Fugro (M); Wood (L)","",""],["Santos","Barossa (BW Opal FPSO)","Operating (first gas Sep 2025; ramp-up)","10","Allseas (H); Subsea7 (H); Van Oord (H)","Eris (Kuiper) (H); Monadelphous (H); Valaris (Ensco (H); Wood (M); Programmed (L); vertech (L)","Weststar-GAP (L)",""],["Santos","Bayu-Undan","Ceased production (~2025); CCS conversion pre-FID","5","","OSA (H); Fugro (M); Noble (M)","Weststar-GAP (H); Solstad Australia (L)",""],["Santos","Ningaloo Vision FPSO","Ceased production / decommissioning (ceased Aug 2025); FPSO departed Australia Aug 2025 for recycling","3","","Go Offshore (H); WPF(Duratech) (H); vertech (M)","",""],["Santos","John Brookes","Operating","4","","Kaefer (ISOLOGIC) (M) [WB]; OSA (M); UGL (M); WPF(Duratech) (M)","",""],["Santos","Spar / Greater East Spar","Operating","5","","Noble (H); Kaefer (ISOLOGIC) (M) [WB]; OSA (M); UGL (M); WPF(Duratech) (M)","",""],["Santos","Halyard","Operating (first gas Feb 2025)","4","","Noble (H); OSA (M); UGL (M); WPF(Duratech) (M)","",""],["Santos","Spartan","Operating (recently connected — confirm)","1","","Kaefer (ISOLOGIC) (M) [WB]","",""],["Santos","Reindeer","Ceased production (Q3 2025)","1","","OSA (M)","",""],["Santos","Mutineer-Exeter (MODEC Venture 11 – removed)","Ceased (2018) / decommissioning 2026","0","","","","No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce"],["Santos","Fletcher-Finucane","Ceased / decommissioning 2026","0","","","","No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce"],["Santos","Dorado","Planned (pre-FID)","2","Vantris (Sapura) (L)","Noble (L)","",""],["Santos","Corvus","Planned / undeveloped","0","","","","No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce"],["Chevron","Wheatstone Platform","Operating","12","Allseas (L)","Altrad (H) [WB]; Cyan (H); ESS (H); DOF (M); Noble (M); OSA (M); UGL (M) [WB]; Kaefer (ISOLOGIC) (L)","Altrad Sparrows (H); IAS (M); Parabellum (L)",""],["Chevron","Gorgon / Jansz-Io subsea","Operating","10","Subsea7 (M); Allseas (L)","Baker Hughes (H); Cyan (M); DOF (M); Eris (Kuiper) (M); Noble (M); OSA (M); GGC (L)","Parabellum (L)",""],["Chevron","Jansz-Io Compression (Field Control Station)","Under construction / commissioning (start-up from 2026)","5","Saipem (H)","Baker Hughes (H); Eris (Kuiper) (H); MEA (H); Monadelphous (L)","",""],["Chevron","Barrow Island oil (WA Oil)","Decommissioning (from ~2025)","6","","Altrad (H); Cyan (H); OSA (M)","Altrad Sparrows (M); Bhagwan Marine (M); Parabellum (M)",""],["Chevron","Thevenard Island (legacy)","Decommissioned (2023)","3","","Legeneering (H); Altrad (M)","Bhagwan Marine (H)",""],["Inpex","Ichthys Explorer (CPF)","Operating","16","Saipem (L)","Baker Hughes (H); Cyan (H); Enemech (H); ESS (H); Go Offshore (H); Monadelphous (H); Noble (H); PHI (H); vertech (H); Eris (Kuiper) (M); McDermott (M); GGC (L)","Heerema (H); GR Production Services (M); Solstad Australia (M)",""],["Inpex","Ichthys Venturer (FPSO)","Operating","10","","Cyan (H); Enemech (H); ESS (H); Go Offshore (H); Monadelphous (H); PHI (H); vertech (H); Kaefer (ISOLOGIC) (M) [WB]","Heerema (H); GR Production Services (M)",""],["Shell","Prelude FLNG","Operating (unreliable; repeated outages; Turnaround 2026)","12","","Eris (Kuiper) (H); Monadelphous (H); PHI (H); SGS (H); Sodexo (H) [MV]; DOF (M); MEA (M); Programmed (M); CHC (L); Enemech (L)","Atlas Professionals (H); Technip Energies / TechnipFMC (H)",""],["Shell","Crux","Under construction (jacket installed early 2026; first gas 2027)","7","","Eris (Kuiper) (H); McDermott (H); MEA (H); Monadelphous (H); Transocean (sedco forex) (M); Enemech (L)","Technip Energies / TechnipFMC (H)",""],["Jadestone","Montara (Montara Venture FPSO + WHP)","Operating","5","","Valaris (Ensco (H); vertech (M); DOF (L); OSA (L)","Bhagwan Marine (H)",""],["Jadestone","Stag","Ceased/shut-in since Mar 2026 (Cyclone Narelle; restart targeted Q2 2027)","3","","CHC (M); WPF(Duratech) (L)","Bhagwan Marine (H)",""],["MODEC","Buffalo (Buffalo Venture FPSO)","Off-station / relocated to Thailand (2004)","0","","","","No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce"],["MODEC","Elang/Kakatua (MODEC Venture 1 FPSO)","Decommissioned (2007)","0","","","","No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce"],["Aus Govt (DISR) — via Petrofac","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab","Decommissioning — Phase 1 disconnect done Apr 2025; FPSO recycled 2026; Phase 2 well P&A award pending","8","Vantris (Sapura) (H)","MEA (H); UPS (H); Monadelphous (M); ESS (L); Legeneering (L)","Petrofac (H); Bhagwan Marine (M)","NOT on your Key Assets tab — consider adding (decommissioning hub with several employers)"],["Santos","Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab","Decommissioning — jacket removed 2026 (McDermott / WPF Duratec)","3","","McDermott (H); WPF(Duratech) (H)","Bhagwan Marine (M)","NOT on your Key Assets tab — consider adding (decommissioning hub with several employers)"],["Santos","Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab","Removed 2024 (McDermott)","1","","McDermott (H)","","NOT on your Key Assets tab — consider adding (decommissioning hub with several employers)"]],"emptyColumns":[],"emptyIdx":[]}};</script>
+<script>
+(function () {
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem('oa-viz-theme'); } catch (e) {}
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+
+  function themeLabel() {
+    var t = root.getAttribute('data-theme');
+    return t === 'dark' ? 'Dark' : (t === 'light' ? 'Light' : 'Auto');
+  }
+  var btn = document.getElementById('theme');
+  if (btn) {
+    btn.textContent = themeLabel();
+    btn.addEventListener('click', function () {
+      var t = root.getAttribute('data-theme');
+      var next = t === 'dark' ? 'light' : (t === 'light' ? null : 'dark');
+      if (next) { root.setAttribute('data-theme', next); } else { root.removeAttribute('data-theme'); }
+      try { next ? localStorage.setItem('oa-viz-theme', next) : localStorage.removeItem('oa-viz-theme'); } catch (e) {}
+      btn.textContent = themeLabel();
+    });
+  }
+
+  // ---- tooltip layer -------------------------------------------------------
+  var tip = document.createElement('div');
+  tip.id = 'tip';
+  document.body.appendChild(tip);
+  function showTip(text, x, y) {
+    tip.textContent = text;
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var left = Math.min(Math.max(8, x + 14), window.innerWidth - r.width - 8);
+    var top = y - r.height - 12;
+    if (top < 8) top = y + 18;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  document.addEventListener('mousemove', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el) { tip.classList.remove('on'); return; }
+    showTip(el.getAttribute('data-tip'), e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+
+  var PAGE = window.OA_PAGE;
+  if (!PAGE) return;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function fmt(n) { return (typeof n === 'number' ? n : 0).toLocaleString('en-AU'); }
+
+  // ---- charts --------------------------------------------------------------
+  function barChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var max = c.max || Math.max.apply(null, c.items.map(function (i) { return i.value; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      var fill = el('div', 'bar-fill');
+      fill.style.width = (max ? (item.value / max) * 100 : 0) + '%';
+      if (c.color) fill.style.background = 'var(--' + c.color + ')';
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.value)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    if (c.foot) card.appendChild(el('p', 'sub', c.foot)).style.margin = '14px 0 0';
+    return card;
+  }
+
+  function stackChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var legend = el('div', 'legend');
+    c.series.forEach(function (s) {
+      var span = el('span');
+      var sw = el('i');
+      sw.style.background = 'var(--' + s.color + ')';
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(s.name));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+    var max = Math.max.apply(null, c.items.map(function (i) { return i.total; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      item.values.forEach(function (v, i) {
+        if (!v) return;
+        var seg = el('div', 'seg');
+        seg.style.width = 'calc(' + (v / max) * 100 + '% - 2px)';
+        seg.style.background = 'var(--' + c.series[i].color + ')';
+        track.appendChild(seg);
+      });
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.total)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    return card;
+  }
+
+  function heatChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var tools = el('div', 'heat-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = c.filter || 'Filter rows…';
+    tools.appendChild(search);
+    var count = el('span', 'toolnote', '');
+    tools.appendChild(count);
+    card.appendChild(tools);
+
+    var legend = el('div', 'legend');
+    c.legend.forEach(function (l) {
+      var span = el('span');
+      var sw = el('i');
+      if (l.cls) { sw.className = 'cell ' + l.cls; sw.style.borderRadius = '3px'; }
+      else { sw.style.boxShadow = 'inset 0 0 0 1px var(--grid)'; }
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(l.label));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+
+    var scroll = el('div', 'heat-scroll');
+    var grid = el('div', 'heat');
+    grid.style.gridTemplateColumns = 'minmax(128px, 210px) repeat(' + c.cols.length + ', minmax(' + (c.cols.length > 12 ? 58 : 66) + 'px, 1fr))';
+    grid.appendChild(el('div', 'corner'));
+    c.cols.forEach(function (col) {
+      var h = el('div', 'hh', col.label);
+      if (col.tip) h.setAttribute('data-tip', col.tip);
+      grid.appendChild(h);
+    });
+    var rowNodes = [];
+    c.rows.forEach(function (r) {
+      var nodes = [];
+      var rh = el('div', 'rh', r.label);
+      if (r.tip) rh.setAttribute('data-tip', r.tip);
+      nodes.push(rh);
+      r.cells.forEach(function (cell, i) {
+        var cn = el('div', 'cell' + (cell.c ? ' ' + cell.c : ' empty'), cell.t || '');
+        cn.setAttribute('data-tip', (cell.tip || (r.label + ' × ' + c.cols[i].label + '\nno linkage recorded')));
+        nodes.push(cn);
+      });
+      nodes.forEach(function (n) { grid.appendChild(n); });
+      rowNodes.push({ text: (r.label + ' ' + (r.search || '')).toLowerCase(), nodes: nodes });
+    });
+    scroll.appendChild(grid);
+    card.appendChild(scroll);
+
+    function apply() {
+      var q = search.value.trim().toLowerCase();
+      var shown = 0;
+      rowNodes.forEach(function (r) {
+        var hit = !q || r.text.indexOf(q) !== -1;
+        if (hit) shown++;
+        r.nodes.forEach(function (n) { n.style.display = hit ? '' : 'none'; });
+      });
+      count.textContent = shown + ' of ' + rowNodes.length + ' rows';
+    }
+    search.addEventListener('input', apply);
+    apply();
+    return card;
+  }
+
+  function renderChart(c) {
+    if (c.type === 'stack') return stackChart(c);
+    if (c.type === 'heat') return heatChart(c);
+    return barChart(c);
+  }
+
+  // ---- page assembly -------------------------------------------------------
+  var statsHost = document.getElementById('stats');
+  if (statsHost && PAGE.stats) {
+    PAGE.stats.forEach(function (s) {
+      var n = el('div', 'stat');
+      n.appendChild(el('div', 'v', s.v));
+      n.appendChild(el('div', 'k', s.k));
+      if (s.h) n.appendChild(el('div', 'h', s.h));
+      statsHost.appendChild(n);
+    });
+  }
+
+  var chartHost = document.getElementById('sections');
+  if (chartHost && PAGE.sections) {
+    PAGE.sections.forEach(function (sec) {
+      var s = el('section');
+      s.appendChild(el('h2', null, sec.title));
+      var grid = el('div', 'chart-grid' + (sec.wide ? ' one' : ''));
+      sec.charts.forEach(function (c) { grid.appendChild(renderChart(c)); });
+      s.appendChild(grid);
+      chartHost.appendChild(s);
+    });
+  }
+
+  // ---- table ---------------------------------------------------------------
+  var T = PAGE.table;
+  var tableHost = document.getElementById('table-host');
+  if (T && tableHost) {
+    var escapeHTML = function (s) {
+      return String(s).replace(/[&<>"]/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+      });
+    };
+    var chipFor = function (letter) {
+      var map = { H: ['chip-h', 'High'], M: ['chip-m', 'Medium'], L: ['chip-l', 'Low'] };
+      var m = map[letter];
+      return '<span class="chip ' + m[0] + '" title="' + m[1] + ' confidence">' + letter + '</span>';
+    };
+    var decorate = function (raw) {
+      var t = escapeHTML(raw);
+      if (/^[HML]$/.test(raw)) return chipFor(raw);
+      t = t.replace(/\((H|M|L)\)/g, function (_, l) { return chipFor(l); });
+      t = t.replace(/\[WB\]/g, '<span class="tag" title="From the colleague’s whiteboard">WB</span>');
+      return t;
+    };
+
+    var showAll = false;
+    var tools = el('div', 'table-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Search all columns…';
+    tools.appendChild(search);
+    var note = el('span', 'toolnote', '');
+    var toggle = null;
+    if (T.emptyColumns && T.emptyColumns.length) {
+      toggle = el('button', 'toolbtn', 'Show ' + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : ''));
+      toggle.setAttribute('data-tip', 'Columns with no values in any row:\n' + T.emptyColumns.join(', '));
+      tools.appendChild(toggle);
+    }
+    tools.appendChild(note);
+    tableHost.appendChild(tools);
+
+    var scroll = el('div', 'table-scroll');
+    var table = document.createElement('table');
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    thead.appendChild(headRow);
+    var tbody = document.createElement('tbody');
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    tableHost.appendChild(scroll);
+
+    var sortCol = -1, sortDir = 1, query = '';
+
+    function visibleCols() {
+      return T.columns.map(function (c, i) { return i; }).filter(function (i) {
+        return showAll || T.emptyIdx.indexOf(i) === -1;
+      });
+    }
+    function draw() {
+      var cols = visibleCols();
+      headRow.innerHTML = '';
+      cols.forEach(function (i) {
+        var th = el('th', null, T.columns[i] || '—');
+        if (sortCol === i) {
+          var ind = el('span', 'ind', sortDir > 0 ? ' ↑' : ' ↓');
+          th.appendChild(ind);
+        }
+        th.addEventListener('click', function () {
+          if (sortCol === i) { sortDir = -sortDir; } else { sortCol = i; sortDir = 1; }
+          draw();
+        });
+        headRow.appendChild(th);
+      });
+      var terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      var rows = T.rows.filter(function (r) {
+        if (!terms.length) return true;
+        var hay = r.join(' ').toLowerCase();
+        return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+      });
+      if (sortCol >= 0) {
+        rows = rows.slice().sort(function (a, b) {
+          var x = a[sortCol] || '', y = b[sortCol] || '';
+          var nx = parseFloat(x), ny = parseFloat(y);
+          var numeric = !isNaN(nx) && !isNaN(ny) && /^[\d.,\s]+$/.test(x) && /^[\d.,\s]+$/.test(y);
+          if (numeric) return (nx - ny) * sortDir;
+          if (!x) return 1;
+          if (!y) return -1;
+          return x.localeCompare(y) * sortDir;
+        });
+      }
+      tbody.innerHTML = rows.map(function (r) {
+        return '<tr>' + cols.map(function (i) {
+          var v = r[i] || '';
+          var cls = /^[\d.]+$/.test(v) ? ' class="num"' : '';
+          return '<td' + cls + '>' + decorate(v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      note.textContent = rows.length === T.rows.length
+        ? fmt(T.rows.length) + ' rows · ' + cols.length + ' of ' + T.columns.length + ' columns'
+        : fmt(rows.length) + ' of ' + fmt(T.rows.length) + ' rows';
+    }
+    search.addEventListener('input', function () { query = search.value; draw(); });
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        showAll = !showAll;
+        toggle.textContent = (showAll ? 'Hide ' : 'Show ') + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : '');
+        draw();
+      });
+    }
+    draw();
+  }
+})();
+</script>
+</body>
+</html>

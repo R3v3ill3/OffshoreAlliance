@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facility × scope — OA Universe</title>
+<meta name="description" content="Who holds each scope at each facility — catering, maintenance, helicopters, marine, drilling and the rest.">
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.05);
+  --track: #f0efec;
+  --seq-1: #104281;
+  --seq-2: #1c5cab;
+  --seq-3: #2a78d6;
+  --seq-4: #5598e7;
+  --seq-5: #86b6ef;
+  --seq-0: #cde2fb;
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --shadow: none;
+    --track: #232322;
+    --seq-1: #9ec5f4;
+    --seq-2: #6da7ec;
+    --seq-3: #3987e5;
+    --seq-4: #256abf;
+    --seq-5: #184f95;
+    --seq-0: #12345f;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --neutral: #383835;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --shadow: none;
+  --track: #232322;
+  --seq-1: #9ec5f4;
+  --seq-2: #6da7ec;
+  --seq-3: #3987e5;
+  --seq-4: #256abf;
+  --seq-5: #184f95;
+  --seq-0: #12345f;
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+  --neutral: #383835;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 72px; }
+
+/* ---- masthead ---- */
+.masthead { border-bottom: 1px solid var(--border); background: var(--surface); }
+.masthead-in {
+  max-width: 1180px; margin: 0 auto; padding: 14px 16px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.brand { font-weight: 640; letter-spacing: -0.01em; text-decoration: none; }
+.brand span { color: var(--muted); font-weight: 400; }
+.masthead nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.masthead nav a {
+  text-decoration: none; color: var(--ink-2); font-size: 13px;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid transparent;
+}
+.masthead nav a:hover { background: var(--track); }
+.masthead nav a[aria-current="page"] { border-color: var(--border); color: var(--ink); font-weight: 560; }
+.theme-toggle {
+  font: inherit; font-size: 13px; cursor: pointer; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+}
+.theme-toggle:hover { background: var(--track); }
+
+/* ---- page head ---- */
+header.page { padding: 34px 0 10px; }
+header.page h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+header.page .blurb { margin: 0; color: var(--ink-2); max-width: 74ch; }
+.crumbs { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.crumbs a { color: var(--ink-2); }
+.srcline { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.srcline code { font-size: 12px; background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+/* ---- stat tiles ---- */
+.stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); margin: 26px 0 8px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; box-shadow: var(--shadow);
+}
+.stat .v { font-size: 30px; line-height: 1.05; letter-spacing: -0.02em; font-weight: 600; }
+.stat .k { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.stat .h { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ---- sections & charts ---- */
+section { margin-top: 34px; }
+section > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px; font-weight: 620; }
+.chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.chart-grid.one { grid-template-columns: 1fr; }
+.chart-grid.one .bar-row { grid-template-columns: minmax(84px, 230px) 1fr auto; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px 18px; box-shadow: var(--shadow); min-width: 0;
+}
+.card h3 { font-size: 15px; margin: 0 0 3px; letter-spacing: -0.01em; }
+.card .sub { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 12px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: minmax(84px, 38%) 1fr auto; gap: 10px; align-items: center; }
+.bar-label { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.bar-track { height: 14px; background: var(--track); border-radius: 0 4px 4px 0; display: flex; }
+.bar-fill { background: var(--seq-3); border-radius: 0 4px 4px 0; min-width: 2px; height: 100%; }
+.bar-track .seg { height: 100%; min-width: 2px; margin-right: 2px; border-radius: 0; }
+.bar-track .seg:last-child { margin-right: 0; border-radius: 0 4px 4px 0; }
+.bar-value { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: right; }
+.bar-row:hover .bar-label, .bar-row:hover .bar-value { color: var(--ink); }
+
+/* ---- heatmap ---- */
+.heat-tools { display: flex; gap: 10px; align-items: center; margin: 0 0 12px; flex-wrap: wrap; }
+.heat-scroll { overflow: auto; max-height: 620px; border: 1px solid var(--border); border-radius: 8px; }
+.heat { display: grid; gap: 2px; padding: 2px; background: var(--surface); }
+.heat .hh, .heat .rh {
+  position: sticky; background: var(--surface); z-index: 2; font-size: 11.5px; color: var(--ink-2);
+}
+.heat .hh { top: 0; padding: 6px 4px; text-align: center; line-height: 1.25; align-self: stretch; border-bottom: 1px solid var(--grid); overflow-wrap: break-word; hyphens: none; }
+.heat .rh { left: 0; z-index: 1; padding: 4px 8px 4px 6px; display: flex; align-items: center; border-right: 1px solid var(--grid); overflow-wrap: break-word; }
+.heat .corner { position: sticky; top: 0; left: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid); }
+.heat .cell { min-height: 22px; border-radius: 3px; background: var(--track); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; }
+.heat .cell.empty { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); }
+.heat .cell:hover { outline: 2px solid var(--ink); outline-offset: -2px; }
+.heat.dim .row-off { display: none; }
+
+/* ---- table ---- */
+.table-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+input[type="search"], input[type="text"] {
+  font: inherit; font-size: 13px; padding: 6px 10px; min-width: 220px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink);
+}
+.toolbtn {
+  font: inherit; font-size: 13px; cursor: pointer; padding: 6px 11px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink-2);
+}
+.toolbtn:hover { background: var(--track); }
+.toolnote { font-size: 13px; color: var(--muted); }
+.table-scroll { overflow: auto; max-height: 720px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface); text-align: left; font-weight: 600;
+  padding: 9px 12px; border-bottom: 1px solid var(--axis); white-space: nowrap; cursor: pointer; color: var(--ink-2);
+}
+thead th:hover { color: var(--ink); }
+thead th .ind { color: var(--muted); font-weight: 400; }
+tbody td { padding: 8px 12px; border-bottom: 1px solid var(--grid); vertical-align: top; color: var(--ink-2); }
+tbody td:first-child { color: var(--ink); font-weight: 560; }
+tbody tr:hover td { background: var(--track); }
+tbody td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+.chip { display: inline-block; font-size: 11px; font-weight: 640; line-height: 1.6; padding: 0 6px; border-radius: 4px; color: #fff; vertical-align: 1px; }
+.chip-h { background: var(--seq-2); }
+.chip-m { background: var(--seq-3); }
+.chip-l { background: var(--seq-5); color: #0b0b0b; }
+:root[data-theme="dark"] .chip-l, :root:where(:not([data-theme="light"])) .chip-l { color: #0b0b0b; }
+.tag { display: inline-block; font-size: 10.5px; letter-spacing: 0.04em; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.status i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ---- notes ---- */
+.notes { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 20px 14px; }
+.notes li { margin: 8px 0; color: var(--ink-2); font-size: 13.5px; }
+
+/* ---- index cards ---- */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.tabcard {
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px 20px; box-shadow: var(--shadow);
+}
+.tabcard:hover { border-color: var(--axis); }
+.tabcard h3 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+.tabcard p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.tabcard .meta { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.tabcard .go { font-size: 13px; color: var(--seq-3); font-weight: 560; }
+
+/* ---- tooltip ---- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .09s;
+  max-width: 320px; background: var(--ink); color: var(--plane); font-size: 12.5px; line-height: 1.45;
+  padding: 7px 10px; border-radius: 7px; white-space: pre-line;
+}
+#tip.on { opacity: 1; }
+
+footer.page { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+footer.page code { background: var(--track); padding: 2px 6px; border-radius: 4px; }
+
+@media (max-width: 640px) {
+  header.page h1 { font-size: 24px; }
+  .bar-row { grid-template-columns: minmax(70px, 44%) 1fr auto; }
+}
+@media print {
+  .masthead nav, .theme-toggle, .table-tools, .heat-tools { display: none; }
+  .table-scroll, .heat-scroll { max-height: none; }
+  .card, .stat { break-inside: avoid; }
+}
+
+.cell.s1 { background: #104281; color: #fff; }
+.cell.s2 { background: #1c5cab; color: #fff; }
+.cell.s3 { background: #2a78d6; color: #fff; }
+.cell.s4 { background: #5598e7; color: #0b0b0b; }
+.cell.s5 { background: #86b6ef; color: #0b0b0b; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s3 { background: #3987e5; color: #0b0b0b; }
+  :root:where(:not([data-theme="light"])) .cell.s4 { background: #256abf; color: #fff; }
+  :root:where(:not([data-theme="light"])) .cell.s5 { background: #184f95; color: #fff; }
+}
+:root[data-theme="dark"] .cell.s1 { background: #9ec5f4; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s2 { background: #6da7ec; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s3 { background: #3987e5; color: #0b0b0b; }
+:root[data-theme="dark"] .cell.s4 { background: #256abf; color: #fff; }
+:root[data-theme="dark"] .cell.s5 { background: #184f95; color: #fff; }
+</style>
+</head>
+<body>
+<div class="masthead"><div class="masthead-in">
+  <a class="brand" href="index.html">OA Universe <span>&middot; tab visualisations</span></a>
+  <nav><a href="index.html">Index</a><a href="key-assets.html">Key assets</a><a href="asset-contractors.html">Asset → contractors</a><a href="contractor-linkages.html">Contractor linkages</a><a href="contractor-x-tier-1.html">Contractor × Tier-1</a><a href="contractors.html">Contractors by scope</a><a href="facility-x-scope.html" aria-current="page">Facility × scope</a><a href="key-clients.html">Marine key clients</a><a href="operator-companies.html">Operator → companies</a><a href="reconciliation.html">Reconciliation</a><a href="onshore.html">Onshore</a><button class="theme-toggle" id="theme" type="button" title="Light / dark / follow the system">Auto</button></nav>
+</div></div>
+<div class="wrap">
+
+<header class="page">
+  <p class="crumbs"><a href="index.html">OA Universe tabs</a> &rsaquo; Facility × scope</p>
+  <h1>Facility × scope</h1>
+  <p class="blurb">The scope-holder matrix: for every facility, which companies hold catering, maintenance, inspection, helicopters, marine supply, crewing, ROV, drilling, construction and decommissioning. Hover a cell for the companies behind the count.</p>
+  <p class="srcline">Source: <code>Offshore_facility_x_scope.csv</code> &middot;
+     <a href="../Offshore_facility_x_scope.csv">open the CSV</a></p>
+</header>
+<div class="stats" id="stats"></div>
+<div id="sections"></div>
+<section><h2>Every row</h2><div id="table-host"></div></section>
+<section><h2>Legend &amp; method notes (from the tab itself)</h2><div class="notes"><ul><li>LEGEND &amp; METHOD</li><li>Cell shade = best confidence in the cell (green H / amber M / pink L); BOLD = contains a [WB] whiteboard or [MV] member-verified link</li><li>WHO HOLDS EACH SCOPE AT EACH FACILITY — the colleague&#x27;s &#x27;facility × catering × maintenance&#x27; format generalised to 14 scope columns (structure agreed with Troy 22 Sep 2026). Rows = your Key Assets (plus three decommissioning assets not on that tab, shaded orange). Each cell lists the incumbent(s) with confidence and source tag: [WB] colleague whiteboard, [MV] member/Troy-verified, untagged = desk research.</li><li>HOW IT&#x27;S BUILT: derived from the contractor linkages (company → asset) by assigning each company its scope, with per-asset overrides where a company plays a different role at a specific facility (Monadelphous = HUC at Scarborough &amp; Crux but Maintenance on the NWS platforms; McDermott = Construction at Scarborough but Decommissioning at Stybarrow). MODEC&#x27;s self-performed O&amp;M/catering at Pyrenees is shown explicitly; Tier-1 and facility/vessel operator are both shown (cols A–B).</li><li>NORMALLY-UNMANNED INSTALLATIONS (Angel, Pluto A, John Brookes, Crux, Reindeer): no standing caterer is mapped — during extended maintenance/repair campaigns the accommodation and catering arrangements are project-specific (Troy, 22 Sep 2026).</li><li>RECOMMENDED USE: maintain the catering &amp; maintenance incumbents here (and the other scopes). Treat each cell as &#x27;current incumbent(s)&#x27;; when a contract changes, update the linkages tab and regenerate, or edit here and note the date. Crewing / labour-hire firms have their own column because they sit BEHIND the incumbent (e.g. AOS crews on Saipem&#x27;s Castorone).</li><li>DATA-MODEL NOTE for the OA app: store as a long table (facility, scope, company, confidence, source, as-at date) and pivot to this matrix.</li><li>Colour key on the tab: High · Medium · Low</li></ul></div></section>
+
+<footer class="page">
+  Generated from <code>Offshore_facility_x_scope.csv</code> on 22 September 2026 by
+  <code>scripts/data-hygiene/oa-universe/build_tab_visualisations.py</code>.
+  The CSVs are the source of truth &mdash; edit those and re-run the script.
+</footer>
+</div>
+<script>window.OA_PAGE = {"stats":[{"v":46,"k":"Facilities"},{"v":14,"k":"Scopes of work"},{"v":282,"k":"Facility × scope × company entries"},{"v":39,"k":"Facilities with at least one scope filled","h":"of 46"}],"sections":[{"title":"Who holds each scope at each facility","wide":true,"charts":[{"type":"heat","title":"Facility × scope","sub":"The number in each cell is how many companies hold that scope at that facility — hover for the names","filter":"Filter facilities, operators or status…","cols":[{"label":"Catering","tip":"Catering / FM"},{"label":"Maint.","tip":"Maintenance / brownfield"},{"label":"HUC","tip":"HUC / commissioning"},{"label":"Integrity","tip":"Inspection / integrity"},{"label":"Cranes","tip":"Cranes / lifting"},{"label":"Heli.","tip":"Helicopters"},{"label":"Marine","tip":"Marine supply / vessels"},{"label":"Crewing","tip":"Crewing / labour hire"},{"label":"ROV","tip":"ROV / subsea / IMR / diving"},{"label":"Drilling","tip":"Drilling"},{"label":"Constr.","tip":"Construction / EPC / pipelay"},{"label":"Decom.","tip":"Decommissioning"},{"label":"Survey","tip":"Survey / positioning"},{"label":"Other","tip":"Other (chemist / emergency / medical)"}],"rows":[{"label":"North Rankin Complex (North Rankin A & B)","tip":"North Rankin Complex (North Rankin A & B)\nWoodside · Operating\n7 of 14 scopes filled","search":"Woodside — North Rankin Complex (North Rankin A & B) Operating ESS (H) Legeneering (H) [WB]; MEA (H); Monadelphous (H); Wood (H)  vertech (H); Applus+ (M)  CHC (M); PHI (M) Cyan (H); Go Offshore (H); SEA1 Offshore (ex-Siem) (L) OSM (M); Atlas Professionals (L)  Transocean (sedco forex) (M)    ","cells":[{"t":"1","c":"s5","tip":"North Rankin Complex (North Rankin A & B)\nCatering / FM\n· ESS (High)"},{"t":"4","c":"s2","tip":"North Rankin Complex (North Rankin A & B)\nMaintenance / brownfield\n· Legeneering (High)\n· MEA (High)\n· Monadelphous (High)\n· Wood (High)"},{"t":"","c":"","tip":"North Rankin Complex (North Rankin A & B)\nHUC / commissioning\nno company recorded"},{"t":"2","c":"s4","tip":"North Rankin Complex (North Rankin A & B)\nInspection / integrity\n· vertech (High)\n· Applus+ (Medium)"},{"t":"","c":"","tip":"North Rankin Complex (North Rankin A & B)\nCranes / lifting\nno company recorded"},{"t":"2","c":"s4","tip":"North Rankin Complex (North Rankin A & B)\nHelicopters\n· CHC (Medium)\n· PHI (Medium)"},{"t":"3","c":"s3","tip":"North Rankin Complex (North Rankin A & B)\nMarine supply / vessels\n· Cyan (High)\n· Go Offshore (High)\n· SEA1 Offshore (ex-Siem) (Low)"},{"t":"2","c":"s4","tip":"North Rankin Complex (North Rankin A & B)\nCrewing / labour hire\n· OSM (Medium)\n· Atlas Professionals (Low)"},{"t":"","c":"","tip":"North Rankin Complex (North Rankin A & B)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"North Rankin Complex (North Rankin A & B)\nDrilling\n· Transocean (sedco forex) (Medium)"},{"t":"","c":"","tip":"North Rankin Complex (North Rankin A & B)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"North Rankin Complex (North Rankin A & B)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"North Rankin Complex (North Rankin A & B)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"North Rankin Complex (North Rankin A & B)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Goodwyn A","tip":"Goodwyn A\nWoodside · Operating\n6 of 14 scopes filled","search":"Woodside — Goodwyn A Operating ESS (H) Legeneering (H) [WB]; MEA (H); Monadelphous (H); Wood (H)  vertech (H); Applus+ (M)  CHC (M); PHI (M) Cyan (H); Go Offshore (H); SEA1 Offshore (ex-Siem) (L) OSM (M); Atlas Professionals (L)      ","cells":[{"t":"1","c":"s5","tip":"Goodwyn A\nCatering / FM\n· ESS (High)"},{"t":"4","c":"s2","tip":"Goodwyn A\nMaintenance / brownfield\n· Legeneering (High)\n· MEA (High)\n· Monadelphous (High)\n· Wood (High)"},{"t":"","c":"","tip":"Goodwyn A\nHUC / commissioning\nno company recorded"},{"t":"2","c":"s4","tip":"Goodwyn A\nInspection / integrity\n· vertech (High)\n· Applus+ (Medium)"},{"t":"","c":"","tip":"Goodwyn A\nCranes / lifting\nno company recorded"},{"t":"2","c":"s4","tip":"Goodwyn A\nHelicopters\n· CHC (Medium)\n· PHI (Medium)"},{"t":"3","c":"s3","tip":"Goodwyn A\nMarine supply / vessels\n· Cyan (High)\n· Go Offshore (High)\n· SEA1 Offshore (ex-Siem) (Low)"},{"t":"2","c":"s4","tip":"Goodwyn A\nCrewing / labour hire\n· OSM (Medium)\n· Atlas Professionals (Low)"},{"t":"","c":"","tip":"Goodwyn A\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Goodwyn A\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Goodwyn A\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Goodwyn A\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Goodwyn A\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Goodwyn A\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Angel","tip":"Angel\nWoodside · Operating\n7 of 14 scopes filled","search":"Woodside — Angel Operating — (NUI: campaign catering is project-specific) MEA (H); Monadelphous (H)  vertech (H); Applus+ (M)  CHC (M); PHI (M) Cyan (H); Go Offshore (H); Bhagwan Marine (M); Solstad Australia (M); SEA1 Offshore (ex-Siem) (L) OSM (M); Atlas Professionals (L)  Transocean (sedco forex) (M)    ","cells":[{"t":"1","c":"s5","tip":"Angel\nCatering / FM\n· (NUI: campaign catering is project-specific)"},{"t":"2","c":"s4","tip":"Angel\nMaintenance / brownfield\n· MEA (High)\n· Monadelphous (High)"},{"t":"","c":"","tip":"Angel\nHUC / commissioning\nno company recorded"},{"t":"2","c":"s4","tip":"Angel\nInspection / integrity\n· vertech (High)\n· Applus+ (Medium)"},{"t":"","c":"","tip":"Angel\nCranes / lifting\nno company recorded"},{"t":"2","c":"s4","tip":"Angel\nHelicopters\n· CHC (Medium)\n· PHI (Medium)"},{"t":"5","c":"s1","tip":"Angel\nMarine supply / vessels\n· Cyan (High)\n· Go Offshore (High)\n· Bhagwan Marine (Medium)\n· Solstad Australia (Medium)\n· SEA1 Offshore (ex-Siem) (Low)"},{"t":"2","c":"s4","tip":"Angel\nCrewing / labour hire\n· OSM (Medium)\n· Atlas Professionals (Low)"},{"t":"","c":"","tip":"Angel\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"Angel\nDrilling\n· Transocean (sedco forex) (Medium)"},{"t":"","c":"","tip":"Angel\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Angel\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Angel\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Angel\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nWoodside · Operating (GWF-4 under development)\n5 of 14 scopes filled","search":"Woodside — NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor) Operating (GWF-4 under development)      CHC (M); PHI (M) Solstad Australia (M) Sierra (M)  Transocean (sedco forex) (H)   Fugro (M) ","cells":[{"t":"","c":"","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nCranes / lifting\nno company recorded"},{"t":"2","c":"s4","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nHelicopters\n· CHC (Medium)\n· PHI (Medium)"},{"t":"1","c":"s5","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nMarine supply / vessels\n· Solstad Australia (Medium)"},{"t":"1","c":"s5","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nCrewing / labour hire\n· Sierra (Medium)"},{"t":"","c":"","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nDrilling\n· Transocean (sedco forex) (High)"},{"t":"","c":"","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nDecommissioning\nno company recorded"},{"t":"1","c":"s5","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nSurvey / positioning\n· Fugro (Medium)"},{"t":"","c":"","tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Pluto A","tip":"Pluto A\nWoodside · Operating\n7 of 14 scopes filled","search":"Woodside — Pluto A Operating — (NUI: campaign catering is project-specific) Legeneering (H) [WB]; Monadelphous (H); Eris (Kuiper) (M)  Applus+ (M)  PHI (M) Cyan (H); SEA1 Offshore (ex-Siem) (L) OSM (M)   Technip Energies / TechnipFMC (M)   ","cells":[{"t":"1","c":"s5","tip":"Pluto A\nCatering / FM\n· (NUI: campaign catering is project-specific)"},{"t":"3","c":"s3","tip":"Pluto A\nMaintenance / brownfield\n· Legeneering (High)\n· Monadelphous (High)\n· Eris (Kuiper) (Medium)"},{"t":"","c":"","tip":"Pluto A\nHUC / commissioning\nno company recorded"},{"t":"1","c":"s5","tip":"Pluto A\nInspection / integrity\n· Applus+ (Medium)"},{"t":"","c":"","tip":"Pluto A\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Pluto A\nHelicopters\n· PHI (Medium)"},{"t":"2","c":"s4","tip":"Pluto A\nMarine supply / vessels\n· Cyan (High)\n· SEA1 Offshore (ex-Siem) (Low)"},{"t":"1","c":"s5","tip":"Pluto A\nCrewing / labour hire\n· OSM (Medium)"},{"t":"","c":"","tip":"Pluto A\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Pluto A\nDrilling\nno company recorded"},{"t":"1","c":"s5","tip":"Pluto A\nConstruction / EPC / pipelay\n· Technip Energies / TechnipFMC (Medium)"},{"t":"","c":"","tip":"Pluto A\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Pluto A\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Pluto A\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Scarborough FPU","tip":"Scarborough FPU\nWoodside · Commissioning / ramp-up (first gas 29 Jul 2026; first LNG ~Q4 2026)\n11 of 14 scopes filled","search":"Woodside Woodside (self-op) Scarborough FPU Commissioning / ramp-up (first gas 29 Jul 2026; first LNG ~Q4 2026) ESS (M) [WB] UGL (L) Monadelphous (H) vertech (L)  PHI (H) Cyan (H); Solstad Australia (M) AOS (H); Eris (Kuiper) (H); Sierra (M); OSM (L); Programmed (L) Reach (H) Valaris (Ensco (H) Boskalis (H); McDermott (H); Saipem (H); Subsea7 (H)  Fugro (H) ","cells":[{"t":"1","c":"s5","tip":"Scarborough FPU\nCatering / FM\n· ESS (Medium)"},{"t":"1","c":"s5","tip":"Scarborough FPU\nMaintenance / brownfield\n· UGL (Low)"},{"t":"1","c":"s5","tip":"Scarborough FPU\nHUC / commissioning\n· Monadelphous (High)"},{"t":"1","c":"s5","tip":"Scarborough FPU\nInspection / integrity\n· vertech (Low)"},{"t":"","c":"","tip":"Scarborough FPU\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Scarborough FPU\nHelicopters\n· PHI (High)"},{"t":"2","c":"s4","tip":"Scarborough FPU\nMarine supply / vessels\n· Cyan (High)\n· Solstad Australia (Medium)"},{"t":"5","c":"s1","tip":"Scarborough FPU\nCrewing / labour hire\n· AOS (High)\n· Eris (Kuiper) (High)\n· Sierra (Medium)\n· OSM (Low)\n· Programmed (Low)"},{"t":"1","c":"s5","tip":"Scarborough FPU\nROV / subsea / IMR / diving\n· Reach (High)"},{"t":"1","c":"s5","tip":"Scarborough FPU\nDrilling\n· Valaris (Ensco (High)"},{"t":"4","c":"s2","tip":"Scarborough FPU\nConstruction / EPC / pipelay\n· Boskalis (High)\n· McDermott (High)\n· Saipem (High)\n· Subsea7 (High)"},{"t":"","c":"","tip":"Scarborough FPU\nDecommissioning\nno company recorded"},{"t":"1","c":"s5","tip":"Scarborough FPU\nSurvey / positioning\n· Fugro (High)"},{"t":"","c":"","tip":"Scarborough FPU\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Ngujima-Yin FPSO","tip":"Ngujima-Yin FPSO\nWoodside · Operating\n6 of 14 scopes filled","search":"Woodside Woodside (self-op) Ngujima-Yin FPSO Operating ESS (M) [WB] Legeneering (H)  Applus+ (H); vertech (M) Enemech (M) CHC (M); PHI (L) Cyan (M)       ","cells":[{"t":"1","c":"s5","tip":"Ngujima-Yin FPSO\nCatering / FM\n· ESS (Medium)"},{"t":"1","c":"s5","tip":"Ngujima-Yin FPSO\nMaintenance / brownfield\n· Legeneering (High)"},{"t":"","c":"","tip":"Ngujima-Yin FPSO\nHUC / commissioning\nno company recorded"},{"t":"2","c":"s4","tip":"Ngujima-Yin FPSO\nInspection / integrity\n· Applus+ (High)\n· vertech (Medium)"},{"t":"1","c":"s5","tip":"Ngujima-Yin FPSO\nCranes / lifting\n· Enemech (Medium)"},{"t":"2","c":"s4","tip":"Ngujima-Yin FPSO\nHelicopters\n· CHC (Medium)\n· PHI (Low)"},{"t":"1","c":"s5","tip":"Ngujima-Yin FPSO\nMarine supply / vessels\n· Cyan (Medium)"},{"t":"","c":"","tip":"Ngujima-Yin FPSO\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Ngujima-Yin FPSO\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Ngujima-Yin FPSO\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Ngujima-Yin FPSO\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Ngujima-Yin FPSO\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Ngujima-Yin FPSO\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Ngujima-Yin FPSO\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Pyrenees Venture FPSO","tip":"Pyrenees Venture FPSO\nWoodside · Operating\n4 of 14 scopes filled","search":"Woodside MODEC Pyrenees Venture FPSO Operating MODEC (self-performed, incl. catering positions) (M) [WB] MODEC (self-performed O&M) (H) [WB]  Applus+ (M); vertech (M)  CHC (M); PHI (L)        ","cells":[{"t":"1","c":"s5","tip":"Pyrenees Venture FPSO\nCatering / FM\n· MODEC (self-performed, incl. catering positions) (Medium)"},{"t":"1","c":"s5","tip":"Pyrenees Venture FPSO\nMaintenance / brownfield\n· MODEC (self-performed O&M) (High)"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nHUC / commissioning\nno company recorded"},{"t":"2","c":"s4","tip":"Pyrenees Venture FPSO\nInspection / integrity\n· Applus+ (Medium)\n· vertech (Medium)"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nCranes / lifting\nno company recorded"},{"t":"2","c":"s4","tip":"Pyrenees Venture FPSO\nHelicopters\n· CHC (Medium)\n· PHI (Low)"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Pyrenees Venture FPSO\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Okha FPSO (CWLH)","tip":"Okha FPSO (CWLH)\nWoodside · Operating (temp. offline mid-2026 for riser repair; restart ~Q3 2026)\n8 of 14 scopes filled","search":"Woodside Woodside (self-op) Okha FPSO (CWLH) Operating (temp. offline mid-2026 for riser repair; restart ~Q3 2026) ESS (M) [WB] Legeneering (H) [MV]; Monadelphous (H) [MV]; Wood (H)  Applus+ (H); vertech (H) Enemech (M) CHC (M); PHI (L) Cyan (M) Sierra (M) DOF (H)     ","cells":[{"t":"1","c":"s5","tip":"Okha FPSO (CWLH)\nCatering / FM\n· ESS (Medium)"},{"t":"3","c":"s3","tip":"Okha FPSO (CWLH)\nMaintenance / brownfield\n· Legeneering (H) [MV]\n· Monadelphous (H) [MV]\n· Wood (High)"},{"t":"","c":"","tip":"Okha FPSO (CWLH)\nHUC / commissioning\nno company recorded"},{"t":"2","c":"s4","tip":"Okha FPSO (CWLH)\nInspection / integrity\n· Applus+ (High)\n· vertech (High)"},{"t":"1","c":"s5","tip":"Okha FPSO (CWLH)\nCranes / lifting\n· Enemech (Medium)"},{"t":"2","c":"s4","tip":"Okha FPSO (CWLH)\nHelicopters\n· CHC (Medium)\n· PHI (Low)"},{"t":"1","c":"s5","tip":"Okha FPSO (CWLH)\nMarine supply / vessels\n· Cyan (Medium)"},{"t":"1","c":"s5","tip":"Okha FPSO (CWLH)\nCrewing / labour hire\n· Sierra (Medium)"},{"t":"1","c":"s5","tip":"Okha FPSO (CWLH)\nROV / subsea / IMR / diving\n· DOF (High)"},{"t":"","c":"","tip":"Okha FPSO (CWLH)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Okha FPSO (CWLH)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Okha FPSO (CWLH)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Okha FPSO (CWLH)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Okha FPSO (CWLH)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Macedon","tip":"Macedon\nWoodside · Operating\n1 of 14 scopes filled","search":"Woodside — Macedon Operating      CHC (M)        ","cells":[{"t":"","c":"","tip":"Macedon\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Macedon\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Macedon\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Macedon\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Macedon\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Macedon\nHelicopters\n· CHC (Medium)"},{"t":"","c":"","tip":"Macedon\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Macedon\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Macedon\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Macedon\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Macedon\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Macedon\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Macedon\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Macedon\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Julimar-Brunello","tip":"Julimar-Brunello\nWoodside · Operating\n3 of 14 scopes filled","search":"Woodside — Julimar-Brunello Operating          Transocean (sedco forex) (H) Subsea7 (H); Technip Energies / TechnipFMC (H) GGC (L)  ","cells":[{"t":"","c":"","tip":"Julimar-Brunello\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Julimar-Brunello\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Julimar-Brunello\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Julimar-Brunello\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Julimar-Brunello\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Julimar-Brunello\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Julimar-Brunello\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Julimar-Brunello\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Julimar-Brunello\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"Julimar-Brunello\nDrilling\n· Transocean (sedco forex) (High)"},{"t":"2","c":"s4","tip":"Julimar-Brunello\nConstruction / EPC / pipelay\n· Subsea7 (High)\n· Technip Energies / TechnipFMC (High)"},{"t":"1","c":"s5","tip":"Julimar-Brunello\nDecommissioning\n· GGC (Low)"},{"t":"","c":"","tip":"Julimar-Brunello\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Julimar-Brunello\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Bass Strait platforms (GBJV + Kipper Unit JV)","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nWoodside · Operating (majority of platforms in decommissioning)\n7 of 14 scopes filled","search":"Woodside — Bass Strait platforms (GBJV + Kipper Unit JV) Operating (majority of platforms in decommissioning) Sodexo (L) Condex (H); Wood (H); UGL (M); Kaefer (ISOLOGIC) (L)   Enemech (M)  DOF (H) Eris (Kuiper) (L)  Valaris (Ensco (H)  Hjelix (H); GGC (L)  ","cells":[{"t":"1","c":"s5","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nCatering / FM\n· Sodexo (Low)"},{"t":"4","c":"s2","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nMaintenance / brownfield\n· Condex (High)\n· Wood (High)\n· UGL (Medium)\n· Kaefer (ISOLOGIC) (Low)"},{"t":"","c":"","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nInspection / integrity\nno company recorded"},{"t":"1","c":"s5","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nCranes / lifting\n· Enemech (Medium)"},{"t":"","c":"","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nHelicopters\nno company recorded"},{"t":"1","c":"s5","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nMarine supply / vessels\n· DOF (High)"},{"t":"1","c":"s5","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nCrewing / labour hire\n· Eris (Kuiper) (Low)"},{"t":"","c":"","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nDrilling\n· Valaris (Ensco (High)"},{"t":"","c":"","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"2","c":"s4","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nDecommissioning\n· Hjelix (High)\n· GGC (Low)"},{"t":"","c":"","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Enfield (Nganhurra FPSO – removed)","tip":"Enfield (Nganhurra FPSO – removed)\nWoodside · Decommissioning (largely complete)\n4 of 14 scopes filled","search":"Woodside Woodside (Nganhurra FPSO — removed) Enfield (Nganhurra FPSO – removed) Decommissioning (largely complete)       Solstad Australia (M) Sierra (M); AOS (L) DOF (H)   Transocean (sedco forex) (H); Fugro (M); Heerema (M); Technip Energies / TechnipFMC (M)  ","cells":[{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nHelicopters\nno company recorded"},{"t":"1","c":"s5","tip":"Enfield (Nganhurra FPSO – removed)\nMarine supply / vessels\n· Solstad Australia (Medium)"},{"t":"2","c":"s4","tip":"Enfield (Nganhurra FPSO – removed)\nCrewing / labour hire\n· Sierra (Medium)\n· AOS (Low)"},{"t":"1","c":"s5","tip":"Enfield (Nganhurra FPSO – removed)\nROV / subsea / IMR / diving\n· DOF (High)"},{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"4","c":"s2","tip":"Enfield (Nganhurra FPSO – removed)\nDecommissioning\n· Transocean (sedco forex) (High)\n· Fugro (Medium)\n· Heerema (Medium)\n· Technip Energies / TechnipFMC (Medium)"},{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Enfield (Nganhurra FPSO – removed)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Stybarrow (Stybarrow Venture FPSO – removed)","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nWoodside · Decommissioning\n3 of 14 scopes filled","search":"Woodside MODEC (historical — Stybarrow Venture) Stybarrow (Stybarrow Venture FPSO – removed) Decommissioning        Sierra (M) DOF (H)   McDermott (H); Transocean (sedco forex) (H); Fugro (M); Heerema (M); Technip Energies / TechnipFMC (M)  ","cells":[{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nMarine supply / vessels\nno company recorded"},{"t":"1","c":"s5","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nCrewing / labour hire\n· Sierra (Medium)"},{"t":"1","c":"s5","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nROV / subsea / IMR / diving\n· DOF (High)"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"5","c":"s1","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nDecommissioning\n· McDermott (High)\n· Transocean (sedco forex) (High)\n· Fugro (Medium)\n· Heerema (Medium)\n· Technip Energies / TechnipFMC (Medium)"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Stybarrow (Stybarrow Venture FPSO – removed)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Griffin (Griffin Venture FPSO – departed)","tip":"Griffin (Griffin Venture FPSO – departed)\nWoodside · Decommissioning\n2 of 14 scopes filled","search":"Woodside Woodside (Griffin Venture — departed) Griffin (Griffin Venture FPSO – departed) Decommissioning         DOF (H)   Technip Energies / TechnipFMC (H); Fugro (M); Heerema (M); McDermott (M)  ","cells":[{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nCrewing / labour hire\nno company recorded"},{"t":"1","c":"s5","tip":"Griffin (Griffin Venture FPSO – departed)\nROV / subsea / IMR / diving\n· DOF (High)"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"4","c":"s2","tip":"Griffin (Griffin Venture FPSO – departed)\nDecommissioning\n· Technip Energies / TechnipFMC (High)\n· Fugro (Medium)\n· Heerema (Medium)\n· McDermott (Medium)"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Griffin (Griffin Venture FPSO – departed)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Minerva","tip":"Minerva\nWoodside · Decommissioning (ceased ~2019)\n0 of 14 scopes filled","search":"Woodside — Minerva Decommissioning (ceased ~2019)              ","cells":[{"t":"","c":"","tip":"Minerva\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Minerva\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Minerva\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Minerva\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Minerva\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Minerva\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Minerva\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Minerva\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Minerva\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Minerva\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Minerva\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Minerva\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Minerva\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Minerva\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Browse (Browse-to-NWS)","tip":"Browse (Browse-to-NWS)\nWoodside · Planned (pre-FID)\n0 of 14 scopes filled","search":"Woodside — Browse (Browse-to-NWS) Planned (pre-FID)              ","cells":[{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Browse (Browse-to-NWS)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Greater Sunrise (Sunrise, Troubadour)","tip":"Greater Sunrise (Sunrise, Troubadour)\nWoodside · Planned (pre-FID; long-stalled)\n2 of 14 scopes filled","search":"Woodside — Greater Sunrise (Sunrise, Troubadour) Planned (pre-FID; long-stalled)  Wood (L)           Fugro (M) ","cells":[{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nCatering / FM\nno company recorded"},{"t":"1","c":"s5","tip":"Greater Sunrise (Sunrise, Troubadour)\nMaintenance / brownfield\n· Wood (Low)"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nDecommissioning\nno company recorded"},{"t":"1","c":"s5","tip":"Greater Sunrise (Sunrise, Troubadour)\nSurvey / positioning\n· Fugro (Medium)"},{"t":"","c":"","tip":"Greater Sunrise (Sunrise, Troubadour)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Barossa (BW Opal FPSO)","tip":"Barossa (BW Opal FPSO)\nSantos · Operating (first gas Sep 2025; ramp-up)\n6 of 14 scopes filled","search":"Santos BW Offshore Barossa (BW Opal FPSO) Operating (first gas Sep 2025; ramp-up)  Monadelphous (H); Wood (M)  vertech (L)  Weststar-GAP (L)  Eris (Kuiper) (H); Programmed (L)  Valaris (Ensco (H) Allseas (H); Subsea7 (H); Van Oord (H)   ","cells":[{"t":"","c":"","tip":"Barossa (BW Opal FPSO)\nCatering / FM\nno company recorded"},{"t":"2","c":"s4","tip":"Barossa (BW Opal FPSO)\nMaintenance / brownfield\n· Monadelphous (High)\n· Wood (Medium)"},{"t":"","c":"","tip":"Barossa (BW Opal FPSO)\nHUC / commissioning\nno company recorded"},{"t":"1","c":"s5","tip":"Barossa (BW Opal FPSO)\nInspection / integrity\n· vertech (Low)"},{"t":"","c":"","tip":"Barossa (BW Opal FPSO)\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Barossa (BW Opal FPSO)\nHelicopters\n· Weststar-GAP (Low)"},{"t":"","c":"","tip":"Barossa (BW Opal FPSO)\nMarine supply / vessels\nno company recorded"},{"t":"2","c":"s4","tip":"Barossa (BW Opal FPSO)\nCrewing / labour hire\n· Eris (Kuiper) (High)\n· Programmed (Low)"},{"t":"","c":"","tip":"Barossa (BW Opal FPSO)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"Barossa (BW Opal FPSO)\nDrilling\n· Valaris (Ensco (High)"},{"t":"3","c":"s3","tip":"Barossa (BW Opal FPSO)\nConstruction / EPC / pipelay\n· Allseas (High)\n· Subsea7 (High)\n· Van Oord (High)"},{"t":"","c":"","tip":"Barossa (BW Opal FPSO)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Barossa (BW Opal FPSO)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Barossa (BW Opal FPSO)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Bayu-Undan","tip":"Bayu-Undan\nSantos · Ceased production (~2025); CCS conversion pre-FID\n4 of 14 scopes filled","search":"Santos Santos (platforms; FSO historically) Bayu-Undan Ceased production (~2025); CCS conversion pre-FID      OSA (H); Weststar-GAP (H) Solstad Australia (L)   Noble (M)   Fugro (M) ","cells":[{"t":"","c":"","tip":"Bayu-Undan\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Bayu-Undan\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Bayu-Undan\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Bayu-Undan\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Bayu-Undan\nCranes / lifting\nno company recorded"},{"t":"2","c":"s4","tip":"Bayu-Undan\nHelicopters\n· OSA (High)\n· Weststar-GAP (High)"},{"t":"1","c":"s5","tip":"Bayu-Undan\nMarine supply / vessels\n· Solstad Australia (Low)"},{"t":"","c":"","tip":"Bayu-Undan\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Bayu-Undan\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"Bayu-Undan\nDrilling\n· Noble (Medium)"},{"t":"","c":"","tip":"Bayu-Undan\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Bayu-Undan\nDecommissioning\nno company recorded"},{"t":"1","c":"s5","tip":"Bayu-Undan\nSurvey / positioning\n· Fugro (Medium)"},{"t":"","c":"","tip":"Bayu-Undan\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Ningaloo Vision FPSO","tip":"Ningaloo Vision FPSO\nSantos · Ceased production / decommissioning (ceased Aug 2025); FPSO departed Australia Aug 2025 for recycling\n3 of 14 scopes filled","search":"Santos Santos (JV-owned FPSO; ceased) Ningaloo Vision FPSO Ceased production / decommissioning (ceased Aug 2025); FPSO departed Australia Aug 2025 for recycling  WPF(Duratech) (H)  vertech (M)   Go Offshore (H)       ","cells":[{"t":"","c":"","tip":"Ningaloo Vision FPSO\nCatering / FM\nno company recorded"},{"t":"1","c":"s5","tip":"Ningaloo Vision FPSO\nMaintenance / brownfield\n· WPF(Duratech) (High)"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nHUC / commissioning\nno company recorded"},{"t":"1","c":"s5","tip":"Ningaloo Vision FPSO\nInspection / integrity\n· vertech (Medium)"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nHelicopters\nno company recorded"},{"t":"1","c":"s5","tip":"Ningaloo Vision FPSO\nMarine supply / vessels\n· Go Offshore (High)"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Ningaloo Vision FPSO\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"John Brookes","tip":"John Brookes\nSantos · Operating\n3 of 14 scopes filled","search":"Santos — John Brookes Operating — (NUI: campaign catering is project-specific) Kaefer (ISOLOGIC) (M) [WB]; UGL (M); WPF(Duratech) (M)    OSA (M)        ","cells":[{"t":"1","c":"s5","tip":"John Brookes\nCatering / FM\n· (NUI: campaign catering is project-specific)"},{"t":"3","c":"s3","tip":"John Brookes\nMaintenance / brownfield\n· Kaefer (ISOLOGIC) (Medium)\n· UGL (Medium)\n· WPF(Duratech) (Medium)"},{"t":"","c":"","tip":"John Brookes\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"John Brookes\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"John Brookes\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"John Brookes\nHelicopters\n· OSA (Medium)"},{"t":"","c":"","tip":"John Brookes\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"John Brookes\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"John Brookes\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"John Brookes\nDrilling\nno company recorded"},{"t":"","c":"","tip":"John Brookes\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"John Brookes\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"John Brookes\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"John Brookes\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Spar / Greater East Spar","tip":"Spar / Greater East Spar\nSantos · Operating\n3 of 14 scopes filled","search":"Santos — Spar / Greater East Spar Operating  Kaefer (ISOLOGIC) (M) [WB]; UGL (M); WPF(Duratech) (M)    OSA (M)    Noble (H)    ","cells":[{"t":"","c":"","tip":"Spar / Greater East Spar\nCatering / FM\nno company recorded"},{"t":"3","c":"s3","tip":"Spar / Greater East Spar\nMaintenance / brownfield\n· Kaefer (ISOLOGIC) (Medium)\n· UGL (Medium)\n· WPF(Duratech) (Medium)"},{"t":"","c":"","tip":"Spar / Greater East Spar\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Spar / Greater East Spar\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Spar / Greater East Spar\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Spar / Greater East Spar\nHelicopters\n· OSA (Medium)"},{"t":"","c":"","tip":"Spar / Greater East Spar\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Spar / Greater East Spar\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Spar / Greater East Spar\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"Spar / Greater East Spar\nDrilling\n· Noble (High)"},{"t":"","c":"","tip":"Spar / Greater East Spar\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Spar / Greater East Spar\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Spar / Greater East Spar\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Spar / Greater East Spar\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Halyard","tip":"Halyard\nSantos · Operating (first gas Feb 2025)\n3 of 14 scopes filled","search":"Santos — Halyard Operating (first gas Feb 2025)  UGL (M); WPF(Duratech) (M)    OSA (M)    Noble (H)    ","cells":[{"t":"","c":"","tip":"Halyard\nCatering / FM\nno company recorded"},{"t":"2","c":"s4","tip":"Halyard\nMaintenance / brownfield\n· UGL (Medium)\n· WPF(Duratech) (Medium)"},{"t":"","c":"","tip":"Halyard\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Halyard\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Halyard\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Halyard\nHelicopters\n· OSA (Medium)"},{"t":"","c":"","tip":"Halyard\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Halyard\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Halyard\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"Halyard\nDrilling\n· Noble (High)"},{"t":"","c":"","tip":"Halyard\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Halyard\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Halyard\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Halyard\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Spartan","tip":"Spartan\nSantos · Operating (recently connected — confirm)\n1 of 14 scopes filled","search":"Santos — Spartan Operating (recently connected — confirm)  Kaefer (ISOLOGIC) (M) [WB]            ","cells":[{"t":"","c":"","tip":"Spartan\nCatering / FM\nno company recorded"},{"t":"1","c":"s5","tip":"Spartan\nMaintenance / brownfield\n· Kaefer (ISOLOGIC) (Medium)"},{"t":"","c":"","tip":"Spartan\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Spartan\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Spartan\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Spartan\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Spartan\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Spartan\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Spartan\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Spartan\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Spartan\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Spartan\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Spartan\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Spartan\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Reindeer","tip":"Reindeer\nSantos · Ceased production (Q3 2025)\n2 of 14 scopes filled","search":"Santos — Reindeer Ceased production (Q3 2025) — (NUI: campaign catering is project-specific)     OSA (M)        ","cells":[{"t":"1","c":"s5","tip":"Reindeer\nCatering / FM\n· (NUI: campaign catering is project-specific)"},{"t":"","c":"","tip":"Reindeer\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Reindeer\nHelicopters\n· OSA (Medium)"},{"t":"","c":"","tip":"Reindeer\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Reindeer\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Mutineer-Exeter (MODEC Venture 11 – removed)","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nSantos · Ceased (2018) / decommissioning 2026\n0 of 14 scopes filled","search":"Santos MODEC (historical — MODEC Venture 11) Mutineer-Exeter (MODEC Venture 11 – removed) Ceased (2018) / decommissioning 2026              ","cells":[{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Mutineer-Exeter (MODEC Venture 11 – removed)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Fletcher-Finucane","tip":"Fletcher-Finucane\nSantos · Ceased / decommissioning 2026\n0 of 14 scopes filled","search":"Santos — Fletcher-Finucane Ceased / decommissioning 2026              ","cells":[{"t":"","c":"","tip":"Fletcher-Finucane\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Fletcher-Finucane\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Dorado","tip":"Dorado\nSantos · Planned (pre-FID)\n2 of 14 scopes filled","search":"Santos — Dorado Planned (pre-FID)          Noble (L) Vantris (Sapura) (L)   ","cells":[{"t":"","c":"","tip":"Dorado\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Dorado\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Dorado\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Dorado\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Dorado\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Dorado\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Dorado\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Dorado\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Dorado\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"Dorado\nDrilling\n· Noble (Low)"},{"t":"1","c":"s5","tip":"Dorado\nConstruction / EPC / pipelay\n· Vantris (Sapura) (Low)"},{"t":"","c":"","tip":"Dorado\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Dorado\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Dorado\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Corvus","tip":"Corvus\nSantos · Planned / undeveloped\n0 of 14 scopes filled","search":"Santos — Corvus Planned / undeveloped              ","cells":[{"t":"","c":"","tip":"Corvus\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Corvus\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Corvus\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Corvus\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Corvus\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Corvus\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Corvus\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Corvus\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Corvus\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Corvus\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Corvus\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Corvus\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Corvus\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Corvus\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Wheatstone Platform","tip":"Wheatstone Platform\nChevron · Operating\n9 of 14 scopes filled","search":"Chevron — Wheatstone Platform Operating ESS (H) Altrad (H) [WB]; IAS (M); UGL (M) [WB]; Kaefer (ISOLOGIC) (L)   Altrad Sparrows (H) OSA (M) Cyan (H)  DOF (M) Noble (M) Allseas (L)   Parabellum (L)","cells":[{"t":"1","c":"s5","tip":"Wheatstone Platform\nCatering / FM\n· ESS (High)"},{"t":"4","c":"s2","tip":"Wheatstone Platform\nMaintenance / brownfield\n· Altrad (High)\n· IAS (Medium)\n· UGL (Medium)\n· Kaefer (ISOLOGIC) (Low)"},{"t":"","c":"","tip":"Wheatstone Platform\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Wheatstone Platform\nInspection / integrity\nno company recorded"},{"t":"1","c":"s5","tip":"Wheatstone Platform\nCranes / lifting\n· Altrad Sparrows (High)"},{"t":"1","c":"s5","tip":"Wheatstone Platform\nHelicopters\n· OSA (Medium)"},{"t":"1","c":"s5","tip":"Wheatstone Platform\nMarine supply / vessels\n· Cyan (High)"},{"t":"","c":"","tip":"Wheatstone Platform\nCrewing / labour hire\nno company recorded"},{"t":"1","c":"s5","tip":"Wheatstone Platform\nROV / subsea / IMR / diving\n· DOF (Medium)"},{"t":"1","c":"s5","tip":"Wheatstone Platform\nDrilling\n· Noble (Medium)"},{"t":"1","c":"s5","tip":"Wheatstone Platform\nConstruction / EPC / pipelay\n· Allseas (Low)"},{"t":"","c":"","tip":"Wheatstone Platform\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Wheatstone Platform\nSurvey / positioning\nno company recorded"},{"t":"1","c":"s5","tip":"Wheatstone Platform\nOther (chemist / emergency / medical)\n· Parabellum (Low)"}]},{"label":"Gorgon / Jansz-Io subsea","tip":"Gorgon / Jansz-Io subsea\nChevron · Operating\n8 of 14 scopes filled","search":"Chevron — Gorgon / Jansz-Io subsea Operating      OSA (M) Cyan (M) Eris (Kuiper) (M) Baker Hughes (H); DOF (M) Noble (M) Subsea7 (M); Allseas (L) GGC (L)  Parabellum (L)","cells":[{"t":"","c":"","tip":"Gorgon / Jansz-Io subsea\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Gorgon / Jansz-Io subsea\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Gorgon / Jansz-Io subsea\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Gorgon / Jansz-Io subsea\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Gorgon / Jansz-Io subsea\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Gorgon / Jansz-Io subsea\nHelicopters\n· OSA (Medium)"},{"t":"1","c":"s5","tip":"Gorgon / Jansz-Io subsea\nMarine supply / vessels\n· Cyan (Medium)"},{"t":"1","c":"s5","tip":"Gorgon / Jansz-Io subsea\nCrewing / labour hire\n· Eris (Kuiper) (Medium)"},{"t":"2","c":"s4","tip":"Gorgon / Jansz-Io subsea\nROV / subsea / IMR / diving\n· Baker Hughes (High)\n· DOF (Medium)"},{"t":"1","c":"s5","tip":"Gorgon / Jansz-Io subsea\nDrilling\n· Noble (Medium)"},{"t":"2","c":"s4","tip":"Gorgon / Jansz-Io subsea\nConstruction / EPC / pipelay\n· Subsea7 (Medium)\n· Allseas (Low)"},{"t":"1","c":"s5","tip":"Gorgon / Jansz-Io subsea\nDecommissioning\n· GGC (Low)"},{"t":"","c":"","tip":"Gorgon / Jansz-Io subsea\nSurvey / positioning\nno company recorded"},{"t":"1","c":"s5","tip":"Gorgon / Jansz-Io subsea\nOther (chemist / emergency / medical)\n· Parabellum (Low)"}]},{"label":"Jansz-Io Compression (Field Control Station)","tip":"Jansz-Io Compression (Field Control Station)\nChevron · Under construction / commissioning (start-up from 2026)\n4 of 14 scopes filled","search":"Chevron Chevron (self-op FCS) Jansz-Io Compression (Field Control Station) Under construction / commissioning (start-up from 2026)  Monadelphous (L)      Eris (Kuiper) (H) Baker Hughes (H)  MEA (H); Saipem (H)   ","cells":[{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nCatering / FM\nno company recorded"},{"t":"1","c":"s5","tip":"Jansz-Io Compression (Field Control Station)\nMaintenance / brownfield\n· Monadelphous (Low)"},{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nMarine supply / vessels\nno company recorded"},{"t":"1","c":"s5","tip":"Jansz-Io Compression (Field Control Station)\nCrewing / labour hire\n· Eris (Kuiper) (High)"},{"t":"1","c":"s5","tip":"Jansz-Io Compression (Field Control Station)\nROV / subsea / IMR / diving\n· Baker Hughes (High)"},{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nDrilling\nno company recorded"},{"t":"2","c":"s4","tip":"Jansz-Io Compression (Field Control Station)\nConstruction / EPC / pipelay\n· MEA (High)\n· Saipem (High)"},{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Jansz-Io Compression (Field Control Station)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Barrow Island oil (WA Oil)","tip":"Barrow Island oil (WA Oil)\nChevron · Decommissioning (from ~2025)\n5 of 14 scopes filled","search":"Chevron — Barrow Island oil (WA Oil) Decommissioning (from ~2025)  Altrad (H)   Altrad Sparrows (M) OSA (M) Cyan (H); Bhagwan Marine (M)       Parabellum (M)","cells":[{"t":"","c":"","tip":"Barrow Island oil (WA Oil)\nCatering / FM\nno company recorded"},{"t":"1","c":"s5","tip":"Barrow Island oil (WA Oil)\nMaintenance / brownfield\n· Altrad (High)"},{"t":"","c":"","tip":"Barrow Island oil (WA Oil)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Barrow Island oil (WA Oil)\nInspection / integrity\nno company recorded"},{"t":"1","c":"s5","tip":"Barrow Island oil (WA Oil)\nCranes / lifting\n· Altrad Sparrows (Medium)"},{"t":"1","c":"s5","tip":"Barrow Island oil (WA Oil)\nHelicopters\n· OSA (Medium)"},{"t":"2","c":"s4","tip":"Barrow Island oil (WA Oil)\nMarine supply / vessels\n· Cyan (High)\n· Bhagwan Marine (Medium)"},{"t":"","c":"","tip":"Barrow Island oil (WA Oil)\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Barrow Island oil (WA Oil)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Barrow Island oil (WA Oil)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Barrow Island oil (WA Oil)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Barrow Island oil (WA Oil)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Barrow Island oil (WA Oil)\nSurvey / positioning\nno company recorded"},{"t":"1","c":"s5","tip":"Barrow Island oil (WA Oil)\nOther (chemist / emergency / medical)\n· Parabellum (Medium)"}]},{"label":"Thevenard Island (legacy)","tip":"Thevenard Island (legacy)\nChevron · Decommissioned (2023)\n2 of 14 scopes filled","search":"Chevron — Thevenard Island (legacy) Decommissioned (2023)  Altrad (M)          Bhagwan Marine (H); Legeneering (H)  ","cells":[{"t":"","c":"","tip":"Thevenard Island (legacy)\nCatering / FM\nno company recorded"},{"t":"1","c":"s5","tip":"Thevenard Island (legacy)\nMaintenance / brownfield\n· Altrad (Medium)"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"2","c":"s4","tip":"Thevenard Island (legacy)\nDecommissioning\n· Bhagwan Marine (High)\n· Legeneering (High)"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Thevenard Island (legacy)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Ichthys Explorer (CPF)","tip":"Ichthys Explorer (CPF)\nInpex · Operating\n11 of 14 scopes filled","search":"Inpex Inpex (self-op) Ichthys Explorer (CPF) Operating ESS (H) Monadelphous (H)  vertech (H) Enemech (H) PHI (H) Cyan (H); Go Offshore (H); Solstad Australia (M) Eris (Kuiper) (M); GR Production Services (M) Baker Hughes (H) Noble (H) Heerema (H); McDermott (M); Saipem (L) GGC (L)  ","cells":[{"t":"1","c":"s5","tip":"Ichthys Explorer (CPF)\nCatering / FM\n· ESS (High)"},{"t":"1","c":"s5","tip":"Ichthys Explorer (CPF)\nMaintenance / brownfield\n· Monadelphous (High)"},{"t":"","c":"","tip":"Ichthys Explorer (CPF)\nHUC / commissioning\nno company recorded"},{"t":"1","c":"s5","tip":"Ichthys Explorer (CPF)\nInspection / integrity\n· vertech (High)"},{"t":"1","c":"s5","tip":"Ichthys Explorer (CPF)\nCranes / lifting\n· Enemech (High)"},{"t":"1","c":"s5","tip":"Ichthys Explorer (CPF)\nHelicopters\n· PHI (High)"},{"t":"3","c":"s3","tip":"Ichthys Explorer (CPF)\nMarine supply / vessels\n· Cyan (High)\n· Go Offshore (High)\n· Solstad Australia (Medium)"},{"t":"2","c":"s4","tip":"Ichthys Explorer (CPF)\nCrewing / labour hire\n· Eris (Kuiper) (Medium)\n· GR Production Services (Medium)"},{"t":"1","c":"s5","tip":"Ichthys Explorer (CPF)\nROV / subsea / IMR / diving\n· Baker Hughes (High)"},{"t":"1","c":"s5","tip":"Ichthys Explorer (CPF)\nDrilling\n· Noble (High)"},{"t":"3","c":"s3","tip":"Ichthys Explorer (CPF)\nConstruction / EPC / pipelay\n· Heerema (High)\n· McDermott (Medium)\n· Saipem (Low)"},{"t":"1","c":"s5","tip":"Ichthys Explorer (CPF)\nDecommissioning\n· GGC (Low)"},{"t":"","c":"","tip":"Ichthys Explorer (CPF)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Ichthys Explorer (CPF)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Ichthys Venturer (FPSO)","tip":"Ichthys Venturer (FPSO)\nInpex · Operating\n8 of 14 scopes filled","search":"Inpex Inpex (self-op) Ichthys Venturer (FPSO) Operating ESS (H) Monadelphous (H); Kaefer (ISOLOGIC) (M) [WB]  vertech (H) Enemech (H) PHI (H) Cyan (H); Go Offshore (H) GR Production Services (M)   Heerema (H)   ","cells":[{"t":"1","c":"s5","tip":"Ichthys Venturer (FPSO)\nCatering / FM\n· ESS (High)"},{"t":"2","c":"s4","tip":"Ichthys Venturer (FPSO)\nMaintenance / brownfield\n· Monadelphous (High)\n· Kaefer (ISOLOGIC) (Medium)"},{"t":"","c":"","tip":"Ichthys Venturer (FPSO)\nHUC / commissioning\nno company recorded"},{"t":"1","c":"s5","tip":"Ichthys Venturer (FPSO)\nInspection / integrity\n· vertech (High)"},{"t":"1","c":"s5","tip":"Ichthys Venturer (FPSO)\nCranes / lifting\n· Enemech (High)"},{"t":"1","c":"s5","tip":"Ichthys Venturer (FPSO)\nHelicopters\n· PHI (High)"},{"t":"2","c":"s4","tip":"Ichthys Venturer (FPSO)\nMarine supply / vessels\n· Cyan (High)\n· Go Offshore (High)"},{"t":"1","c":"s5","tip":"Ichthys Venturer (FPSO)\nCrewing / labour hire\n· GR Production Services (Medium)"},{"t":"","c":"","tip":"Ichthys Venturer (FPSO)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Ichthys Venturer (FPSO)\nDrilling\nno company recorded"},{"t":"1","c":"s5","tip":"Ichthys Venturer (FPSO)\nConstruction / EPC / pipelay\n· Heerema (High)"},{"t":"","c":"","tip":"Ichthys Venturer (FPSO)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Ichthys Venturer (FPSO)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Ichthys Venturer (FPSO)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Prelude FLNG","tip":"Prelude FLNG\nShell · Operating (unreliable; repeated outages; Turnaround 2026)\n8 of 14 scopes filled","search":"Shell Shell (self-op) Prelude FLNG Operating (unreliable; repeated outages; Turnaround 2026) Sodexo (H) [MV] Eris (Kuiper) (H); Monadelphous (H); MEA (M); Programmed (M) Technip Energies / TechnipFMC (H)  Enemech (L) PHI (H); CHC (L)  Atlas Professionals (H) DOF (M)     SGS (H)","cells":[{"t":"1","c":"s5","tip":"Prelude FLNG\nCatering / FM\n· Sodexo (H) [MV]"},{"t":"4","c":"s2","tip":"Prelude FLNG\nMaintenance / brownfield\n· Eris (Kuiper) (High)\n· Monadelphous (High)\n· MEA (Medium)\n· Programmed (Medium)"},{"t":"1","c":"s5","tip":"Prelude FLNG\nHUC / commissioning\n· Technip Energies / TechnipFMC (High)"},{"t":"","c":"","tip":"Prelude FLNG\nInspection / integrity\nno company recorded"},{"t":"1","c":"s5","tip":"Prelude FLNG\nCranes / lifting\n· Enemech (Low)"},{"t":"2","c":"s4","tip":"Prelude FLNG\nHelicopters\n· PHI (High)\n· CHC (Low)"},{"t":"","c":"","tip":"Prelude FLNG\nMarine supply / vessels\nno company recorded"},{"t":"1","c":"s5","tip":"Prelude FLNG\nCrewing / labour hire\n· Atlas Professionals (High)"},{"t":"1","c":"s5","tip":"Prelude FLNG\nROV / subsea / IMR / diving\n· DOF (Medium)"},{"t":"","c":"","tip":"Prelude FLNG\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Prelude FLNG\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Prelude FLNG\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Prelude FLNG\nSurvey / positioning\nno company recorded"},{"t":"1","c":"s5","tip":"Prelude FLNG\nOther (chemist / emergency / medical)\n· SGS (High)"}]},{"label":"Crux","tip":"Crux\nShell · Under construction (jacket installed early 2026; first gas 2027)\n6 of 14 scopes filled","search":"Shell — Crux Under construction (jacket installed early 2026; first gas 2027) — (NUI: campaign catering is project-specific) Eris (Kuiper) (H) MEA (H); Monadelphous (H); Technip Energies / TechnipFMC (H)  Enemech (L)     Transocean (sedco forex) (M) McDermott (H)   ","cells":[{"t":"1","c":"s5","tip":"Crux\nCatering / FM\n· (NUI: campaign catering is project-specific)"},{"t":"1","c":"s5","tip":"Crux\nMaintenance / brownfield\n· Eris (Kuiper) (High)"},{"t":"3","c":"s3","tip":"Crux\nHUC / commissioning\n· MEA (High)\n· Monadelphous (High)\n· Technip Energies / TechnipFMC (High)"},{"t":"","c":"","tip":"Crux\nInspection / integrity\nno company recorded"},{"t":"1","c":"s5","tip":"Crux\nCranes / lifting\n· Enemech (Low)"},{"t":"","c":"","tip":"Crux\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Crux\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Crux\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Crux\nROV / subsea / IMR / diving\nno company recorded"},{"t":"1","c":"s5","tip":"Crux\nDrilling\n· Transocean (sedco forex) (Medium)"},{"t":"1","c":"s5","tip":"Crux\nConstruction / EPC / pipelay\n· McDermott (High)"},{"t":"","c":"","tip":"Crux\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Crux\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Crux\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Montara (Montara Venture FPSO + WHP)","tip":"Montara (Montara Venture FPSO + WHP)\nJadestone · Operating\n5 of 14 scopes filled","search":"Jadestone Jadestone (self-op) Montara (Montara Venture FPSO + WHP) Operating    vertech (M)  OSA (L) Bhagwan Marine (H)  DOF (L) Valaris (Ensco (H)    ","cells":[{"t":"","c":"","tip":"Montara (Montara Venture FPSO + WHP)\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Montara (Montara Venture FPSO + WHP)\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Montara (Montara Venture FPSO + WHP)\nHUC / commissioning\nno company recorded"},{"t":"1","c":"s5","tip":"Montara (Montara Venture FPSO + WHP)\nInspection / integrity\n· vertech (Medium)"},{"t":"","c":"","tip":"Montara (Montara Venture FPSO + WHP)\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Montara (Montara Venture FPSO + WHP)\nHelicopters\n· OSA (Low)"},{"t":"1","c":"s5","tip":"Montara (Montara Venture FPSO + WHP)\nMarine supply / vessels\n· Bhagwan Marine (High)"},{"t":"","c":"","tip":"Montara (Montara Venture FPSO + WHP)\nCrewing / labour hire\nno company recorded"},{"t":"1","c":"s5","tip":"Montara (Montara Venture FPSO + WHP)\nROV / subsea / IMR / diving\n· DOF (Low)"},{"t":"1","c":"s5","tip":"Montara (Montara Venture FPSO + WHP)\nDrilling\n· Valaris (Ensco (High)"},{"t":"","c":"","tip":"Montara (Montara Venture FPSO + WHP)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Montara (Montara Venture FPSO + WHP)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Montara (Montara Venture FPSO + WHP)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Montara (Montara Venture FPSO + WHP)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Stag","tip":"Stag\nJadestone · Ceased/shut-in since Mar 2026 (Cyclone Narelle; restart targeted Q2 2027)\n3 of 14 scopes filled","search":"Jadestone — Stag Ceased/shut-in since Mar 2026 (Cyclone Narelle; restart targeted Q2 2027)      CHC (M) Bhagwan Marine (H)     WPF(Duratech) (L)  ","cells":[{"t":"","c":"","tip":"Stag\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Stag\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Stag\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Stag\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Stag\nCranes / lifting\nno company recorded"},{"t":"1","c":"s5","tip":"Stag\nHelicopters\n· CHC (Medium)"},{"t":"1","c":"s5","tip":"Stag\nMarine supply / vessels\n· Bhagwan Marine (High)"},{"t":"","c":"","tip":"Stag\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Stag\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Stag\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Stag\nConstruction / EPC / pipelay\nno company recorded"},{"t":"1","c":"s5","tip":"Stag\nDecommissioning\n· WPF(Duratech) (Low)"},{"t":"","c":"","tip":"Stag\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Stag\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Buffalo (Buffalo Venture FPSO)","tip":"Buffalo (Buffalo Venture FPSO)\nMODEC · Off-station / relocated to Thailand (2004)\n0 of 14 scopes filled","search":"MODEC MODEC (historical) Buffalo (Buffalo Venture FPSO) Off-station / relocated to Thailand (2004)              ","cells":[{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Buffalo (Buffalo Venture FPSO)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Elang/Kakatua (MODEC Venture 1 FPSO)","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nMODEC · Decommissioned (2007)\n0 of 14 scopes filled","search":"MODEC MODEC (historical) Elang/Kakatua (MODEC Venture 1 FPSO) Decommissioned (2007)              ","cells":[{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nConstruction / EPC / pipelay\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nDecommissioning\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Elang/Kakatua (MODEC Venture 1 FPSO)\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nAus Govt (DISR) — via Petrofac · Decommissioning — Phase 1 disconnect done Apr 2025; FPSO recycled 2026; Phase 2 well P&A award pending\n3 of 14 scopes filled","search":"Aus Govt (DISR) — via Petrofac — Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab Decommissioning — Phase 1 disconnect done Apr 2025; FPSO recycled 2026; Phase 2 well P&A award pending ESS (L) Legeneering (L)          MEA (H); Petrofac (H); UPS (H); Vantris (Sapura) (H); Bhagwan Marine (M); Monadelphous (M)  ","cells":[{"t":"1","c":"s5","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nCatering / FM\n· ESS (Low)"},{"t":"1","c":"s5","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nMaintenance / brownfield\n· Legeneering (Low)"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nConstruction / EPC / pipelay\nno company recorded"},{"t":"6","c":"s1","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nDecommissioning\n· MEA (High)\n· Petrofac (High)\n· UPS (High)\n· Vantris (Sapura) (High)\n· Bhagwan Marine (Medium)\n· Monadelphous (Medium)"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nSantos · Decommissioning — jacket removed 2026 (McDermott / WPF Duratec)\n1 of 14 scopes filled","search":"Santos — Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab Decommissioning — jacket removed 2026 (McDermott / WPF Duratec)            McDermott (H); WPF(Duratech) (H); Bhagwan Marine (M)  ","cells":[{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nConstruction / EPC / pipelay\nno company recorded"},{"t":"3","c":"s3","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nDecommissioning\n· McDermott (High)\n· WPF(Duratech) (High)\n· Bhagwan Marine (Medium)"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab\nOther (chemist / emergency / medical)\nno company recorded"}]},{"label":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nSantos · Removed 2024 (McDermott)\n1 of 14 scopes filled","search":"Santos — Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab Removed 2024 (McDermott)            McDermott (H)  ","cells":[{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nCatering / FM\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nMaintenance / brownfield\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nHUC / commissioning\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nInspection / integrity\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nCranes / lifting\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nHelicopters\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nMarine supply / vessels\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nCrewing / labour hire\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nROV / subsea / IMR / diving\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nDrilling\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nConstruction / EPC / pipelay\nno company recorded"},{"t":"1","c":"s5","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nDecommissioning\n· McDermott (High)"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nSurvey / positioning\nno company recorded"},{"t":"","c":"","tip":"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab\nOther (chemist / emergency / medical)\nno company recorded"}]}],"legend":[{"label":"1 company","cls":"s5"},{"label":"2","cls":"s4"},{"label":"3","cls":"s3"},{"label":"4","cls":"s2"},{"label":"5 or more companies","cls":"s1"},{"label":"none recorded","cls":""}]}]},{"title":"Scope coverage","charts":[{"type":"stack","title":"Company entries per scope","sub":"Every company named against a scope, split by confidence","series":[{"name":"High","color":"seq-2"},{"name":"Medium","color":"seq-3"},{"name":"Low","color":"seq-5"},{"name":"Unrated","color":"neutral"}],"items":[{"label":"Maintenance / brownfield","values":[26,18,6,2],"total":52,"tip":"Maintenance / brownfield\n52 entries\n26 high, 18 medium, 6 low, 2 unrated"},{"label":"Helicopters","values":[6,21,6,0],"total":33,"tip":"Helicopters\n33 entries\n6 high, 21 medium, 6 low"},{"label":"Marine supply / vessels","values":[18,10,5,0],"total":33,"tip":"Marine supply / vessels\n33 entries\n18 high, 10 medium, 5 low"},{"label":"Decommissioning","values":[14,12,5,0],"total":31,"tip":"Decommissioning\n31 entries\n14 high, 12 medium, 5 low"},{"label":"Crewing / labour hire","values":[5,13,8,0],"total":26,"tip":"Crewing / labour hire\n26 entries\n5 high, 13 medium, 8 low"},{"label":"Construction / EPC / pipelay","values":[14,3,4,0],"total":21,"tip":"Construction / EPC / pipelay\n21 entries\n14 high, 3 medium, 4 low"},{"label":"Inspection / integrity","values":[8,9,2,0],"total":19,"tip":"Inspection / integrity\n19 entries\n8 high, 9 medium, 2 low"},{"label":"Catering / FM","values":[5,4,2,6],"total":17,"tip":"Catering / FM\n17 entries\n5 high, 4 medium, 2 low, 6 unrated"},{"label":"Drilling","values":[9,6,1,0],"total":16,"tip":"Drilling\n16 entries\n9 high, 6 medium, 1 low"},{"label":"ROV / subsea / IMR / diving","values":[8,3,1,0],"total":12,"tip":"ROV / subsea / IMR / diving\n12 entries\n8 high, 3 medium, 1 low"},{"label":"Cranes / lifting","values":[3,4,2,0],"total":9,"tip":"Cranes / lifting\n9 entries\n3 high, 4 medium, 2 low"},{"label":"HUC / commissioning","values":[5,0,0,0],"total":5,"tip":"HUC / commissioning\n5 entries\n5 high"},{"label":"Other (chemist / emergency / medical)","values":[1,1,2,0],"total":4,"tip":"Other (chemist / emergency / medical)\n4 entries\n1 high, 1 medium, 2 low"},{"label":"Survey / positioning","values":[1,3,0,0],"total":4,"tip":"Survey / positioning\n4 entries\n1 high, 3 medium"}]},{"type":"bar","title":"Scopes filled per facility","sub":"Facilities with the most complete scope picture","color":"seq-3","foot":"A facility with no scopes filled is normally unmanned, pre-FID or ceased.","items":[{"label":"Ichthys Explorer (CPF)","value":11,"tip":"Ichthys Explorer (CPF)\n11"},{"label":"Scarborough FPU","value":11,"tip":"Scarborough FPU\n11"},{"label":"Wheatstone Platform","value":9,"tip":"Wheatstone Platform\n9"},{"label":"Gorgon / Jansz-Io subsea","value":8,"tip":"Gorgon / Jansz-Io subsea\n8"},{"label":"Ichthys Venturer (FPSO)","value":8,"tip":"Ichthys Venturer (FPSO)\n8"},{"label":"Okha FPSO (CWLH)","value":8,"tip":"Okha FPSO (CWLH)\n8"},{"label":"Prelude FLNG","value":8,"tip":"Prelude FLNG\n8"},{"label":"Angel","value":7,"tip":"Angel\n7"},{"label":"Bass Strait platforms (GBJV + Kipper Unit JV)","value":7,"tip":"Bass Strait platforms (GBJV + Kipper Unit JV)\n7"},{"label":"North Rankin Complex (North Rankin A & B)","value":7,"tip":"North Rankin Complex (North Rankin A & B)\n7"},{"label":"Pluto A","value":7,"tip":"Pluto A\n7"},{"label":"Barossa (BW Opal FPSO)","value":6,"tip":"Barossa (BW Opal FPSO)\n6"},{"label":"Crux","value":6,"tip":"Crux\n6"},{"label":"Goodwyn A","value":6,"tip":"Goodwyn A\n6"},{"label":"Ngujima-Yin FPSO","value":6,"tip":"Ngujima-Yin FPSO\n6"},{"label":"Barrow Island oil (WA Oil)","value":5,"tip":"Barrow Island oil (WA Oil)\n5"},{"label":"Montara (Montara Venture FPSO + WHP)","value":5,"tip":"Montara (Montara Venture FPSO + WHP)\n5"},{"label":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)","value":5,"tip":"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)\n5"}]}]}],"table":{"columns":["Tier-1 operator","Facility / vessel operator","Asset / Facility","Status","Catering / FM","Maintenance / brownfield","HUC / commissioning","Inspection / integrity","Cranes / lifting","Helicopters","Marine supply / vessels","Crewing / labour hire","ROV / subsea / IMR / diving","Drilling","Construction / EPC / pipelay","Decommissioning","Survey / positioning","Other (chemist / emergency / medical)"],"rows":[["Woodside","—","North Rankin Complex (North Rankin A & B)","Operating","ESS (H)","Legeneering (H) [WB]; MEA (H); Monadelphous (H); Wood (H)","","vertech (H); Applus+ (M)","","CHC (M); PHI (M)","Cyan (H); Go Offshore (H); SEA1 Offshore (ex-Siem) (L)","OSM (M); Atlas Professionals (L)","","Transocean (sedco forex) (M)","","","",""],["Woodside","—","Goodwyn A","Operating","ESS (H)","Legeneering (H) [WB]; MEA (H); Monadelphous (H); Wood (H)","","vertech (H); Applus+ (M)","","CHC (M); PHI (M)","Cyan (H); Go Offshore (H); SEA1 Offshore (ex-Siem) (L)","OSM (M); Atlas Professionals (L)","","","","","",""],["Woodside","—","Angel","Operating","— (NUI: campaign catering is project-specific)","MEA (H); Monadelphous (H)","","vertech (H); Applus+ (M)","","CHC (M); PHI (M)","Cyan (H); Go Offshore (H); Bhagwan Marine (M); Solstad Australia (M); SEA1 Offshore (ex-Siem) (L)","OSM (M); Atlas Professionals (L)","","Transocean (sedco forex) (M)","","","",""],["Woodside","—","NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)","Operating (GWF-4 under development)","","","","","","CHC (M); PHI (M)","Solstad Australia (M)","Sierra (M)","","Transocean (sedco forex) (H)","","","Fugro (M)",""],["Woodside","—","Pluto A","Operating","— (NUI: campaign catering is project-specific)","Legeneering (H) [WB]; Monadelphous (H); Eris (Kuiper) (M)","","Applus+ (M)","","PHI (M)","Cyan (H); SEA1 Offshore (ex-Siem) (L)","OSM (M)","","","Technip Energies / TechnipFMC (M)","","",""],["Woodside","Woodside (self-op)","Scarborough FPU","Commissioning / ramp-up (first gas 29 Jul 2026; first LNG ~Q4 2026)","ESS (M) [WB]","UGL (L)","Monadelphous (H)","vertech (L)","","PHI (H)","Cyan (H); Solstad Australia (M)","AOS (H); Eris (Kuiper) (H); Sierra (M); OSM (L); Programmed (L)","Reach (H)","Valaris (Ensco (H)","Boskalis (H); McDermott (H); Saipem (H); Subsea7 (H)","","Fugro (H)",""],["Woodside","Woodside (self-op)","Ngujima-Yin FPSO","Operating","ESS (M) [WB]","Legeneering (H)","","Applus+ (H); vertech (M)","Enemech (M)","CHC (M); PHI (L)","Cyan (M)","","","","","","",""],["Woodside","MODEC","Pyrenees Venture FPSO","Operating","MODEC (self-performed, incl. catering positions) (M) [WB]","MODEC (self-performed O&M) (H) [WB]","","Applus+ (M); vertech (M)","","CHC (M); PHI (L)","","","","","","","",""],["Woodside","Woodside (self-op)","Okha FPSO (CWLH)","Operating (temp. offline mid-2026 for riser repair; restart ~Q3 2026)","ESS (M) [WB]","Legeneering (H) [MV]; Monadelphous (H) [MV]; Wood (H)","","Applus+ (H); vertech (H)","Enemech (M)","CHC (M); PHI (L)","Cyan (M)","Sierra (M)","DOF (H)","","","","",""],["Woodside","—","Macedon","Operating","","","","","","CHC (M)","","","","","","","",""],["Woodside","—","Julimar-Brunello","Operating","","","","","","","","","","Transocean (sedco forex) (H)","Subsea7 (H); Technip Energies / TechnipFMC (H)","GGC (L)","",""],["Woodside","—","Bass Strait platforms (GBJV + Kipper Unit JV)","Operating (majority of platforms in decommissioning)","Sodexo (L)","Condex (H); Wood (H); UGL (M); Kaefer (ISOLOGIC) (L)","","","Enemech (M)","","DOF (H)","Eris (Kuiper) (L)","","Valaris (Ensco (H)","","Hjelix (H); GGC (L)","",""],["Woodside","Woodside (Nganhurra FPSO — removed)","Enfield (Nganhurra FPSO – removed)","Decommissioning (largely complete)","","","","","","","Solstad Australia (M)","Sierra (M); AOS (L)","DOF (H)","","","Transocean (sedco forex) (H); Fugro (M); Heerema (M); Technip Energies / TechnipFMC (M)","",""],["Woodside","MODEC (historical — Stybarrow Venture)","Stybarrow (Stybarrow Venture FPSO – removed)","Decommissioning","","","","","","","","Sierra (M)","DOF (H)","","","McDermott (H); Transocean (sedco forex) (H); Fugro (M); Heerema (M); Technip Energies / TechnipFMC (M)","",""],["Woodside","Woodside (Griffin Venture — departed)","Griffin (Griffin Venture FPSO – departed)","Decommissioning","","","","","","","","","DOF (H)","","","Technip Energies / TechnipFMC (H); Fugro (M); Heerema (M); McDermott (M)","",""],["Woodside","—","Minerva","Decommissioning (ceased ~2019)","","","","","","","","","","","","","",""],["Woodside","—","Browse (Browse-to-NWS)","Planned (pre-FID)","","","","","","","","","","","","","",""],["Woodside","—","Greater Sunrise (Sunrise, Troubadour)","Planned (pre-FID; long-stalled)","","Wood (L)","","","","","","","","","","","Fugro (M)",""],["Santos","BW Offshore","Barossa (BW Opal FPSO)","Operating (first gas Sep 2025; ramp-up)","","Monadelphous (H); Wood (M)","","vertech (L)","","Weststar-GAP (L)","","Eris (Kuiper) (H); Programmed (L)","","Valaris (Ensco (H)","Allseas (H); Subsea7 (H); Van Oord (H)","","",""],["Santos","Santos (platforms; FSO historically)","Bayu-Undan","Ceased production (~2025); CCS conversion pre-FID","","","","","","OSA (H); Weststar-GAP (H)","Solstad Australia (L)","","","Noble (M)","","","Fugro (M)",""],["Santos","Santos (JV-owned FPSO; ceased)","Ningaloo Vision FPSO","Ceased production / decommissioning (ceased Aug 2025); FPSO departed Australia Aug 2025 for recycling","","WPF(Duratech) (H)","","vertech (M)","","","Go Offshore (H)","","","","","","",""],["Santos","—","John Brookes","Operating","— (NUI: campaign catering is project-specific)","Kaefer (ISOLOGIC) (M) [WB]; UGL (M); WPF(Duratech) (M)","","","","OSA (M)","","","","","","","",""],["Santos","—","Spar / Greater East Spar","Operating","","Kaefer (ISOLOGIC) (M) [WB]; UGL (M); WPF(Duratech) (M)","","","","OSA (M)","","","","Noble (H)","","","",""],["Santos","—","Halyard","Operating (first gas Feb 2025)","","UGL (M); WPF(Duratech) (M)","","","","OSA (M)","","","","Noble (H)","","","",""],["Santos","—","Spartan","Operating (recently connected — confirm)","","Kaefer (ISOLOGIC) (M) [WB]","","","","","","","","","","","",""],["Santos","—","Reindeer","Ceased production (Q3 2025)","— (NUI: campaign catering is project-specific)","","","","","OSA (M)","","","","","","","",""],["Santos","MODEC (historical — MODEC Venture 11)","Mutineer-Exeter (MODEC Venture 11 – removed)","Ceased (2018) / decommissioning 2026","","","","","","","","","","","","","",""],["Santos","—","Fletcher-Finucane","Ceased / decommissioning 2026","","","","","","","","","","","","","",""],["Santos","—","Dorado","Planned (pre-FID)","","","","","","","","","","Noble (L)","Vantris (Sapura) (L)","","",""],["Santos","—","Corvus","Planned / undeveloped","","","","","","","","","","","","","",""],["Chevron","—","Wheatstone Platform","Operating","ESS (H)","Altrad (H) [WB]; IAS (M); UGL (M) [WB]; Kaefer (ISOLOGIC) (L)","","","Altrad Sparrows (H)","OSA (M)","Cyan (H)","","DOF (M)","Noble (M)","Allseas (L)","","","Parabellum (L)"],["Chevron","—","Gorgon / Jansz-Io subsea","Operating","","","","","","OSA (M)","Cyan (M)","Eris (Kuiper) (M)","Baker Hughes (H); DOF (M)","Noble (M)","Subsea7 (M); Allseas (L)","GGC (L)","","Parabellum (L)"],["Chevron","Chevron (self-op FCS)","Jansz-Io Compression (Field Control Station)","Under construction / commissioning (start-up from 2026)","","Monadelphous (L)","","","","","","Eris (Kuiper) (H)","Baker Hughes (H)","","MEA (H); Saipem (H)","","",""],["Chevron","—","Barrow Island oil (WA Oil)","Decommissioning (from ~2025)","","Altrad (H)","","","Altrad Sparrows (M)","OSA (M)","Cyan (H); Bhagwan Marine (M)","","","","","","","Parabellum (M)"],["Chevron","—","Thevenard Island (legacy)","Decommissioned (2023)","","Altrad (M)","","","","","","","","","","Bhagwan Marine (H); Legeneering (H)","",""],["Inpex","Inpex (self-op)","Ichthys Explorer (CPF)","Operating","ESS (H)","Monadelphous (H)","","vertech (H)","Enemech (H)","PHI (H)","Cyan (H); Go Offshore (H); Solstad Australia (M)","Eris (Kuiper) (M); GR Production Services (M)","Baker Hughes (H)","Noble (H)","Heerema (H); McDermott (M); Saipem (L)","GGC (L)","",""],["Inpex","Inpex (self-op)","Ichthys Venturer (FPSO)","Operating","ESS (H)","Monadelphous (H); Kaefer (ISOLOGIC) (M) [WB]","","vertech (H)","Enemech (H)","PHI (H)","Cyan (H); Go Offshore (H)","GR Production Services (M)","","","Heerema (H)","","",""],["Shell","Shell (self-op)","Prelude FLNG","Operating (unreliable; repeated outages; Turnaround 2026)","Sodexo (H) [MV]","Eris (Kuiper) (H); Monadelphous (H); MEA (M); Programmed (M)","Technip Energies / TechnipFMC (H)","","Enemech (L)","PHI (H); CHC (L)","","Atlas Professionals (H)","DOF (M)","","","","","SGS (H)"],["Shell","—","Crux","Under construction (jacket installed early 2026; first gas 2027)","— (NUI: campaign catering is project-specific)","Eris (Kuiper) (H)","MEA (H); Monadelphous (H); Technip Energies / TechnipFMC (H)","","Enemech (L)","","","","","Transocean (sedco forex) (M)","McDermott (H)","","",""],["Jadestone","Jadestone (self-op)","Montara (Montara Venture FPSO + WHP)","Operating","","","","vertech (M)","","OSA (L)","Bhagwan Marine (H)","","DOF (L)","Valaris (Ensco (H)","","","",""],["Jadestone","—","Stag","Ceased/shut-in since Mar 2026 (Cyclone Narelle; restart targeted Q2 2027)","","","","","","CHC (M)","Bhagwan Marine (H)","","","","","WPF(Duratech) (L)","",""],["MODEC","MODEC (historical)","Buffalo (Buffalo Venture FPSO)","Off-station / relocated to Thailand (2004)","","","","","","","","","","","","","",""],["MODEC","MODEC (historical)","Elang/Kakatua (MODEC Venture 1 FPSO)","Decommissioned (2007)","","","","","","","","","","","","","",""],["Aus Govt (DISR) — via Petrofac","—","Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab","Decommissioning — Phase 1 disconnect done Apr 2025; FPSO recycled 2026; Phase 2 well P&A award pending","ESS (L)","Legeneering (L)","","","","","","","","","","MEA (H); Petrofac (H); UPS (H); Vantris (Sapura) (H); Bhagwan Marine (M); Monadelphous (M)","",""],["Santos","—","Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab","Decommissioning — jacket removed 2026 (McDermott / WPF Duratec)","","","","","","","","","","","","McDermott (H); WPF(Duratech) (H); Bhagwan Marine (M)","",""],["Santos","—","Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab","Removed 2024 (McDermott)","","","","","","","","","","","","McDermott (H)","",""]],"emptyColumns":[],"emptyIdx":[]}};</script>
+<script>
+(function () {
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem('oa-viz-theme'); } catch (e) {}
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+
+  function themeLabel() {
+    var t = root.getAttribute('data-theme');
+    return t === 'dark' ? 'Dark' : (t === 'light' ? 'Light' : 'Auto');
+  }
+  var btn = document.getElementById('theme');
+  if (btn) {
+    btn.textContent = themeLabel();
+    btn.addEventListener('click', function () {
+      var t = root.getAttribute('data-theme');
+      var next = t === 'dark' ? 'light' : (t === 'light' ? null : 'dark');
+      if (next) { root.setAttribute('data-theme', next); } else { root.removeAttribute('data-theme'); }
+      try { next ? localStorage.setItem('oa-viz-theme', next) : localStorage.removeItem('oa-viz-theme'); } catch (e) {}
+      btn.textContent = themeLabel();
+    });
+  }
+
+  // ---- tooltip layer -------------------------------------------------------
+  var tip = document.createElement('div');
+  tip.id = 'tip';
+  document.body.appendChild(tip);
+  function showTip(text, x, y) {
+    tip.textContent = text;
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var left = Math.min(Math.max(8, x + 14), window.innerWidth - r.width - 8);
+    var top = y - r.height - 12;
+    if (top < 8) top = y + 18;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  document.addEventListener('mousemove', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el) { tip.classList.remove('on'); return; }
+    showTip(el.getAttribute('data-tip'), e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+
+  var PAGE = window.OA_PAGE;
+  if (!PAGE) return;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function fmt(n) { return (typeof n === 'number' ? n : 0).toLocaleString('en-AU'); }
+
+  // ---- charts --------------------------------------------------------------
+  function barChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var max = c.max || Math.max.apply(null, c.items.map(function (i) { return i.value; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      var fill = el('div', 'bar-fill');
+      fill.style.width = (max ? (item.value / max) * 100 : 0) + '%';
+      if (c.color) fill.style.background = 'var(--' + c.color + ')';
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.value)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    if (c.foot) card.appendChild(el('p', 'sub', c.foot)).style.margin = '14px 0 0';
+    return card;
+  }
+
+  function stackChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var legend = el('div', 'legend');
+    c.series.forEach(function (s) {
+      var span = el('span');
+      var sw = el('i');
+      sw.style.background = 'var(--' + s.color + ')';
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(s.name));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+    var max = Math.max.apply(null, c.items.map(function (i) { return i.total; }).concat([1]));
+    var bars = el('div', 'bars');
+    c.items.forEach(function (item) {
+      var row = el('div', 'bar-row');
+      if (item.tip) row.setAttribute('data-tip', item.tip);
+      row.appendChild(el('div', 'bar-label', item.label));
+      var track = el('div', 'bar-track');
+      item.values.forEach(function (v, i) {
+        if (!v) return;
+        var seg = el('div', 'seg');
+        seg.style.width = 'calc(' + (v / max) * 100 + '% - 2px)';
+        seg.style.background = 'var(--' + c.series[i].color + ')';
+        track.appendChild(seg);
+      });
+      row.appendChild(track);
+      row.appendChild(el('div', 'bar-value', fmt(item.total)));
+      bars.appendChild(row);
+    });
+    card.appendChild(bars);
+    return card;
+  }
+
+  function heatChart(c) {
+    var card = el('div', 'card');
+    card.appendChild(el('h3', null, c.title));
+    if (c.sub) card.appendChild(el('p', 'sub', c.sub));
+    var tools = el('div', 'heat-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = c.filter || 'Filter rows…';
+    tools.appendChild(search);
+    var count = el('span', 'toolnote', '');
+    tools.appendChild(count);
+    card.appendChild(tools);
+
+    var legend = el('div', 'legend');
+    c.legend.forEach(function (l) {
+      var span = el('span');
+      var sw = el('i');
+      if (l.cls) { sw.className = 'cell ' + l.cls; sw.style.borderRadius = '3px'; }
+      else { sw.style.boxShadow = 'inset 0 0 0 1px var(--grid)'; }
+      span.appendChild(sw);
+      span.appendChild(document.createTextNode(l.label));
+      legend.appendChild(span);
+    });
+    card.appendChild(legend);
+
+    var scroll = el('div', 'heat-scroll');
+    var grid = el('div', 'heat');
+    grid.style.gridTemplateColumns = 'minmax(128px, 210px) repeat(' + c.cols.length + ', minmax(' + (c.cols.length > 12 ? 58 : 66) + 'px, 1fr))';
+    grid.appendChild(el('div', 'corner'));
+    c.cols.forEach(function (col) {
+      var h = el('div', 'hh', col.label);
+      if (col.tip) h.setAttribute('data-tip', col.tip);
+      grid.appendChild(h);
+    });
+    var rowNodes = [];
+    c.rows.forEach(function (r) {
+      var nodes = [];
+      var rh = el('div', 'rh', r.label);
+      if (r.tip) rh.setAttribute('data-tip', r.tip);
+      nodes.push(rh);
+      r.cells.forEach(function (cell, i) {
+        var cn = el('div', 'cell' + (cell.c ? ' ' + cell.c : ' empty'), cell.t || '');
+        cn.setAttribute('data-tip', (cell.tip || (r.label + ' × ' + c.cols[i].label + '\nno linkage recorded')));
+        nodes.push(cn);
+      });
+      nodes.forEach(function (n) { grid.appendChild(n); });
+      rowNodes.push({ text: (r.label + ' ' + (r.search || '')).toLowerCase(), nodes: nodes });
+    });
+    scroll.appendChild(grid);
+    card.appendChild(scroll);
+
+    function apply() {
+      var q = search.value.trim().toLowerCase();
+      var shown = 0;
+      rowNodes.forEach(function (r) {
+        var hit = !q || r.text.indexOf(q) !== -1;
+        if (hit) shown++;
+        r.nodes.forEach(function (n) { n.style.display = hit ? '' : 'none'; });
+      });
+      count.textContent = shown + ' of ' + rowNodes.length + ' rows';
+    }
+    search.addEventListener('input', apply);
+    apply();
+    return card;
+  }
+
+  function renderChart(c) {
+    if (c.type === 'stack') return stackChart(c);
+    if (c.type === 'heat') return heatChart(c);
+    return barChart(c);
+  }
+
+  // ---- page assembly -------------------------------------------------------
+  var statsHost = document.getElementById('stats');
+  if (statsHost && PAGE.stats) {
+    PAGE.stats.forEach(function (s) {
+      var n = el('div', 'stat');
+      n.appendChild(el('div', 'v', s.v));
+      n.appendChild(el('div', 'k', s.k));
+      if (s.h) n.appendChild(el('div', 'h', s.h));
+      statsHost.appendChild(n);
+    });
+  }
+
+  var chartHost = document.getElementById('sections');
+  if (chartHost && PAGE.sections) {
+    PAGE.sections.forEach(function (sec) {
+      var s = el('section');
+      s.appendChild(el('h2', null, sec.title));
+      var grid = el('div', 'chart-grid' + (sec.wide ? ' one' : ''));
+      sec.charts.forEach(function (c) { grid.appendChild(renderChart(c)); });
+      s.appendChild(grid);
+      chartHost.appendChild(s);
+    });
+  }
+
+  // ---- table ---------------------------------------------------------------
+  var T = PAGE.table;
+  var tableHost = document.getElementById('table-host');
+  if (T && tableHost) {
+    var escapeHTML = function (s) {
+      return String(s).replace(/[&<>"]/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+      });
+    };
+    var chipFor = function (letter) {
+      var map = { H: ['chip-h', 'High'], M: ['chip-m', 'Medium'], L: ['chip-l', 'Low'] };
+      var m = map[letter];
+      return '<span class="chip ' + m[0] + '" title="' + m[1] + ' confidence">' + letter + '</span>';
+    };
+    var decorate = function (raw) {
+      var t = escapeHTML(raw);
+      if (/^[HML]$/.test(raw)) return chipFor(raw);
+      t = t.replace(/\((H|M|L)\)/g, function (_, l) { return chipFor(l); });
+      t = t.replace(/\[WB\]/g, '<span class="tag" title="From the colleague’s whiteboard">WB</span>');
+      return t;
+    };
+
+    var showAll = false;
+    var tools = el('div', 'table-tools');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Search all columns…';
+    tools.appendChild(search);
+    var note = el('span', 'toolnote', '');
+    var toggle = null;
+    if (T.emptyColumns && T.emptyColumns.length) {
+      toggle = el('button', 'toolbtn', 'Show ' + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : ''));
+      toggle.setAttribute('data-tip', 'Columns with no values in any row:\n' + T.emptyColumns.join(', '));
+      tools.appendChild(toggle);
+    }
+    tools.appendChild(note);
+    tableHost.appendChild(tools);
+
+    var scroll = el('div', 'table-scroll');
+    var table = document.createElement('table');
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    thead.appendChild(headRow);
+    var tbody = document.createElement('tbody');
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    tableHost.appendChild(scroll);
+
+    var sortCol = -1, sortDir = 1, query = '';
+
+    function visibleCols() {
+      return T.columns.map(function (c, i) { return i; }).filter(function (i) {
+        return showAll || T.emptyIdx.indexOf(i) === -1;
+      });
+    }
+    function draw() {
+      var cols = visibleCols();
+      headRow.innerHTML = '';
+      cols.forEach(function (i) {
+        var th = el('th', null, T.columns[i] || '—');
+        if (sortCol === i) {
+          var ind = el('span', 'ind', sortDir > 0 ? ' ↑' : ' ↓');
+          th.appendChild(ind);
+        }
+        th.addEventListener('click', function () {
+          if (sortCol === i) { sortDir = -sortDir; } else { sortCol = i; sortDir = 1; }
+          draw();
+        });
+        headRow.appendChild(th);
+      });
+      var terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      var rows = T.rows.filter(function (r) {
+        if (!terms.length) return true;
+        var hay = r.join(' ').toLowerCase();
+        return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+      });
+      if (sortCol >= 0) {
+        rows = rows.slice().sort(function (a, b) {
+          var x = a[sortCol] || '', y = b[sortCol] || '';
+          var nx = parseFloat(x), ny = parseFloat(y);
+          var numeric = !isNaN(nx) && !isNaN(ny) && /^[\d.,\s]+$/.test(x) && /^[\d.,\s]+$/.test(y);
+          if (numeric) return (nx - ny) * sortDir;
+          if (!x) return 1;
+          if (!y) return -1;
+          return x.localeCompare(y) * sortDir;
+        });
+      }
+      tbody.innerHTML = rows.map(function (r) {
+        return '<tr>' + cols.map(function (i) {
+          var v = r[i] || '';
+          var cls = /^[\d.]+$/.test(v) ? ' class="num"' : '';
+          return '<td' + cls + '>' + decorate(v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      note.textContent = rows.length === T.rows.length
+        ? fmt(T.rows.length) + ' rows · ' + cols.length + ' of ' + T.columns.length + ' columns'
+        : fmt(rows.length) + ' of ' + fmt(T.rows.length) + ' rows';
+    }
+    search.addEventListener('input', function () { query = search.value; draw(); });
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        showAll = !showAll;
+        toggle.textContent = (showAll ? 'Hide ' : 'Show ') + T.emptyColumns.length + ' empty column' + (T.emptyColumns.length > 1 ? 's' : '');
+        draw();
+      });
+    }
+    draw();
+  }
+})();
+</script>
+</body>
+</html>

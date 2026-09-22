@@ -12323,6 +12323,42 @@ export type Database = {
           },
         ]
       }
+      geofences: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          geofence_id: number
+          geometry: Json
+          is_active: boolean
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          geofence_id?: number
+          geometry: Json
+          is_active?: boolean
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          geofence_id?: number
+          geometry?: Json
+          is_active?: boolean
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       import_logs: {
         Row: {
           archived_at: string | null
@@ -13006,6 +13042,830 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "membership_update_batches"
             referencedColumns: ["batch_id"]
+          },
+        ]
+      }
+      mobilisation_alert_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          alert_id: number
+          created_at: string
+          event_id: number
+          from_status: string | null
+          note: string | null
+          to_status: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          alert_id: number
+          created_at?: string
+          event_id?: number
+          from_status?: string | null
+          note?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          alert_id?: number
+          created_at?: string
+          event_id?: number
+          from_status?: string | null
+          note?: string | null
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobilisation_alert_events_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "mobilisation_alerts"
+            referencedColumns: ["alert_id"]
+          },
+        ]
+      }
+      mobilisation_alert_signals: {
+        Row: {
+          alert_id: number
+          created_at: string
+          signal_id: number
+        }
+        Insert: {
+          alert_id: number
+          created_at?: string
+          signal_id: number
+        }
+        Update: {
+          alert_id?: number
+          created_at?: string
+          signal_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobilisation_alert_signals_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "mobilisation_alerts"
+            referencedColumns: ["alert_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alert_signals_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "mobilisation_signals"
+            referencedColumns: ["signal_id"]
+          },
+        ]
+      }
+      mobilisation_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          alert_id: number
+          confidence: number
+          contractor_id: number | null
+          created_at: string
+          dedup_key: string
+          dismissed_at: string | null
+          dismissed_by: string | null
+          operator_id: number | null
+          priority: string
+          rule_id: number
+          snoozed_until: string | null
+          status: string
+          status_note: string | null
+          summary: string
+          title: string
+          updated_at: string
+          vessel_id: number | null
+          watch_contractor_id: number | null
+          worksite_id: number | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_id?: number
+          confidence: number
+          contractor_id?: number | null
+          created_at?: string
+          dedup_key: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          operator_id?: number | null
+          priority: string
+          rule_id: number
+          snoozed_until?: string | null
+          status?: string
+          status_note?: string | null
+          summary: string
+          title: string
+          updated_at?: string
+          vessel_id?: number | null
+          watch_contractor_id?: number | null
+          worksite_id?: number | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_id?: number
+          confidence?: number
+          contractor_id?: number | null
+          created_at?: string
+          dedup_key?: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          operator_id?: number | null
+          priority?: string
+          rule_id?: number
+          snoozed_until?: string | null
+          status?: string
+          status_note?: string | null
+          summary?: string
+          title?: string
+          updated_at?: string
+          vessel_id?: number | null
+          watch_contractor_id?: number | null
+          worksite_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobilisation_alerts_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "mobilisation_rules"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_vessel_id_fkey"
+            columns: ["vessel_id"]
+            isOneToOne: false
+            referencedRelation: "vessels"
+            referencedColumns: ["vessel_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_watch_contractor_id_fkey"
+            columns: ["watch_contractor_id"]
+            isOneToOne: false
+            referencedRelation: "mobilisation_watch_contractors"
+            referencedColumns: ["watch_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "organising_universe_view"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksite_hierarchy_report_rows"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksite_hierarchy_report_rows_mv"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_alerts_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites_view"
+            referencedColumns: ["worksite_id"]
+          },
+        ]
+      }
+      mobilisation_notifications: {
+        Row: {
+          alert_id: number
+          channel: string
+          created_at: string
+          destination: string
+          error: string | null
+          kind: string
+          notification_id: number
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          alert_id: number
+          channel: string
+          created_at?: string
+          destination: string
+          error?: string | null
+          kind: string
+          notification_id?: number
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          alert_id?: number
+          channel?: string
+          created_at?: string
+          destination?: string
+          error?: string | null
+          kind?: string
+          notification_id?: number
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobilisation_notifications_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "mobilisation_alerts"
+            referencedColumns: ["alert_id"]
+          },
+        ]
+      }
+      mobilisation_positions: {
+        Row: {
+          cog_deg: number | null
+          created_at: string
+          destination: string | null
+          eta: string | null
+          latitude: number
+          longitude: number
+          observed_at: string
+          position_id: number
+          sog_kn: number | null
+          source: string
+          vessel_id: number
+        }
+        Insert: {
+          cog_deg?: number | null
+          created_at?: string
+          destination?: string | null
+          eta?: string | null
+          latitude: number
+          longitude: number
+          observed_at: string
+          position_id?: number
+          sog_kn?: number | null
+          source: string
+          vessel_id: number
+        }
+        Update: {
+          cog_deg?: number | null
+          created_at?: string
+          destination?: string | null
+          eta?: string | null
+          latitude?: number
+          longitude?: number
+          observed_at?: string
+          position_id?: number
+          sog_kn?: number | null
+          source?: string
+          vessel_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobilisation_positions_vessel_id_fkey"
+            columns: ["vessel_id"]
+            isOneToOne: false
+            referencedRelation: "vessels"
+            referencedColumns: ["vessel_id"]
+          },
+        ]
+      }
+      mobilisation_prefs: {
+        Row: {
+          created_at: string
+          digest: string
+          email_immediate: boolean
+          min_priority: string
+          push_immediate: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          digest?: string
+          email_immediate?: boolean
+          min_priority?: string
+          push_immediate?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          digest?: string
+          email_immediate?: boolean
+          min_priority?: string
+          push_immediate?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      mobilisation_push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          p256dh: string
+          subscription_id: number
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          p256dh: string
+          subscription_id?: number
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          p256dh?: string
+          subscription_id?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      mobilisation_rules: {
+        Row: {
+          code: string
+          config: Json
+          created_at: string
+          description: string | null
+          enabled: boolean
+          name: string
+          priority: string
+          rule_id: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          config?: Json
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          name: string
+          priority: string
+          rule_id?: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          config?: Json
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          name?: string
+          priority?: string
+          rule_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mobilisation_settings: {
+        Row: {
+          ais_provider: string
+          ais_satellite_enabled: boolean
+          contact_email: string | null
+          escalation_window_days: number
+          id: number
+          slack_webhook_url: string | null
+          teams_webhook_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          ais_provider?: string
+          ais_satellite_enabled?: boolean
+          contact_email?: string | null
+          escalation_window_days?: number
+          id?: number
+          slack_webhook_url?: string | null
+          teams_webhook_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ais_provider?: string
+          ais_satellite_enabled?: boolean
+          contact_email?: string | null
+          escalation_window_days?: number
+          id?: number
+          slack_webhook_url?: string | null
+          teams_webhook_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mobilisation_signals: {
+        Row: {
+          also_seen: Json
+          confidence: number
+          contractor_id: number | null
+          created_at: string
+          dedup_key: string
+          detected_at: string
+          external_id: string | null
+          extract: string | null
+          fingerprint: string
+          geofence_id: number | null
+          in_region: boolean
+          matched_terms: string[]
+          occurred_at: string
+          operator_id: number | null
+          region_label: string | null
+          sector_id: number | null
+          signal_id: number
+          signal_type: string
+          source: string
+          source_key: string | null
+          source_layer: string
+          title: string
+          url: string | null
+          vessel_id: number | null
+          watch_contractor_id: number | null
+          worksite_id: number | null
+        }
+        Insert: {
+          also_seen?: Json
+          confidence: number
+          contractor_id?: number | null
+          created_at?: string
+          dedup_key: string
+          detected_at?: string
+          external_id?: string | null
+          extract?: string | null
+          fingerprint: string
+          geofence_id?: number | null
+          in_region?: boolean
+          matched_terms?: string[]
+          occurred_at: string
+          operator_id?: number | null
+          region_label?: string | null
+          sector_id?: number | null
+          signal_id?: number
+          signal_type: string
+          source: string
+          source_key?: string | null
+          source_layer: string
+          title: string
+          url?: string | null
+          vessel_id?: number | null
+          watch_contractor_id?: number | null
+          worksite_id?: number | null
+        }
+        Update: {
+          also_seen?: Json
+          confidence?: number
+          contractor_id?: number | null
+          created_at?: string
+          dedup_key?: string
+          detected_at?: string
+          external_id?: string | null
+          extract?: string | null
+          fingerprint?: string
+          geofence_id?: number | null
+          in_region?: boolean
+          matched_terms?: string[]
+          occurred_at?: string
+          operator_id?: number | null
+          region_label?: string | null
+          sector_id?: number | null
+          signal_id?: number
+          signal_type?: string
+          source?: string
+          source_key?: string | null
+          source_layer?: string
+          title?: string
+          url?: string | null
+          vessel_id?: number | null
+          watch_contractor_id?: number | null
+          worksite_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobilisation_signals_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_geofence_id_fkey"
+            columns: ["geofence_id"]
+            isOneToOne: false
+            referencedRelation: "geofences"
+            referencedColumns: ["geofence_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "organising_universe_view"
+            referencedColumns: ["sector_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectors"
+            referencedColumns: ["sector_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_vessel_id_fkey"
+            columns: ["vessel_id"]
+            isOneToOne: false
+            referencedRelation: "vessels"
+            referencedColumns: ["vessel_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_watch_contractor_id_fkey"
+            columns: ["watch_contractor_id"]
+            isOneToOne: false
+            referencedRelation: "mobilisation_watch_contractors"
+            referencedColumns: ["watch_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "organising_universe_view"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksite_hierarchy_report_rows"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksite_hierarchy_report_rows_mv"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_signals_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites_view"
+            referencedColumns: ["worksite_id"]
+          },
+        ]
+      }
+      mobilisation_sources: {
+        Row: {
+          config: Json
+          cursor: Json
+          display_name: string
+          enabled: boolean
+          last_error: string | null
+          last_polled_at: string | null
+          last_success_at: string | null
+          layer: string
+          poll_interval_minutes: number
+          source_key: string
+        }
+        Insert: {
+          config?: Json
+          cursor?: Json
+          display_name: string
+          enabled?: boolean
+          last_error?: string | null
+          last_polled_at?: string | null
+          last_success_at?: string | null
+          layer: string
+          poll_interval_minutes: number
+          source_key: string
+        }
+        Update: {
+          config?: Json
+          cursor?: Json
+          display_name?: string
+          enabled?: boolean
+          last_error?: string | null
+          last_polled_at?: string | null
+          last_success_at?: string | null
+          layer?: string
+          poll_interval_minutes?: number
+          source_key?: string
+        }
+        Relationships: []
+      }
+      mobilisation_watch_contractors: {
+        Row: {
+          aliases: string[]
+          asx_ticker: string | null
+          canonical_name: string
+          created_at: string
+          employer_id: number | null
+          is_active: boolean
+          notes: string | null
+          tier: string
+          updated_at: string
+          watch_id: number
+        }
+        Insert: {
+          aliases?: string[]
+          asx_ticker?: string | null
+          canonical_name: string
+          created_at?: string
+          employer_id?: number | null
+          is_active?: boolean
+          notes?: string | null
+          tier?: string
+          updated_at?: string
+          watch_id?: number
+        }
+        Update: {
+          aliases?: string[]
+          asx_ticker?: string | null
+          canonical_name?: string
+          created_at?: string
+          employer_id?: number | null
+          is_active?: boolean
+          notes?: string | null
+          tier?: string
+          updated_at?: string
+          watch_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobilisation_watch_contractors_employer_id_fkey"
+            columns: ["employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_watch_contractors_employer_id_fkey"
+            columns: ["employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "mobilisation_watch_contractors_employer_id_fkey"
+            columns: ["employer_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+        ]
+      }
+      mobilisation_watch_keywords: {
+        Row: {
+          asx_ticker: string | null
+          created_at: string
+          is_active: boolean
+          keyword: string
+          keyword_id: number
+          kind: string
+        }
+        Insert: {
+          asx_ticker?: string | null
+          created_at?: string
+          is_active?: boolean
+          keyword: string
+          keyword_id?: number
+          kind: string
+        }
+        Update: {
+          asx_ticker?: string | null
+          created_at?: string
+          is_active?: boolean
+          keyword?: string
+          keyword_id?: number
+          kind?: string
+        }
+        Relationships: []
+      }
+      mobilisation_watch_vessels: {
+        Row: {
+          created_at: string
+          is_active: boolean
+          notes: string | null
+          vessel_id: number
+          watch_vessel_id: number
+        }
+        Insert: {
+          created_at?: string
+          is_active?: boolean
+          notes?: string | null
+          vessel_id: number
+          watch_vessel_id?: number
+        }
+        Update: {
+          created_at?: string
+          is_active?: boolean
+          notes?: string | null
+          vessel_id?: number
+          watch_vessel_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobilisation_watch_vessels_vessel_id_fkey"
+            columns: ["vessel_id"]
+            isOneToOne: true
+            referencedRelation: "vessels"
+            referencedColumns: ["vessel_id"]
           },
         ]
       }
@@ -19672,6 +20532,106 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_profiles"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      vessels: {
+        Row: {
+          created_at: string
+          imo: string | null
+          inside_geofence_ids: number[]
+          is_active: boolean
+          last_cog_deg: number | null
+          last_destination: string | null
+          last_eta: string | null
+          last_lat: number | null
+          last_lng: number | null
+          last_position_at: string | null
+          last_position_source: string | null
+          last_sog_kn: number | null
+          mmsi: string | null
+          name: string
+          next_poll_at: string | null
+          notes: string | null
+          owner_name: string
+          owner_operator_id: number | null
+          relevance: string
+          resolution_note: string | null
+          updated_at: string
+          vessel_id: number
+          vessel_type: string
+        }
+        Insert: {
+          created_at?: string
+          imo?: string | null
+          inside_geofence_ids?: number[]
+          is_active?: boolean
+          last_cog_deg?: number | null
+          last_destination?: string | null
+          last_eta?: string | null
+          last_lat?: number | null
+          last_lng?: number | null
+          last_position_at?: string | null
+          last_position_source?: string | null
+          last_sog_kn?: number | null
+          mmsi?: string | null
+          name: string
+          next_poll_at?: string | null
+          notes?: string | null
+          owner_name: string
+          owner_operator_id?: number | null
+          relevance?: string
+          resolution_note?: string | null
+          updated_at?: string
+          vessel_id?: number
+          vessel_type?: string
+        }
+        Update: {
+          created_at?: string
+          imo?: string | null
+          inside_geofence_ids?: number[]
+          is_active?: boolean
+          last_cog_deg?: number | null
+          last_destination?: string | null
+          last_eta?: string | null
+          last_lat?: number | null
+          last_lng?: number | null
+          last_position_at?: string | null
+          last_position_source?: string | null
+          last_sog_kn?: number | null
+          mmsi?: string | null
+          name?: string
+          next_poll_at?: string | null
+          notes?: string | null
+          owner_name?: string
+          owner_operator_id?: number | null
+          relevance?: string
+          resolution_note?: string | null
+          updated_at?: string
+          vessel_id?: number
+          vessel_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vessels_owner_operator_id_fkey"
+            columns: ["owner_operator_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "vessels_owner_operator_id_fkey"
+            columns: ["owner_operator_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "vessels_owner_operator_id_fkey"
+            columns: ["owner_operator_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
           },
         ]
       }

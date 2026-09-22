@@ -6,9 +6,11 @@ prints one or more result sets that feed a numbered finding or worksheet in the 
 
 Where to run them (per the programme's standing rule on Supabase projects):
 
-- **Production `gteygwfgjvczanmrwgbr`** — run by the operator, results pasted into the plan's
-  decision register or the worksheets under `docs/data-architecture/worksheets/`.
-- **Realistic clone `yqjkuobcawvigsfpgrcm`** — agents may run them freely; the clone lags
+- **Production `gteygwfgjvczanmrwgbr`** — the operator or an agent may run these files (decision D0,
+  22 September 2026: read-only profiling on production is permitted for this workstream). Results are
+  pasted into the plan's decision register or the worksheets under `docs/data-architecture/worksheets/`.
+  No other agent access to production is covered by that decision.
+- **Realistic clone `yqjkuobcawvigsfpgrcm`** — the rehearsal target for every write script; it lags
   production (it predates the September membership sync), so counts differ.
 
 The pack is deliberately PII-free: it returns counts, distributions, organisation names, worksite

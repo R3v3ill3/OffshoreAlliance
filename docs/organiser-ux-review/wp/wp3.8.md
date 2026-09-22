@@ -1104,6 +1104,7 @@ Commits: one per stage (CLAUDE.md: one commit per completed unit of work; the or
 | D38 | **Fix round 1 (F8, recorded).** The `InlineRatingPopover` telemetry gap (D25) stays a follow-up: its callers live in files WP3.8 does not touch. | No code. | §3.7 |
 
 ---
+| D39 | **Production hotfix (2026-09-21).** `CAMPAIGN_PARENT_SELECT` embeds the parent through the FK **column** hint `campaigns!parent_campaign_id(...)` instead of the constraint-name hint `campaigns!campaigns_parent_campaign_id_fkey(...)`; the unit test pins the column hint and the absence of `_fkey`. | The operator's hand test on production (steps 1–3) failed with PostgREST PGRST200 "Could not find a relationship between 'campaigns' and 'campaigns' in the schema cache" in the Assessments tab and the Colour-by list, and the header showed "Part of campaign 64" (the id fallback). Reproduced read-only against dev's REST endpoint: the constraint-name hint returns PGRST200 for this self-referencing FK; the column hint parses (HTTP 200). Neither the jsdom harness (the fake backend accepts any select string) nor the contract suite (never run — no `OUX_CONTRACT_*` accounts, §9.1 CA) exercised the embed against a real PostgREST; the short path (hand test on production instead of the preview) moved the discovery to production. Lesson for the ledger: an embed string is proven only by a run against PostgREST; the contract suite must run before the next merge that adds one. | §3.5 "Loading `parent_campaign_id` once" |
 
 ## 9. Approval, verification output, review
 
@@ -1212,6 +1213,13 @@ P2 migration + ledger row:        parent_col 1, scope_col 1, helper_present true
                                   (= expected row; the migration's post-assertions passed, incl. the byte-identical summary-view checksum)
 P3 checksums after migration:     activities_md5 46bc4030271911d3f0bb97abf9d1cb0c (changed: scope column)  ratings_md5 f7d15b07… (= P1)
                                   summary_md5 157ba018… (= P1)  activities_n 9  summary_rows 472  children_n 0  family_n 0  → gate to merge #54 met
+PR #54 merged:                    72b259d8 (2026-09-21; origin/main merged into the branch first, clean; merged tree re-verified)
+P4 campaign-64 family:            committed; last result set: 88, 89, 90, 91, 92 → family; 93, 95 → campaign; 96 (new on production
+                                  since the snapshot, never in the set) → campaign. The children result set (61, 62, 69 → parent 64)
+                                  was not pasted; P5's children_n = 3 is the check
+P5 checksums after data:          activities_md5 01408c6f9405efccfd4dedd13730f4ea (changed: five scope values)  ratings_md5 f7d15b07… (= P1/P3: no rating touched)
+                                  summary_md5 dac3eb12d94ae93685c2bd1c81a89126 (changed: 61/62 now count the shared ratings)  activities_n 9  summary_rows 472
+                                  children_n 3  family_n 5  → production run sheet complete
 ```
 
 **Item 2 — contract tests on dev (run 1 and run 2).**

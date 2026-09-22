@@ -7,7 +7,12 @@
  * server client; client components use `useCampaignParent(campaignId)` and gate
  * their query on `isSuccess`, so the first render already has the family rows.
  *
- * The embed goes through `campaigns_parent_campaign_id_fkey`, the FK name
+ * The embed hint is the FK **column** (`campaigns!parent_campaign_id`): for a
+ * self-referencing table PostgREST does not resolve the constraint-name hint
+ * (`campaigns_parent_campaign_id_fkey` → PGRST200 "Could not find a relationship
+ * between 'campaigns' and 'campaigns'", found on production 2026-09-21, wp3.8.md
+ * D39); the column hint is unambiguous because the table has one such FK. The
+ * constraint itself is still `campaigns_parent_campaign_id_fkey`, the name
  * PostgreSQL derives for the `REFERENCES` clause of the WP3.8 migration (its
  * post-assertion pins the name). Before the migration is on the target
  * database the select fails with a PostgREST error — surfaced, never hidden.
@@ -22,7 +27,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 
 export const CAMPAIGN_PARENT_SELECT =
-  "parent_campaign_id, parent:campaigns!campaigns_parent_campaign_id_fkey(campaign_id, name)";
+  "parent_campaign_id, parent:campaigns!parent_campaign_id(campaign_id, name)";
 
 export const CAMPAIGN_PARENT_QUERY_KEY = "campaign-parent" as const;
 

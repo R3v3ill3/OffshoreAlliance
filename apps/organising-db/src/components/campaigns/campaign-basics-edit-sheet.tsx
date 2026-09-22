@@ -24,11 +24,15 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
-import { useCampaignWriteAccess } from "@/lib/hooks/useCampaignWriteAccess";
-import { CAMPAIGN_PARENT_QUERY_KEY } from "@/lib/campaign/campaign-parent";
-import { familyErrorMessage } from "@/lib/campaign/families";
-import { trackCampaignParentSet } from "@/lib/analytics/events";
+import {
+  afterCampaignParentSaved,
+  applyParentChange,
+  campaignSaveError,
+  currentParentIdOf,
+  type PostgrestErrorLike,
+} from "@/lib/campaign/campaign-parent-form";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
+import { CampaignParentSelect } from "@/components/campaigns/campaign-parent-select";
 import {
   campaignOrganiserPickerValueForUser,
   resolveCampaignOrganiserId,
@@ -58,19 +62,6 @@ interface FormState {
   /** "" = none (SET-a: clearing is always allowed). */
   parent_campaign_id: string;
 }
-
-/** A campaign that may be chosen as the parent (wp3.8.md §3.7 "Basics sheet"). */
-type ParentCandidateRow = {
-  campaign_id: number;
-  name: string;
-  parent_campaign_id?: number | null;
-  is_sms_episode?: boolean | null;
-  is_standing?: boolean | null;
-  /** The trigger refuses an archived parent; the list does not offer one (fix round 1, F7). */
-  archived_at?: string | null;
-};
-
-const NO_PARENT_VALUE = "__none__";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -220,74 +211,10 @@ export function CampaignBasicsEditSheet({
 
   const assignedCount = coverage?.total_assigned_workers ?? 0;
 
-  // ── Part of (WP3.8, wp3.8.md §3.7 "Basics sheet") ──────────────────────────
-  // Candidates: campaigns with no parent that are neither an SMS episode nor
-  // the standing campaign, minus this one; the same predicates are repeated
-  // client-side so a backend that ignores filters still agrees with PostgREST.
-  // Then intersected with `campaigns_i_can_write` (SET-a: writer of both;
-  // the trigger is the authority, this is the friendly pre-check).
-  const { data: parentCandidates = [] } = useQuery({
-    queryKey: ["campaign-parent-candidates", campaignId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select("campaign_id, name, parent_campaign_id, is_sms_episode, is_standing, archived_at")
-        .is("parent_campaign_id", null)
-        .eq("is_sms_episode", false)
-        .eq("is_standing", false)
-        .is("archived_at", null)
-        .neq("campaign_id", campaignId)
-        .order("name");
-      if (error) throw error;
-      return ((data ?? []) as ParentCandidateRow[]).filter(
-        (c) =>
-          Number(c.campaign_id) !== campaignId &&
-          c.parent_campaign_id == null &&
-          !c.is_sms_episode &&
-          !c.is_standing &&
-          c.archived_at == null
-      );
-    },
-    enabled: !!user && open,
-  });
-
-  const candidateIds = useMemo(
-    () => parentCandidates.map((c) => Number(c.campaign_id)),
-    [parentCandidates]
-  );
-  const { data: writableIds } = useCampaignWriteAccess(candidateIds);
-  const parentOptions = useMemo(
-    () => parentCandidates.filter((c) => writableIds?.has(Number(c.campaign_id))),
-    [parentCandidates, writableIds]
-  );
-
-  const { data: childCampaigns = [] } = useQuery({
-    queryKey: ["campaign-children", String(campaignId)],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select("campaign_id, name, parent_campaign_id")
-        .eq("parent_campaign_id", campaignId)
-        .order("name");
-      if (error) throw error;
-      return ((data ?? []) as ParentCandidateRow[]).filter(
-        (c) => Number(c.parent_campaign_id) === campaignId
-      );
-    },
-    enabled: !!user && open,
-  });
-  const childCount = childCampaigns.length;
-  const parentLocked = childCount > 0;
-
-  // The current parent may be one the organiser cannot write to (set by an
-  // admin); keep it selectable as the current value so Save does not drop it.
-  const currentParentOption = useMemo(() => {
-    if (!form.parent_campaign_id) return null;
-    const id = Number(form.parent_campaign_id);
-    return parentOptions.some((c) => Number(c.campaign_id) === id)
-      ? null
-      : (parentCandidates.find((c) => Number(c.campaign_id) === id) ?? { campaign_id: id, name: `Campaign ${id}` });
-  }, [form.parent_campaign_id, parentOptions, parentCandidates]);
+  // ── Part of (WP3.8) ───────────────────────────────────────────────────────
+  // The control, its candidate/children reads and the save rules live in
+  // `campaign-parent-select.tsx` / `lib/campaign/campaign-parent-form.ts`,
+  // shared with the Settings page's Basics section (D41).
 
   // ── Computed warnings ──────────────────────────────────────────────────────
 
@@ -329,7 +256,6 @@ export function CampaignBasicsEditSheet({
         { currentUserId: user.id, canLinkOtherOrganisers: isAdmin || isLeadOrganiser }
       );
 
-      const nextParentId = form.parent_campaign_id ? Number(form.parent_campaign_id) : null;
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
         start_date: form.start_date || null,
@@ -340,25 +266,18 @@ export function CampaignBasicsEditSheet({
           : null,
         organiser_id: resolvedOrganiserId,
       };
-      // Fix round 1 (F1): the one-level trigger is `BEFORE UPDATE OF
-      // parent_campaign_id` and fires whenever the column is in the SET list,
-      // so it goes in the payload only when it actually changed — a rename or
-      // a date change on a child must not re-run the parent checks (or take
-      // the advisory locks), and must still save when the parent has since
-      // become ineligible.
-      if (nextParentId !== (campaign.parent_campaign_id ?? null)) {
-        payload.parent_campaign_id = nextParentId;
-      }
+      // F1/D32: `parent_campaign_id` joins the payload only when it changed.
+      const { nextParentId } = applyParentChange(
+        payload,
+        form.parent_campaign_id,
+        currentParentIdOf(campaign)
+      );
 
       const { error } = await supabase
         .from("campaigns")
         .update(payload)
         .eq("campaign_id", campaignId);
-      if (error) {
-        // The one-level trigger's refusals (campaign_family_*) read as sentences.
-        const e = error as { code?: string | null; message: string };
-        throw new Error(familyErrorMessage(e.code, e.message));
-      }
+      if (error) throw campaignSaveError(error as PostgrestErrorLike);
       return { nextParentId };
     },
     onSuccess: (result) => {
@@ -366,21 +285,13 @@ export function CampaignBasicsEditSheet({
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-settings", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-wall-chart", campaignId] });
-      const previousParentId = campaign.parent_campaign_id ?? null;
-      const nextParentId = result?.nextParentId ?? null;
-      if (nextParentId !== previousParentId) {
-        // WP3.8: the family readers of this campaign and of both parents.
-        queryClient.invalidateQueries({ queryKey: [CAMPAIGN_PARENT_QUERY_KEY, campaignId] });
-        queryClient.invalidateQueries({ queryKey: ["campaign-children"] });
-        queryClient.invalidateQueries({ queryKey: ["campaign-parent-candidates"] });
-        queryClient.invalidateQueries({ queryKey: ["campaign-activities-family", String(campaignId)] });
-        queryClient.invalidateQueries({ queryKey: ["campaign-assessments-rated", String(campaignId)] });
-        trackCampaignParentSet({
-          campaign_id: campaignId,
-          parent_id: nextParentId,
-          previous_parent_id: previousParentId,
-        });
-      }
+      // WP3.8: the family readers and `campaign_parent_set`, when the parent changed.
+      afterCampaignParentSaved(
+        queryClient,
+        campaignId,
+        currentParentIdOf(campaign),
+        result?.nextParentId ?? null
+      );
       onSaved();
       onOpenChange(false);
     },
@@ -428,38 +339,12 @@ export function CampaignBasicsEditSheet({
           />
 
           {/* Part of (WP3.8) */}
-          <div className="space-y-2">
-            <Label htmlFor="basics-parent">Part of</Label>
-            <Select
-              value={form.parent_campaign_id || NO_PARENT_VALUE}
-              onValueChange={(v) =>
-                setForm({ ...form, parent_campaign_id: v === NO_PARENT_VALUE ? "" : v })
-              }
-              disabled={parentLocked}
-            >
-              <SelectTrigger id="basics-parent" aria-label="Part of">
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_PARENT_VALUE}>None</SelectItem>
-                {currentParentOption && (
-                  <SelectItem value={String(currentParentOption.campaign_id)}>
-                    {currentParentOption.name}
-                  </SelectItem>
-                )}
-                {parentOptions.map((c) => (
-                  <SelectItem key={c.campaign_id} value={String(c.campaign_id)}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {parentLocked
-                ? `This campaign has ${childCount} child ${childCount === 1 ? "campaign" : "campaigns"}, so it cannot be part of another campaign.`
-                : "A campaign that is part of another sees the assessments that campaign shares with its family."}
-            </p>
-          </div>
+          <CampaignParentSelect
+            campaignId={campaignId}
+            value={form.parent_campaign_id}
+            onChange={(v) => setForm({ ...form, parent_campaign_id: v })}
+            enabled={!!user && open}
+          />
 
           {/* Start date */}
           <div className="space-y-2">

@@ -41,6 +41,14 @@ import {
   resolveCampaignOrganiserId,
 } from "@/lib/campaign/resolve-campaign-organiser";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
+import { CampaignParentSelect } from "@/components/campaigns/campaign-parent-select";
+import {
+  afterCampaignParentSaved,
+  applyParentChange,
+  campaignSaveError,
+  currentParentIdOf,
+  type PostgrestErrorLike,
+} from "@/lib/campaign/campaign-parent-form";
 import { StepEmployersWorksites } from "@/components/campaigns/step-employers-worksites";
 import {
   StepAllocateWorkers,
@@ -133,6 +141,8 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
     campaign_scope: "" as "" | CampaignScopeType,
     total_worker_estimate: "",
     sector_wide: false,
+    /** WP3.8 (D41): "" = none; the parent id as a string otherwise. */
+    parent_campaign_id: "",
   });
 
   const [selectedEmployers, setSelectedEmployers] = useState<number[]>([]);
@@ -344,6 +354,8 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
             ? String(campaign.total_worker_estimate)
             : "",
         sector_wide: campaign.sector_wide ?? false,
+        parent_campaign_id:
+          campaign.parent_campaign_id != null ? String(campaign.parent_campaign_id) : "",
       });
       basicsHydratedFor.current = campaignId;
     })();
@@ -407,16 +419,30 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
         ? Number(basics.total_worker_estimate)
         : null;
       payload.total_worker_estimate = n != null && !Number.isNaN(n) ? n : null;
+      // WP3.8 (D41): `parent_campaign_id` joins the payload only when it changed (F1/D32).
+      const { nextParentId } = applyParentChange(
+        payload,
+        basics.parent_campaign_id,
+        currentParentIdOf(campaign)
+      );
       const { error } = await supabase
         .from("campaigns")
         .update(payload)
         .eq("campaign_id", campaignId);
-      if (error) throw error;
+      if (error) throw campaignSaveError(error as PostgrestErrorLike);
+      return { nextParentId };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["campaign-settings", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      // WP3.8 (D41): the family readers and `campaign_parent_set`, when the parent changed.
+      afterCampaignParentSaved(
+        queryClient,
+        campaignId,
+        currentParentIdOf(campaign),
+        result?.nextParentId ?? null
+      );
       toast.success("Campaign basics saved.");
     },
     onError: (error: Error) => {
@@ -843,6 +869,14 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
                     allowNone
                   />
                 </div>
+                {/* WP3.8 (D41): the same "Part of" control as the header's Basics sheet. */}
+                <CampaignParentSelect
+                  id="settings-parent"
+                  campaignId={campaignId}
+                  value={basics.parent_campaign_id}
+                  onChange={(v) => setBasics({ ...basics, parent_campaign_id: v })}
+                  enabled={!!user}
+                />
                 <div className="space-y-2">
                   <Label>Start date</Label>
                   <Input

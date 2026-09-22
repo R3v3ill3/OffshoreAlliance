@@ -334,14 +334,16 @@ const ASSESSMENT_ACTIVITIES: readonly unknown[] = [
 
 /**
  * WP3.8 (wp3.8.md §4.3) — the `family` knob. `parentId`/`parentName` make
- * campaign 1 a CHILD: the `campaigns` row gains `parent_campaign_id` and the
- * embedded `parent`, and `activities` (the parent's `scope = "family"` rows,
- * `campaign_id: parentId`) are appended to `campaign_activities`. `children`
- * make campaign 1 a PARENT: rows with `parent_campaign_id: 1` are appended to
- * `campaigns` (after campaign 1's own row, which `.maybeSingle()` reads first)
- * and `ownedScope` flips the owned assessment to `"family"`. Because the fake
- * ignores filters, exclusion is proven by the pure tests; these fixtures prove
- * rendering and the write target.
+ * campaign 1 a CHILD: the `campaigns` row gains `parent_campaign_id`, the
+ * parent's own row (`campaign_id: parentId, name`) is appended to `campaigns`
+ * — the loader reads it by primary key, no embed (D40) — and `activities` (the
+ * parent's `scope = "family"` rows, `campaign_id: parentId`) are appended to
+ * `campaign_activities`. `children` make campaign 1 a PARENT: rows with
+ * `parent_campaign_id: 1` are appended to `campaigns` and `ownedScope` flips
+ * the owned assessment to `"family"`. Campaign 1's own row stays first. The
+ * fake honours `.eq("campaign_id", …)` on `campaigns` only (D40); every other
+ * filter is ignored, so exclusion is proven by the pure tests and these
+ * fixtures prove rendering and the write target.
  */
 export type WallChartFamilyFixture = {
   parentId?: number;
@@ -465,18 +467,16 @@ export function buildWallChartFixture(
     total_worker_estimate: base.estimate,
     name: "Test Campaign",
     parent_campaign_id: parentId,
-    parent:
-      parentId != null
-        ? { campaign_id: parentId, name: family?.parentName ?? "Parent campaign" }
-        : null,
   };
   const campaignRows: readonly unknown[] = [
     ownCampaignRow,
+    ...(parentId != null
+      ? [{ campaign_id: parentId, name: family?.parentName ?? "Parent campaign", parent_campaign_id: null }]
+      : []),
     ...(family?.children ?? []).map((c) => ({
       campaign_id: c.campaign_id,
       name: c.name,
       parent_campaign_id: Number(campaignId),
-      parent: null,
     })),
   ];
   const ownedActivities: readonly unknown[] =

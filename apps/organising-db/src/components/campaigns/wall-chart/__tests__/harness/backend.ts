@@ -175,8 +175,23 @@ class FakePostgrestQuery implements PromiseLike<FakePostgrestResult> {
   select(...args: unknown[]): this {
     return this.note("select", args);
   }
+  /**
+   * WP3.8 hotfix 2 (D40): on `campaigns` only, `.eq("campaign_id", v)` narrows
+   * the rows (string-compared, the chart passes the id as a string). A family
+   * fixture holds more than one campaign row, and the parent loader reads the
+   * parent's row by primary key after the campaign's own, so "return the
+   * table's rows" stopped being the answer PostgREST would give. Every other
+   * filter, and `eq` on any other column or table, is still ignored.
+   */
   eq(...args: unknown[]): this {
-    return this.note("eq", args);
+    this.note("eq", args);
+    if (this.table === "campaigns" && args[0] === "campaign_id") {
+      const wanted = String(args[1]);
+      this.rows = this.rows.filter(
+        (row) => String((row as { campaign_id?: unknown } | null)?.campaign_id) === wanted
+      );
+    }
+    return this;
   }
   neq(...args: unknown[]): this {
     return this.note("neq", args);

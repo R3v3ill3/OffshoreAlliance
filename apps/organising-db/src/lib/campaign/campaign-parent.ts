@@ -7,27 +7,34 @@
  * server client; client components use `useCampaignParent(campaignId)` and gate
  * their query on `isSuccess`, so the first render already has the family rows.
  *
- * The embed hint is the FK **column** (`campaigns!parent_campaign_id`): for a
- * self-referencing table PostgREST does not resolve the constraint-name hint
- * (`campaigns_parent_campaign_id_fkey` → PGRST200 "Could not find a relationship
- * between 'campaigns' and 'campaigns'", found on production 2026-09-21, wp3.8.md
- * D39); the column hint is unambiguous because the table has one such FK. The
- * constraint itself is still `campaigns_parent_campaign_id_fkey`, the name
- * PostgreSQL derives for the `REFERENCES` clause of the WP3.8 migration (its
- * post-assertion pins the name). Before the migration is on the target
- * database the select fails with a PostgREST error — surfaced, never hidden.
+ * **No embed** (hotfix 2, wp3.8.md D40). `campaigns.parent_campaign_id` is a
+ * self-referencing FK, and PostgREST resolves a relationship hint on such a
+ * constraint in one direction only: the constraint-name hint
+ * (`campaigns!campaigns_parent_campaign_id_fkey`) is refused outright (PGRST200,
+ * D39), and the column hint (`campaigns!parent_campaign_id`) resolved on
+ * production in the one-to-many direction — the campaign's CHILDREN, an array
+ * — so the parent's name never arrived ("Part of campaign 64", "Shared from
+ * parent campaign"). The direction cannot be proven against dev (anon has no
+ * row access), so the ambiguity is designed out: two plain primary-key reads,
+ * `parent_campaign_id` for the campaign, then `campaign_id, name` for the
+ * parent when there is one. Nothing here names a relationship.
  *
- * The app's clients are untyped (`SupabaseClient<any>`), so the minimal
- * `CampaignParentClient` shape below is what both the real client and a test
- * fake satisfy; `packages/db-types/generated.ts` is not consulted (§3.9).
+ * Before the migration is on the target database the first select fails with
+ * a PostgREST error — surfaced, never hidden. The app's clients are untyped
+ * (`SupabaseClient<any>`), so the minimal `CampaignParentClient` shape below is
+ * what both the real client and a test fake satisfy;
+ * `packages/db-types/generated.ts` is not consulted (§3.9).
  */
 
 import { useQuery } from "@tanstack/react-query";
 
 import { createClient } from "@/lib/supabase/client";
 
-export const CAMPAIGN_PARENT_SELECT =
-  "parent_campaign_id, parent:campaigns!parent_campaign_id(campaign_id, name)";
+/** Read 1: the campaign's own row. No embed, no relationship hint (D40). */
+export const CAMPAIGN_PARENT_SELECT = "parent_campaign_id";
+
+/** Read 2: the parent's row, by primary key. */
+export const CAMPAIGN_PARENT_NAME_SELECT = "campaign_id, name";
 
 export const CAMPAIGN_PARENT_QUERY_KEY = "campaign-parent" as const;
 
@@ -35,23 +42,15 @@ export type CampaignParent = { parentId: number | null; parentName: string | nul
 
 export const NO_PARENT: Readonly<CampaignParent> = Object.freeze({ parentId: null, parentName: null });
 
-/** The `campaigns` embed as PostgREST returns it (object, one-element array, or null). */
-type ParentEmbed = { campaign_id?: number | string | null; name?: string | null } | null | undefined;
-
-type CampaignParentRow = {
-  parent_campaign_id?: number | string | null;
-  parent?: ParentEmbed | ParentEmbed[];
-};
-
 export interface CampaignParentQueryResult {
   data: unknown;
   error: { message: string } | null;
 }
 
 /**
- * The query chain the loader drives on `from("campaigns")`. Kept as its own
- * type so a recording fake in the unit tests is typed; the loader narrows to it
- * internally.
+ * The query chain the loader drives on `from("campaigns")` — the same shape
+ * for both reads. Kept as its own type so a recording fake in the unit tests
+ * is typed; the loader narrows to it internally.
  */
 export interface CampaignParentQueryChain {
   select(columns: string): {
@@ -80,22 +79,23 @@ function normaliseId(value: unknown): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-/** Turns the raw row (or nothing) into `{ parentId, parentName }`. Exported for the fake-client tests. */
-export function parseCampaignParent(row: unknown): CampaignParent {
-  if (!row || typeof row !== "object") return { ...NO_PARENT };
-  const r = row as CampaignParentRow;
-  const parentId = normaliseId(r.parent_campaign_id);
-  if (parentId === null) return { ...NO_PARENT };
-  const embed = Array.isArray(r.parent) ? r.parent[0] : r.parent;
-  const embedId = normaliseId(embed?.campaign_id);
-  const name = embed && (embedId === null || embedId === parentId) ? embed.name : null;
-  return { parentId, parentName: typeof name === "string" && name.trim() ? name : null };
+async function readCampaignRow(
+  client: CampaignParentClient,
+  columns: string,
+  campaignId: number
+): Promise<unknown> {
+  const chain = client.from("campaigns") as CampaignParentQueryChain;
+  const { data, error } = await chain.select(columns).eq("campaign_id", campaignId).maybeSingle();
+  if (error) throw new Error(`campaign-parent: ${error.message}`);
+  return data;
 }
 
 /**
- * One round trip: `{ parentId, parentName }` for `campaignId`, `{ null, null }`
- * when the campaign has no parent or does not exist (RLS hides nothing on
- * `campaigns`, so "no row" means "no such campaign"). Throws on a query error.
+ * `{ parentId, parentName }` for `campaignId`: one read when the campaign has
+ * no parent (or does not exist — RLS hides nothing on `campaigns`, so "no row"
+ * means "no such campaign"), two when it has one. `parentName` is null when
+ * the parent row cannot be read or has a blank name. Throws on either query
+ * error.
  */
 export async function loadCampaignParent(
   client: CampaignParentClient,
@@ -103,10 +103,14 @@ export async function loadCampaignParent(
 ): Promise<CampaignParent> {
   const id = normaliseId(campaignId);
   if (id === null) return { ...NO_PARENT };
-  const chain = client.from("campaigns") as CampaignParentQueryChain;
-  const { data, error } = await chain.select(CAMPAIGN_PARENT_SELECT).eq("campaign_id", id).maybeSingle();
-  if (error) throw new Error(`campaign-parent: ${error.message}`);
-  return parseCampaignParent(data);
+
+  const own = await readCampaignRow(client, CAMPAIGN_PARENT_SELECT, id);
+  const parentId = normaliseId((own as { parent_campaign_id?: unknown } | null)?.parent_campaign_id);
+  if (parentId === null) return { ...NO_PARENT };
+
+  const parent = await readCampaignRow(client, CAMPAIGN_PARENT_NAME_SELECT, parentId);
+  const name = (parent as { name?: unknown } | null)?.name;
+  return { parentId, parentName: typeof name === "string" && name.trim() ? name : null };
 }
 
 /**

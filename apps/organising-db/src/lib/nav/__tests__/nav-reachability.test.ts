@@ -75,28 +75,33 @@ function everyItem(model: NavModel): NavItem[] {
 }
 
 describe("full mode is byte-identical to the pinned fixture", () => {
-  it("an admin sees today's 11 + 3 rows, in today's order, with today's labels", () => {
+  it("an admin sees today's 12 + 3 rows, in today's order, with today's labels", () => {
     expect([...fullAdmin.primary, ...fullAdmin.admin].map(toFixtureRow)).toEqual(
       FULL_MODE_FIXTURE
     );
   });
 
-  it("a non-admin sees the same 11 and no admin block", () => {
+  it("a non-admin sees the same 12 and no admin block", () => {
     expect(fullUser.primary.map(toFixtureRow)).toEqual(
       FULL_MODE_FIXTURE.slice(0, FULL_MODE_PRIMARY_COUNT)
     );
     expect(fullUser.admin).toEqual([]);
   });
 
-  it("the only differences from the pre-WP1.5 sidebar are row 7's three fields and the added Surveys & Forms row", () => {
-    // The Surveys & Forms row is an addition, not a change: take it out and
-    // the remaining rows must line up with the pre-WP1.2 sidebar one-to-one.
+  it("the only differences from the pre-WP1.5 sidebar are row 7's three fields and the added Surveys & Forms and Mobilisation rows", () => {
+    // Surveys & Forms and Mobilisation are additions, not edits: take them
+    // out and the remaining rows must line up with the pre-WP1.2 sidebar.
     const added = FULL_MODE_FIXTURE.filter((row) => !TODAY_SIDEBAR_ROWS.some((t) => t.id === row.id));
-    expect(added.map((row) => row.id)).toEqual(["surveys_forms"]);
-    expect(FULL_MODE_FIXTURE.indexOf(added[0])).toBe(
+    expect(added.map((row) => row.id)).toEqual(["mobilisation", "surveys_forms"]);
+    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "mobilisation")).toBe(
+      FULL_MODE_FIXTURE.findIndex((row) => row.id === "upcoming_projects") + 1
+    );
+    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "surveys_forms")).toBe(
       FULL_MODE_FIXTURE.findIndex((row) => row.id === "reports") + 1
     );
-    const withoutAdded = FULL_MODE_FIXTURE.filter((row) => row.id !== "surveys_forms");
+    const withoutAdded = FULL_MODE_FIXTURE.filter(
+      (row) => row.id !== "surveys_forms" && row.id !== "mobilisation"
+    );
     expect(withoutAdded).toHaveLength(TODAY_SIDEBAR_ROWS.length);
 
     const diffs = TODAY_SIDEBAR_ROWS.map((before, i) => ({ before, after: withoutAdded[i] }))
@@ -110,19 +115,22 @@ describe("full mode is byte-identical to the pinned fixture", () => {
         after: withoutAdded[6],
       },
     ]);
-    // …and within that row, only label / href / icon moved.
-    expect(TODAY_SIDEBAR_ROWS[6].module).toBe(FULL_MODE_FIXTURE[6].module);
-    expect(TODAY_SIDEBAR_ROWS[6].state).toBe(FULL_MODE_FIXTURE[6].state);
+    // Mobilisation sits ahead of Actions in the full fixture, so compare the
+    // Actions row by id. Within that row, only label / href / icon moved.
+    const fullActions = FULL_MODE_FIXTURE.find((row) => row.id === "actions");
+    expect(fullActions).toBeDefined();
+    expect(TODAY_SIDEBAR_ROWS[6].module).toBe(fullActions?.module);
+    expect(TODAY_SIDEBAR_ROWS[6].state).toBe(fullActions?.state);
     expect([
       TODAY_SIDEBAR_ROWS[6].label,
       TODAY_SIDEBAR_ROWS[6].href,
       TODAY_SIDEBAR_ROWS[6].icon,
     ]).toEqual(["SMS Tools", "/sms", "message-square-more"]);
-    expect([
-      FULL_MODE_FIXTURE[6].label,
-      FULL_MODE_FIXTURE[6].href,
-      FULL_MODE_FIXTURE[6].icon,
-    ]).toEqual(["Actions", "/actions", "layout-list"]);
+    expect([fullActions?.label, fullActions?.href, fullActions?.icon]).toEqual([
+      "Actions",
+      "/actions",
+      "layout-list",
+    ]);
   });
 });
 
@@ -141,6 +149,7 @@ describe("reachability — decision 7", () => {
     organisation: [
       { label: "Worksites", href: "/worksites", state: "muted" },
       { label: "Upcoming Projects", href: "/upcoming-projects", state: "muted" },
+      { label: "Mobilisation", href: "/mobilisation", state: "muted" },
       { label: "Overview", href: "/overview", state: "muted" },
       { label: "Dashboard", href: "/dashboard", state: "muted" },
       { label: "Reports", href: "/reports", state: "muted" },
@@ -301,6 +310,7 @@ describe("allNavHrefs", () => {
         "/email/inbox",
         "/email/wrappers",
         "/help",
+        "/mobilisation",
         "/my-campaigns",
         "/overview",
         "/reports",

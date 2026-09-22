@@ -150,7 +150,7 @@ export const MODULES: readonly WorkspaceModule[] = [
     id: "organisation_databases",
     label: "Organisation databases",
     description:
-      "worksites, employers, agreements, programs, work scopes, upcoming projects",
+      "worksites, employers, agreements, programs, work scopes, upcoming projects, mobilisation radar",
     defaultForOrganiser: false,
     // Capability-shaped, not permission-shaped: any organiser may look these
     // up, so when it is off it is muted ("Ask an admin to enable"), not

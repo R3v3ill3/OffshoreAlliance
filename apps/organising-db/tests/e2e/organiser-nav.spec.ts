@@ -46,6 +46,7 @@ const FULL_MODE_LABELS = [
   "Overview",
   "Worksites",
   "Upcoming Projects",
+  "Mobilisation",
   "Email Inbox",
   "Actions",
   "SMS Inbox",
@@ -61,7 +62,7 @@ test.describe("Sidebar — full mode is today's sidebar", () => {
   // work role, which an admin can change in the app at any time. Pin it.
   withUserMode("full");
 
-  test("the eleven rows, in order, with no organiser-mode furniture", async ({ page }) => {
+  test("the twelve rows, in order, with no organiser-mode furniture", async ({ page }) => {
     await page.goto("/campaigns");
     await expect(page.locator(LABELS).first()).toBeVisible();
 

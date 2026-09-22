@@ -145,6 +145,13 @@ const DEFS = {
     icon: "compass",
     module: "organisation_databases",
   },
+  mobilisation: {
+    id: "mobilisation",
+    label: "Mobilisation",
+    href: "/mobilisation",
+    icon: "radar",
+    module: "organisation_databases",
+  },
   email_inbox: {
     id: "email_inbox",
     label: "Email Inbox",
@@ -238,6 +245,7 @@ export const FULL_NAV_ITEMS: readonly NavItemDef[] = [
   DEFS.overview,
   DEFS.worksites,
   DEFS.upcoming_projects,
+  DEFS.mobilisation,
   DEFS.email_inbox,
   DEFS.actions,
   DEFS.sms_inbox,
@@ -268,6 +276,7 @@ const ORGANISER_PRIMARY: readonly NavItemDef[] = [
 const ORGANISATION_ITEMS: readonly NavItemDef[] = [
   DEFS.worksites,
   DEFS.upcoming_projects,
+  DEFS.mobilisation,
   DEFS.overview,
   DEFS.dashboard,
   DEFS.reports,

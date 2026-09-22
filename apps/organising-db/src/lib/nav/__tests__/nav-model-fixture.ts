@@ -42,7 +42,8 @@ export const TODAY_SIDEBAR_ROWS: readonly FixtureRow[] = [
  * `TODAY_SIDEBAR_ROWS` except row 7, which WP1.5 renamed to Actions and
  * moved to `/actions` (it explicitly handed this one sidebar line to WP1.2),
  * plus the Surveys & Forms row inserted after Reports by the Action Network
- * survey importer. `/sms` keeps working as a redirect, so no URL is lost —
+ * survey importer, and the Mobilisation row after Upcoming Projects.
+ * `/sms` keeps working as a redirect, so no URL is lost —
  * decision 7.
  */
 export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
@@ -51,6 +52,7 @@ export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
   { id: "overview", label: "Overview", href: "/overview", icon: "layout-grid", module: "organisation_databases", state: "on" },
   { id: "worksites", label: "Worksites", href: "/worksites", icon: "map-pin", module: "organisation_databases", state: "on" },
   { id: "upcoming_projects", label: "Upcoming Projects", href: "/upcoming-projects", icon: "compass", module: "organisation_databases", state: "on" },
+  { id: "mobilisation", label: "Mobilisation", href: "/mobilisation", icon: "radar", module: "organisation_databases", state: "on" },
   { id: "email_inbox", label: "Email Inbox", href: "/email/inbox", icon: "inbox", module: "inbox", state: "on" },
   // WP1.5 rename — the one deliberate deviation from today's sidebar.
   { id: "actions", label: "Actions", href: "/actions", icon: "layout-list", module: "actions", state: "on" },
@@ -66,15 +68,16 @@ export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
 ];
 
 /** The number of primary (non-admin) rows in full mode. */
-export const FULL_MODE_PRIMARY_COUNT = 11;
+export const FULL_MODE_PRIMARY_COUNT = 12;
 
-/** The 11 labels a full-mode sidebar renders, in order (mirrored by the e2e spec). */
+/** The 12 labels a full-mode sidebar renders, in order (mirrored by the e2e spec). */
 export const FULL_MODE_LABELS: readonly string[] = [
   "Campaigns",
   "Dashboard",
   "Overview",
   "Worksites",
   "Upcoming Projects",
+  "Mobilisation",
   "Email Inbox",
   "Actions",
   "SMS Inbox",

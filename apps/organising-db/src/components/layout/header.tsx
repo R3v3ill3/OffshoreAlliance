@@ -23,6 +23,7 @@ const pageTitles: Record<string, string> = {
   // a segment the router already resolved.
   "/my-campaigns": "My campaigns",
   "/upcoming-projects": "Upcoming Projects",
+  "/mobilisation": "Mobilisation",
   "/help": "Guides",
   "/templates": "Templates",
   "/email": "Email Inbox",

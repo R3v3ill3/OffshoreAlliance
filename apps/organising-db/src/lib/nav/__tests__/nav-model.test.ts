@@ -101,7 +101,7 @@ describe("buildNavModel", () => {
     ).toMatchSnapshot();
   });
 
-  it("6. organiser mode with `organisation_databases` on — the three org rows become live", () => {
+  it("6. organiser mode with `organisation_databases` on — the organisation database rows become live", () => {
     expect(
       modelFor({
         role: "user",

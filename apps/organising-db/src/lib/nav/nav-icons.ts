@@ -27,6 +27,7 @@ import {
   MailOpen,
   MapPin,
   Megaphone,
+  Radar,
   MessageSquare,
   MessageSquareMore,
   Settings,
@@ -48,6 +49,7 @@ export type NavIconKey =
   | "mail-open"
   | "map-pin"
   | "megaphone"
+  | "radar"
   | "message-square"
   | "message-square-more"
   | "settings";
@@ -67,6 +69,7 @@ export const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   "mail-open": MailOpen,
   "map-pin": MapPin,
   megaphone: Megaphone,
+  radar: Radar,
   "message-square": MessageSquare,
   "message-square-more": MessageSquareMore,
   settings: Settings,

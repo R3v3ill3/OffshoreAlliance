@@ -1,0 +1,54 @@
+Tier-1 operator (your tab),Asset / Facility,Status,# companies,Marine key clients,Offshore contractors (your tab),Added employers,Notes
+Woodside,North Rankin Complex (North Rankin A & B),Operating,15,,Cyan (H); ESS (H); Go Offshore (H); Legeneering (H) [WB]; MEA (H); Monadelphous (H); vertech (H); Wood (H); CHC (M); OSM (M); PHI (M); Transocean (sedco forex) (M),Applus+ (M); Atlas Professionals (L); SEA1 Offshore (ex-Siem) (L),
+Woodside,Goodwyn A,Operating,14,,Cyan (H); ESS (H); Go Offshore (H); Legeneering (H) [WB]; MEA (H); Monadelphous (H); vertech (H); Wood (H); CHC (M); OSM (M); PHI (M),Applus+ (M); Atlas Professionals (L); SEA1 Offshore (ex-Siem) (L),
+Woodside,Angel,Operating,14,,Cyan (H); Go Offshore (H); MEA (H); Monadelphous (H); vertech (H); CHC (M); OSM (M); PHI (M); Transocean (sedco forex) (M),Applus+ (M); Bhagwan Marine (M); Solstad Australia (M); Atlas Professionals (L); SEA1 Offshore (ex-Siem) (L),
+Woodside,"NWS subsea tiebacks (GWF, Lambert, Persephone, Wildling, Keast/Dockrell/Sculptor)",Operating (GWF-4 under development),6,,Transocean (sedco forex) (H); CHC (M); Fugro (M); PHI (M); Sierra (M),Solstad Australia (M),
+Woodside,Pluto A,Operating,9,,Cyan (H); Legeneering (H) [WB]; Monadelphous (H); Eris (Kuiper) (M); OSM (M); PHI (M),Applus+ (M); Technip Energies / TechnipFMC (M); SEA1 Offshore (ex-Siem) (L),
+Woodside,Scarborough FPU,Commissioning / ramp-up (first gas 29 Jul 2026; first LNG ~Q4 2026),19,Saipem (H); Subsea7 (H),AOS (H); Cyan (H); Eris (Kuiper) (H); Fugro (H); McDermott (H); Monadelphous (H); PHI (H); Reach (H); Valaris (Ensco (H); ESS (M) [WB]; Sierra (M); OSM (L); Programmed (L); UGL (L); vertech (L),Boskalis (H); Solstad Australia (M),
+Woodside,Ngujima-Yin FPSO,Operating,8,,Legeneering (H); CHC (M); Cyan (M); Enemech (M); ESS (M) [WB]; vertech (M); PHI (L),Applus+ (H),
+Woodside,Pyrenees Venture FPSO,Operating,4,,CHC (M); vertech (M); PHI (L),Applus+ (M),
+Woodside,Okha FPSO (CWLH),Operating (temp. offline mid-2026 for riser repair; restart ~Q3 2026),12,,DOF (H); Legeneering (H) [MV]; Monadelphous (H) [MV]; vertech (H); Wood (H); CHC (M); Cyan (M); Enemech (M); ESS (M) [WB]; Sierra (M); PHI (L),Applus+ (H),
+Woodside,Macedon,Operating,1,,CHC (M),,
+Woodside,Julimar-Brunello,Operating,4,Subsea7 (H),Transocean (sedco forex) (H); GGC (L),Technip Energies / TechnipFMC (H),
+Woodside,Bass Strait platforms (GBJV + Kipper Unit JV),Operating (majority of platforms in decommissioning),11,,DOF (H); Hjelix (H); Valaris (Ensco (H); Wood (H); Enemech (M); UGL (M); Eris (Kuiper) (L); GGC (L); Kaefer (ISOLOGIC) (L); Sodexo (L),Condex (H),
+Woodside,Enfield (Nganhurra FPSO – removed),Decommissioning (largely complete),8,,DOF (H); Transocean (sedco forex) (H); Fugro (M); Sierra (M); AOS (L),Heerema (M); Solstad Australia (M); Technip Energies / TechnipFMC (M),
+Woodside,Stybarrow (Stybarrow Venture FPSO – removed),Decommissioning,7,,DOF (H); McDermott (H); Transocean (sedco forex) (H); Fugro (M); Sierra (M),Heerema (M); Technip Energies / TechnipFMC (M),
+Woodside,Griffin (Griffin Venture FPSO – departed),Decommissioning,5,,DOF (H); Fugro (M); McDermott (M),Technip Energies / TechnipFMC (H); Heerema (M),
+Woodside,Minerva,Decommissioning (ceased ~2019),0,,,,No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce
+Woodside,Browse (Browse-to-NWS),Planned (pre-FID),0,,,,No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce
+Woodside,"Greater Sunrise (Sunrise, Troubadour)",Planned (pre-FID; long-stalled),2,,Fugro (M); Wood (L),,
+Santos,Barossa (BW Opal FPSO),Operating (first gas Sep 2025; ramp-up),10,Allseas (H); Subsea7 (H); Van Oord (H),Eris (Kuiper) (H); Monadelphous (H); Valaris (Ensco (H); Wood (M); Programmed (L); vertech (L),Weststar-GAP (L),
+Santos,Bayu-Undan,Ceased production (~2025); CCS conversion pre-FID,5,,OSA (H); Fugro (M); Noble (M),Weststar-GAP (H); Solstad Australia (L),
+Santos,Ningaloo Vision FPSO,Ceased production / decommissioning (ceased Aug 2025); FPSO departed Australia Aug 2025 for recycling,3,,Go Offshore (H); WPF(Duratech) (H); vertech (M),,
+Santos,John Brookes,Operating,4,,Kaefer (ISOLOGIC) (M) [WB]; OSA (M); UGL (M); WPF(Duratech) (M),,
+Santos,Spar / Greater East Spar,Operating,5,,Noble (H); Kaefer (ISOLOGIC) (M) [WB]; OSA (M); UGL (M); WPF(Duratech) (M),,
+Santos,Halyard,Operating (first gas Feb 2025),4,,Noble (H); OSA (M); UGL (M); WPF(Duratech) (M),,
+Santos,Spartan,Operating (recently connected — confirm),1,,Kaefer (ISOLOGIC) (M) [WB],,
+Santos,Reindeer,Ceased production (Q3 2025),1,,OSA (M),,
+Santos,Mutineer-Exeter (MODEC Venture 11 – removed),Ceased (2018) / decommissioning 2026,0,,,,No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce
+Santos,Fletcher-Finucane,Ceased / decommissioning 2026,0,,,,No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce
+Santos,Dorado,Planned (pre-FID),2,Vantris (Sapura) (L),Noble (L),,
+Santos,Corvus,Planned / undeveloped,0,,,,No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce
+Chevron,Wheatstone Platform,Operating,12,Allseas (L),Altrad (H) [WB]; Cyan (H); ESS (H); DOF (M); Noble (M); OSA (M); UGL (M) [WB]; Kaefer (ISOLOGIC) (L),Altrad Sparrows (H); IAS (M); Parabellum (L),
+Chevron,Gorgon / Jansz-Io subsea,Operating,10,Subsea7 (M); Allseas (L),Baker Hughes (H); Cyan (M); DOF (M); Eris (Kuiper) (M); Noble (M); OSA (M); GGC (L),Parabellum (L),
+Chevron,Jansz-Io Compression (Field Control Station),Under construction / commissioning (start-up from 2026),5,Saipem (H),Baker Hughes (H); Eris (Kuiper) (H); MEA (H); Monadelphous (L),,
+Chevron,Barrow Island oil (WA Oil),Decommissioning (from ~2025),6,,Altrad (H); Cyan (H); OSA (M),Altrad Sparrows (M); Bhagwan Marine (M); Parabellum (M),
+Chevron,Thevenard Island (legacy),Decommissioned (2023),3,,Legeneering (H); Altrad (M),Bhagwan Marine (H),
+Inpex,Ichthys Explorer (CPF),Operating,16,Saipem (L),Baker Hughes (H); Cyan (H); Enemech (H); ESS (H); Go Offshore (H); Monadelphous (H); Noble (H); PHI (H); vertech (H); Eris (Kuiper) (M); McDermott (M); GGC (L),Heerema (H); GR Production Services (M); Solstad Australia (M),
+Inpex,Ichthys Venturer (FPSO),Operating,10,,Cyan (H); Enemech (H); ESS (H); Go Offshore (H); Monadelphous (H); PHI (H); vertech (H); Kaefer (ISOLOGIC) (M) [WB],Heerema (H); GR Production Services (M),
+Shell,Prelude FLNG,Operating (unreliable; repeated outages; Turnaround 2026),12,,Eris (Kuiper) (H); Monadelphous (H); PHI (H); SGS (H); Sodexo (H) [MV]; DOF (M); MEA (M); Programmed (M); CHC (L); Enemech (L),Atlas Professionals (H); Technip Energies / TechnipFMC (H),
+Shell,Crux,Under construction (jacket installed early 2026; first gas 2027),7,,Eris (Kuiper) (H); McDermott (H); MEA (H); Monadelphous (H); Transocean (sedco forex) (M); Enemech (L),Technip Energies / TechnipFMC (H),
+Jadestone,Montara (Montara Venture FPSO + WHP),Operating,5,,Valaris (Ensco (H); vertech (M); DOF (L); OSA (L),Bhagwan Marine (H),
+Jadestone,Stag,Ceased/shut-in since Mar 2026 (Cyclone Narelle; restart targeted Q2 2027),3,,CHC (M); WPF(Duratech) (L),Bhagwan Marine (H),
+MODEC,Buffalo (Buffalo Venture FPSO),Off-station / relocated to Thailand (2004),0,,,,No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce
+MODEC,Elang/Kakatua (MODEC Venture 1 FPSO),Decommissioned (2007),0,,,,No employer linkage found — likely a NUI/subsea or planned/ceased asset with no standing contractor workforce
+Aus Govt (DISR) — via Petrofac,Northern Endeavour FPSO (Laminaria-Corallina) — NOT on Key Assets tab,Decommissioning — Phase 1 disconnect done Apr 2025; FPSO recycled 2026; Phase 2 well P&A award pending,8,Vantris (Sapura) (H),MEA (H); UPS (H); Monadelphous (M); ESS (L); Legeneering (L),Petrofac (H); Bhagwan Marine (M),NOT on your Key Assets tab — consider adding (decommissioning hub with several employers)
+Santos,"Harriet Alpha platform (Santos Harriet JV, Varanus area) — NOT on Key Assets tab",Decommissioning — jacket removed 2026 (McDermott / WPF Duratec),3,,McDermott (H); WPF(Duratech) (H),Bhagwan Marine (M),NOT on your Key Assets tab — consider adding (decommissioning hub with several employers)
+Santos,"Campbell platform (Santos, Varanus hub) — NOT on Key Assets tab",Removed 2024 (McDermott),1,,McDermott (H),,NOT on your Key Assets tab — consider adding (decommissioning hub with several employers)
+,,,,,,,
+LEGEND & METHOD,,,,,,,
+Confidence in brackets after each company: H / M / L; [WB] = from the colleague's whiteboard matrix; [MV] = member/Troy-verified (Sep 2026),,,,,,,
+,,,,,,,
+"INVERSE VIEW of the contractor linkages: for each offshore key asset (in your Key Assets order), every company linked to it — your 8 marine key clients, the 39 contractors, and the 16 added employers. Sorted H → M → L within each cell.",,,,,,,
+"Rows shaded orange = decommissioning assets carrying several employers that are NOT on your Key Assets tab (Northern Endeavour, Harriet Alpha, Campbell).",,,,,,,
+An asset with no linkage usually means a normally-unmanned/subsea/planned asset with no standing contractor workforce found. For WHO HOLDS WHICH SCOPE at each facility see 'Offshore - facility x scope'.,,,,,,,

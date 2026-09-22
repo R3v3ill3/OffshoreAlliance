@@ -6,6 +6,7 @@ Working folder for aligning the Organising DB's structure and content with the O
 | Path | What it is |
 |---|---|
 | `OA_UNIVERSE_ALIGNMENT_PLAN.md` | Findings from the schema and content review, the target model, the interrogation method, work packages, decision register |
+| `ORCHESTRATION_PROMPT.md` | The prompt for the Claude Code session that orchestrates phases 0 to 6: team and model table, rules, work-package protocol, run-sheet handover, per-package assignments |
 | `reference/OA_universe_context_for_database_reconciliation.md` | The map owner's account of the workbook and the modelling distinctions it forces |
 | `reference/OA_universe.xlsx` | The sector map itself (cell comments and colour tags preserved) |
 | `reference/oa-universe-tabs/*.csv` | One CSV per workbook tab, for diff-able reference and scripted loads |

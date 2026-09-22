@@ -19,7 +19,8 @@ address or member number.
 
 | File | Purpose | Feeds |
 |---|---|---|
-| `00_profile_counts.sql` | Row counts for every entity and junction in the organising model | Plan §2.1 |
+| `00_profile_counts.sql` | Row counts for every entity and junction in the organising model (runs on every project) | Plan §1.1 |
+| `00b_profile_supplementary.sql` | Role breakdown of `employer_worksite_roles`; `membership_update_batches` count (needs `20260921030000`, absent on the 12 September clone) | Plan §1.1 |
 | `01_profile_employers.sql` | One row per employer with lineage signals (created date, category, parent, ABN, workers, roles, agreements, aliases) | `employers_adjudication_*.csv` |
 | `02_profile_worksites.sql` | One row per worksite with type, flags, principal/operator, workers, roles, agreement links | `worksites_adjudication_*.csv` |
 | `03_profile_workers_links.sql` | Worker link coverage (employer, worksite, member number, occupation), created-month histogram, employer×worksite pairs missing from `employer_worksite_roles` | Plan §2.4 |

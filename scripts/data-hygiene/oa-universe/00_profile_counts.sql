@@ -1,4 +1,6 @@
 -- 00 · Row counts for the organising model (read-only)
+-- Tables that exist only where a later migration is applied (membership_update_batches, 20260921030000)
+-- are counted in 00b so this file runs on every project (DA0.1, 2026-09-22).
 SELECT t, n FROM (
   SELECT 'workers' t, count(*) n FROM workers UNION ALL
   SELECT 'workers_active', count(*) FROM workers WHERE is_active UNION ALL
@@ -35,9 +37,9 @@ SELECT t, n FROM (
   SELECT 'campaign_worksites', count(*) FROM campaign_worksites UNION ALL
   SELECT 'occupations', count(*) FROM occupations UNION ALL
   SELECT 'occupation_aliases', count(*) FROM occupation_aliases UNION ALL
+  SELECT 'occupation_groups', count(*) FROM occupation_groups UNION ALL
   SELECT 'upcoming_projects', count(*) FROM upcoming_projects UNION ALL
   SELECT 'upcoming_project_employers', count(*) FROM upcoming_project_employers UNION ALL
   SELECT 'import_logs', count(*) FROM import_logs UNION ALL
-  SELECT 'membership_update_batches', count(*) FROM membership_update_batches UNION ALL
   SELECT 'sectors', count(*) FROM sectors
 ) x ORDER BY t;

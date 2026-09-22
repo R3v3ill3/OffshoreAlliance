@@ -1,0 +1,103 @@
+# Progress ledger — OA Universe alignment (data architecture)
+
+Orchestration of `OA_UNIVERSE_ALIGNMENT_PLAN.md` (22 September 2026) under `ORCHESTRATION_PROMPT.md`. One row per
+work package. Structural decisions are the plan's §6 (D0–D17); row-level decisions are the worksheets under
+`worksheets/`; per-package plans, verification output and reviewer findings are in `wp/<wp-id>.md` (convention in
+`wp/README.md`).
+
+Status key: **not started** · **blocked (D-n)** · **planning** · **approved** · **implementing** · **verifying** ·
+**in review** · **ready for run sheet** · **handed over** (operator runs it) · **on production** · **complete**.
+
+## Standing notes
+
+- **Inherited from the organiser UX programme** (`docs/organiser-ux-review/PROGRESS.md` standing notes, all of them):
+  the promotion gate, the three Supabase projects, the PostgREST-proof rule, the lint baseline (298: 146 errors /
+  152 warnings on `main` at `e2cf34a2`), never `supabase` CLI from this checkout, never `pnpm dev` / `pnpm start`,
+  never commit `supabase/.temp/*`, never edit an applied migration, types only with an explicit safe ref.
+- **Production `gteygwfgjvczanmrwgbr` is read-only for agents** (decision D0: the profiling pack and equivalent
+  SELECT-only, PII-free queries). Every production change is an operator run sheet in the oux-wp3.8 style.
+- **Clone `yqjkuobcawvigsfpgrcm`** (`offshore-alliance-wp21-rehearsal`, 12 September): the Phase 0 rehearsal
+  target. Read-only check 2026-09-22: `_oux_env_marker` and `_oux_hygiene_log` present; 2,407 workers (2,293
+  active), 171 employers, 174 worksites, 22 campaigns; no `vessels` or `mobilisation_*` tables. Its migration ledger
+  ends at `20260917100000_wp3_8_campaign_families` and lacks `20260914090000` / `20260914090100` (WP2.2a/b: apply
+  only under their own run sheet, per the UX ledger), `20260918120000_email_draft_attachments`,
+  `20260921030000_membership_updates` and `20260922040000_mobilisation_radar`. Owner of the clone at the time of
+  writing: this workstream (Phase 0 rehearsals); the UX programme's WP2.5 has not started.
+- **Normal dev `dpnnmkhabysfdogllsyh`**: read freely; mutate with the operator's approval per file.
+- **Branch (deviation from the prompt's `feat/da-<wp-id>-<slug>` rule):** this session is bound to
+  `claude/determined-hypatia-y2cqau` by the harness and may not push elsewhere, so every Phase 0 package is
+  committed there, one commit per completed package, and the operator opens pull requests from it (none is opened
+  by the agent unless asked). The docs branch `claude/data-architecture-cleaning-plan-3ib8jt` (plan, worksheets,
+  pack) was merged into it at `02c58444`.
+- **Commands:** from `apps/organising-db`: `pnpm lint`, `pnpm test`, `pnpm build`; root: `pnpm validate:migrations`;
+  contract suite `pnpm test:contract` on dev when a PostgREST string changes.
+- **Sub-agent rule:** every sub-agent receives the plan's §5 row verbatim and the sections it needs; the same agent
+  never both implements and reviews; Fable reviews anything touching the database, worker data, merges, imports or
+  the structure API.
+
+## Decision register (from plan §6, as at 2026-09-22)
+
+| # | Subject | Status |
+|---|---|---|
+| D0 | Read-only profiling on production by agents | Decided |
+| D1 | Extend existing tables, no parallel model | Decided |
+| D2 | Lineage-A rows merge into the legal employer; facility and scope onto the agreement | Decided, amended |
+| D3 | Restore Monadelphous and Programmed agreement-holding subsidiaries | Decided |
+| D4 | Remove the April synthetic dataset | Decided; identity confirmed 22 Sep |
+| D5 | Imports stop auto-creating; unmatched names queue with search-and-map before create | Decided |
+| D6 | `engagements` evolves `worksite_contracts` | Decided |
+| D7 | Scope taxonomy: map's 14 scopes on top of `work_scopes`; `sectors` stays | Decided |
+| D8 | Two operator roles per worksite with dates | Decided |
+| D9 | Placeholders retired; coverage areas and fleets as grains; fleets hold vessels | Decided, amended |
+| D10 | Patch model with overlaps allowed; allocation logic deferred to DA5.2 | Decided in principle |
+| D11 | Universe boundary: Wandoo and Qube in, Alkimos out; rest row by row | Decided |
+| D12 | `MMA` alias unwound; IAS and Rigforce stay merged, 827 and 798 merged in | Decided, corrected |
+| D13 | Confidence H/M/L and source vocabulary | Decided |
+| D14 | Coordinate `unit_basis.engagement_id` with WP2.7 | Decided |
+| D15 | Ownership of the sixteen vessel-tracking tables | **Answered by the repository on 2026-09-22 (pending operator confirmation, see below)** |
+| D16 | Worker 1536 kept, re-pointed to AWU WA Branch (741) / AWU Head Office (185); out of campaign 64 | Decided |
+| D17 | Fresh clone after Phase 0; re-created at each phase boundary; old clone retired then | Decided |
+
+**D15 finding (orchestrator, 2026-09-22, read-only):** the vessel-tracking module is the mobilisation radar merged
+to `main` at `afc3eed8` ("Add a mobilisation radar for North-West Australia vessel early warning", 22 Sep 02:28 UTC)
+with migration `supabase/migrations/20260922040000_mobilisation_radar.sql` (766 lines; `CREATE TABLE IF NOT EXISTS`
+for `vessels`, `geofences` and the fourteen `mobilisation_*` tables) and the app code under
+`apps/organising-db/src/lib/mobilisation/` and `src/app/(dashboard)/mobilisation/`; `packages/db-types/generated.ts`
+already carries the tables (`014e607d`). So no other repository owns the schema: this ledger does. However, the
+production migration ledger (`supabase_migrations.schema_migrations`, read 2026-09-22) ends at
+`20260921030000_membership_updates` and has **no row for `20260922040000`**, although the tables exist and hold data
+(plan §1.11). DA0.5 therefore takes the in-repository shape: prove the committed file reproduces production's DDL,
+record the ledger row on production by run sheet, and apply the file to the clone. The operator is asked to confirm
+that no other checkout applied a different version of the DDL.
+
+## Ledger
+
+| WP | Title | Status | Branch | PR | Verification | Open risks | Decisions consumed |
+|---|---|---|---|---|---|---|---|
+| DA0.1 | Baseline profile (pack on production and the clone) | planning | `claude/determined-hypatia-y2cqau` | | | Clone predates the September sync; differences must be explained, not matched | D0 |
+| DA0.2 | Remove the synthetic dataset | planning | `claude/determined-hypatia-y2cqau` | | | 664 workers and cascaded rows; rollback must reinsert exactly | D4, D16 |
+| DA0.3 | Stop the bleed (alias check, one resolution path, review queue, raw names) | planning | `claude/determined-hypatia-y2cqau` | | | Three matchers and two client insert paths removed; migration; PostgREST strings | D5, Q-S10 |
+| DA0.4 | Workstream set-up (this ledger, `wp/README.md`, D15 finding) | complete 2026-09-22 (docs) | `claude/determined-hypatia-y2cqau` | | docs only | | D0–D17 |
+| DA0.5 | Vessel-tracking schema | planning | `claude/determined-hypatia-y2cqau` | | | Production ledger lacks the row; clone lacks the tables | D15 |
+| DA1.1–DA6.2 | Phases 1–6 | not started | | | | | |
+
+## Phase exits
+
+| Phase | Exit criteria | Evidence | Date |
+|---|---|---|---|
+| 0 | DA0.2, DA0.3 and DA0.5 on production; pack shows 5,085 active workers; no new lineage-C rows after the next weekly membership batch | | |
+
+## Human tasks (not code)
+
+| Task | Raised by | Status |
+|---|---|---|
+| Confirm the D15 finding above (the mobilisation radar in this repository owns the sixteen tables; no other checkout applied a different DDL) | DA0.4 | pending |
+| Create a fresh production-shaped clone after Phase 0's run sheets have landed on production (D17); then run the pack on it and on production, confirm the counts match, record the new ref here and in the UX ledger, retire the 12 September clone | D17 | pending — instructions in the Phase 0 hand-over |
+| Run the Phase 0 production run sheets in the order DA0.2 → DA0.5 → DA0.3 (one file per submission, output pasted back before the next) | Phase 0 | pending |
+
+## Incidental findings (not part of any work package until assigned)
+
+| Found in | Finding | Assigned to |
+|---|---|---|
+| DA0.4 set-up (2026-09-22) | `20260922040000_mobilisation_radar.sql` is on `main` and its tables are live in production, but production's migration ledger has no row for it; the next `supabase db push` against production would try to re-run it (it is `IF NOT EXISTS` on tables; policies, triggers and functions need checking). | DA0.5 |
+| DA0.4 set-up (2026-09-22) | The clone's ledger is five migrations behind the repository (see standing notes). DA0.3's migration and rehearsal may depend on `20260921030000_membership_updates`; the planner must say which prerequisites the clone rehearsal applies first and under which run sheet. | DA0.3 planner |

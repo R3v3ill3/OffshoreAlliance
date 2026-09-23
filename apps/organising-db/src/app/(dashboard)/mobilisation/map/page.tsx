@@ -33,7 +33,7 @@ export default function MobilisationMapPage() {
       <div>
         <h1 className="text-2xl font-semibold">Mobilisation map</h1>
         <p className="text-sm text-muted-foreground">
-          Geofences and the last position stored for each watchlisted vessel. Positions are internal only.
+          Geofences and the last AISStream position stored for each watchlisted vessel. A hull appears here only after it has been heard inside terrestrial range of the North-West. Positions are internal only.
         </p>
       </div>
       <MobilisationTabs current="/mobilisation/map" />

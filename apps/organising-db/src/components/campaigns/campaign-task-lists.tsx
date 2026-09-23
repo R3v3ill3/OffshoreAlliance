@@ -96,7 +96,7 @@ export function CampaignTaskListsSection({
   const [statusFilter, setStatusFilter] = useState<
     "all" | "draft" | "active" | "completed"
   >("all");
-  const [draftBeingEdited, setDraftBeingEdited] = useState<CreateTaskListDraft | null>(
+  const [listBeingEdited, setListBeingEdited] = useState<CreateTaskListDraft | null>(
     null
   );
   // Phase 6 — slide-over progress panel.
@@ -200,6 +200,20 @@ export function CampaignTaskListsSection({
       return o.organiser_name?.trim() || "Organiser";
     }
     return null;
+  }
+
+  function toEditDraft(row: TaskListRow): CreateTaskListDraft {
+    return {
+      task_list_id: row.task_list_id,
+      title: row.title,
+      activity_id: row.activity_id,
+      leader_worker_id: row.leader_worker_id,
+      leader_organiser_id: row.leader_organiser_id,
+      include_membership_ask: !!row.include_membership_ask,
+      leader_instructions: row.leader_instructions ?? null,
+      worker_ids: (row.items ?? []).map((i) => i.worker_id),
+      status: row.status,
+    };
   }
 
   function campaignNameFor(row: TaskListRow): string | null {
@@ -325,26 +339,21 @@ export function CampaignTaskListsSection({
                                 type="button"
                                 variant="default"
                                 size="sm"
-                                onClick={() =>
-                                  setDraftBeingEdited({
-                                    task_list_id: row.task_list_id,
-                                    title: row.title,
-                                    activity_id: row.activity_id,
-                                    leader_worker_id: row.leader_worker_id,
-                                    leader_organiser_id: row.leader_organiser_id,
-                                    include_membership_ask: !!row.include_membership_ask,
-                                    leader_instructions: row.leader_instructions ?? null,
-                                    worker_ids: (row.items ?? []).map(
-                                      (i) => i.worker_id
-                                    ),
-                                  })
-                                }
+                                onClick={() => setListBeingEdited(toEditDraft(row))}
                               >
                                 Complete setup
                               </Button>
                             )}
                             {canWrite && !isDraft && (
                               <>
+                                <Button
+                                  type="button"
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => setListBeingEdited(toEditDraft(row))}
+                                >
+                                  Edit
+                                </Button>
                                 <Button
                                   type="button"
                                   variant="outline"
@@ -414,19 +423,19 @@ export function CampaignTaskListsSection({
         onOpenChange={setDialogOpen}
       />
 
-      {/* Stepper dialog re-opened with a draft pre-populated. Lives separately
-          so opening "Complete setup" can't collide with the "New task list"
-          flow (different keys, different state). */}
-      {draftBeingEdited && (
+      {/* Stepper dialog re-opened with a saved list pre-populated. Lives
+          separately so opening Edit / Complete setup can't collide with
+          "New task list" (different keys, different state). */}
+      {listBeingEdited && (
         <CreateTaskListDialog
-          key={`draft-${draftBeingEdited.task_list_id}`}
+          key={`edit-${listBeingEdited.task_list_id}`}
           campaignId={campaignId}
-          open={!!draftBeingEdited}
+          open={!!listBeingEdited}
           onOpenChange={(o) => {
-            if (!o) setDraftBeingEdited(null);
+            if (!o) setListBeingEdited(null);
           }}
-          draft={draftBeingEdited}
-          onCreated={() => setDraftBeingEdited(null)}
+          draft={listBeingEdited}
+          onCreated={() => setListBeingEdited(null)}
         />
       )}
 

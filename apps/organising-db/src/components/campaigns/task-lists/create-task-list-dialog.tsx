@@ -36,9 +36,10 @@
  *     leader webform; no extra inserts are produced here.
  *
  * The dialog also accepts a `draft` prop. When set, the stepper is opened
- * pre-populated with that draft's leader/activity/workers/options so the
- * user can complete setup and activate. On save we UPDATE the existing
- * row instead of INSERTing a new one.
+ * pre-populated with that list's leader/activity/workers/options so the
+ * user can complete setup (drafts) or edit an already-active list. On save
+ * we UPDATE the existing row instead of INSERTing a new one. Editing an
+ * active list also shows a live mobile-phone preview of the leader webform.
  */
 
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -46,11 +47,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
-import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
+import {
+  campaignOrganiserPickerValueForUser,
+  resolveCampaignOrganiserId,
+} from "@/lib/campaign/resolve-campaign-organiser";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 import { CreateAssessmentDialog } from "@/components/campaigns/assessments/create-assessment-dialog";
 import { WorkerPicker } from "@/components/campaigns/shared/worker-picker";
 import { useLeaderUnitContext } from "@/components/campaigns/wall-chart/leader-unit-context";
+import {
+  TaskListPhonePreview,
+  type PhonePreviewWorker,
+} from "@/components/campaigns/task-lists/task-list-phone-preview";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -146,6 +154,8 @@ export type CreateTaskListDraft = {
   include_membership_ask: boolean;
   leader_instructions: string | null;
   worker_ids: number[];
+  /** Current persisted status — used to distinguish draft setup vs editing an active list. */
+  status?: "draft" | "active" | "completed" | string;
 };
 
 export type CreateTaskListDialogProps = {
@@ -289,10 +299,12 @@ export function CreateTaskListDialog({
 
   const initialState = useMemo<FormState>(() => {
     if (draft) {
+      const isAlreadyLive =
+        draft.status === "active" || draft.status === "completed";
       return {
         anchor: "leader",
         leader_worker_id: draft.leader_worker_id ? String(draft.leader_worker_id) : "",
-        leader_organiser_pick: "", // organiser picker can't recover the user-id from organiser_id alone — leave for user to re-confirm
+        leader_organiser_pick: "", // hydrated async from leader_organiser_id below
         activity_id: draft.activity_id ? String(draft.activity_id) : "",
         worker_ids: draft.worker_ids,
         use_followers: false,
@@ -300,7 +312,7 @@ export function CreateTaskListDialog({
         title: draft.title ?? "",
         leader_instructions: draft.leader_instructions ?? "",
         include_membership_ask: draft.include_membership_ask,
-        activate_now: false,
+        activate_now: isAlreadyLive,
       };
     }
     if (leaderWorkerLock) {
@@ -313,12 +325,21 @@ export function CreateTaskListDialog({
     return EMPTY_STATE;
   }, [draft, leaderWorkerLock]);
 
+  const isEditingExisting = !!draft;
+  const isEditingLiveList =
+    draft?.status === "active" || draft?.status === "completed";
+
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [currentStep, setCurrentStep] = useState<Step>(
-    leaderWorkerLock || draft ? "leader" : "anchor"
-  );
+  const [currentStep, setCurrentStep] = useState<Step>(() => {
+    if (isEditingLiveList) return "options";
+    if (leaderWorkerLock || draft) return "leader";
+    return "anchor";
+  });
   const [organiserFieldKey, setOrganiserFieldKey] = useState(0);
   const [createActivityOpen, setCreateActivityOpen] = useState(false);
+  const [organiserHydrated, setOrganiserHydrated] = useState(
+    () => !draft?.leader_organiser_id || !!draft?.leader_worker_id
+  );
 
   // Stable list of worker_ids that arrived with the draft. The Workers step
   // pins these in a "Pre-loaded from your build list" group at the top so
@@ -331,15 +352,56 @@ export function CreateTaskListDialog({
   useEffect(() => {
     if (open) {
       dispatch({ type: "RESET", value: initialState });
-      setCurrentStep(leaderWorkerLock || draft ? "leader" : "anchor");
+      setCurrentStep(
+        isEditingLiveList
+          ? "options"
+          : leaderWorkerLock || draft
+          ? "leader"
+          : "anchor"
+      );
       setOrganiserFieldKey((k) => k + 1);
       preloadedWorkerIdsRef.current = draft?.worker_ids ?? [];
       setSavedResult(null);
       setIssueLinkOpen(false);
       setIssueResult(null);
+      setOrganiserHydrated(
+        !draft?.leader_organiser_id || !!draft?.leader_worker_id
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, draft?.task_list_id]);
+
+  // Hydrate organiser picker from leader_organiser_id → user:uuid.
+  useEffect(() => {
+    if (!open || !draft?.leader_organiser_id || draft.leader_worker_id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("user_profiles")
+        .select("user_id")
+        .eq("organiser_id", draft.leader_organiser_id as number)
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data?.user_id) {
+        dispatch({
+          type: "SET_LEADER_ORGANISER",
+          value: campaignOrganiserPickerValueForUser(data.user_id as string),
+        });
+      } else {
+        // Fallback: raw organiser id is still accepted by resolveCampaignOrganiserId.
+        dispatch({
+          type: "SET_LEADER_ORGANISER",
+          value: String(draft.leader_organiser_id),
+        });
+      }
+      setOrganiserHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, draft?.task_list_id, draft?.leader_organiser_id, draft?.leader_worker_id]);
 
   const { data: activities = [] } = useQuery({
     queryKey: ["campaign-activities", campaignId],
@@ -357,6 +419,39 @@ export function CreateTaskListDialog({
     },
   });
 
+  const { data: campaignMeta } = useQuery({
+    queryKey: ["campaign-name-for-task-preview", campaignId],
+    enabled: open && isEditingExisting,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaigns")
+        .select("name")
+        .eq("campaign_id", campaignId)
+        .maybeSingle();
+      if (error) throw error;
+      return (data?.name as string | undefined) ?? null;
+    },
+  });
+
+  const previewWorkerIdsKey = state.worker_ids.join(",");
+  const { data: previewWorkers = [] } = useQuery({
+    queryKey: ["task-list-phone-preview-workers", campaignId, previewWorkerIdsKey],
+    enabled: open && isEditingExisting && state.worker_ids.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("workers")
+        .select("worker_id, first_name, last_name, occupation")
+        .in("worker_id", state.worker_ids);
+      if (error) throw error;
+      const byId = new Map(
+        (data ?? []).map((w) => [w.worker_id as number, w as PhonePreviewWorker])
+      );
+      // Preserve selection order for a stable preview.
+      return state.worker_ids
+        .map((id) => byId.get(id))
+        .filter((w): w is PhonePreviewWorker => !!w);
+    },
+  });
   // The leader picker (LeaderPickerWidget below) fetches its own data with a
   // richer schema (role, occupation, OU). The flat `campaign-members` query
   // and `memberOptions` derivation that used to live here have been removed.
@@ -427,7 +522,8 @@ export function CreateTaskListDialog({
   const hasLeader =
     !!leaderWorkerLock ||
     state.leader_worker_id !== "" ||
-    (state.leader_organiser_pick !== "" && state.leader_organiser_pick !== NONE);
+    (state.leader_organiser_pick !== "" && state.leader_organiser_pick !== NONE) ||
+    (!organiserHydrated && !!draft?.leader_organiser_id);
   const hasActivity = state.activity_id !== "";
   const canActivate = hasLeader && hasActivity;
 
@@ -476,10 +572,21 @@ export function CreateTaskListDialog({
           state.leader_organiser_pick,
           { currentUserId: user.id, canLinkOtherOrganisers: isAdmin || isLeadOrganiser }
         );
+      } else if (
+        !leader_worker_id &&
+        !organiserHydrated &&
+        draft?.leader_organiser_id
+      ) {
+        // Preserve the existing organiser if the picker has not finished hydrating.
+        leader_organiser_id = draft.leader_organiser_id;
       }
 
-      const targetStatus = state.activate_now ? "active" : "draft";
-      if (targetStatus === "active" && !canActivate) {
+      const targetStatus = state.activate_now
+        ? draft?.status === "completed"
+          ? "completed"
+          : "active"
+        : "draft";
+      if (targetStatus !== "draft" && !canActivate) {
         throw new Error(
           "Activation requires both a leader and an assessment. Save as draft instead."
         );
@@ -632,7 +739,11 @@ export function CreateTaskListDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent
+          className={`max-h-[90vh] overflow-y-auto ${
+            isEditingExisting ? "sm:max-w-4xl" : "sm:max-w-2xl"
+          }`}
+        >
 
           {/* ── Success step ─────────────────────────────────────────── */}
           {savedResult ? (
@@ -640,13 +751,19 @@ export function CreateTaskListDialog({
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
-                  {savedResult.status === "active" ? "Task list activated" : "Draft saved"}
+                  {savedResult.status === "draft"
+                    ? "Draft saved"
+                    : isEditingLiveList
+                    ? "Task list updated"
+                    : "Task list activated"}
                 </DialogTitle>
                 <DialogDescription>
                   &ldquo;{savedResult.title}&rdquo;
-                  {savedResult.status === "active"
-                    ? " is live. Generate a share link to send to the leader."
-                    : " has been saved as a draft. Activate it before generating a share link."}
+                  {savedResult.status === "draft"
+                    ? " has been saved as a draft. Activate it before generating a share link."
+                    : isEditingLiveList
+                    ? " has been updated. Existing leader links remain valid."
+                    : " is live. Generate a share link to send to the leader."}
                 </DialogDescription>
               </DialogHeader>
 
@@ -749,15 +866,18 @@ export function CreateTaskListDialog({
             <>
               <DialogHeader>
                 <DialogTitle>
-                  {draft
+                  {isEditingLiveList
+                    ? `Edit task list: ${draft?.title || "Untitled"}`
+                    : draft
                     ? `Complete setup: ${draft.title || "Untitled draft"}`
                     : leaderWorkerLock
                     ? `New task list for ${leaderWorkerLock.workerName}`
                     : "New task list"}
                 </DialogTitle>
                 <DialogDescription>
-                  Configure the leader, activity, workers, and activation options for this
-                  campaign task list.
+                  {isEditingLiveList
+                    ? "Update any part of this task list. The phone preview shows how the leader webform will look."
+                    : "Configure the leader, activity, workers, and activation options for this campaign task list."}
                 </DialogDescription>
               </DialogHeader>
 
@@ -795,70 +915,106 @@ export function CreateTaskListDialog({
                 })}
               </ol>
 
-              <div className="min-h-[260px]">
-                {currentStep === "anchor" && (
-                  <AnchorStep
-                    value={state.anchor}
-                    onChange={(v) => {
-                      dispatch({ type: "ANCHOR", value: v });
-                      if (v === "leader") setCurrentStep("leader");
-                      else if (v === "activity") setCurrentStep("activity");
-                      else if (v === "workers") setCurrentStep("workers");
-                    }}
-                  />
-                )}
+              <div
+                className={
+                  isEditingExisting
+                    ? "grid gap-6 md:grid-cols-[minmax(0,1fr)_300px] items-start"
+                    : undefined
+                }
+              >
+                <div className="min-h-[260px]">
+                  {currentStep === "anchor" && (
+                    <AnchorStep
+                      value={state.anchor}
+                      onChange={(v) => {
+                        dispatch({ type: "ANCHOR", value: v });
+                        if (v === "leader") setCurrentStep("leader");
+                        else if (v === "activity") setCurrentStep("activity");
+                        else if (v === "workers") setCurrentStep("workers");
+                      }}
+                    />
+                  )}
 
-                {currentStep === "leader" && (
-                  <LeaderStep
-                    campaignId={campaignId}
-                    state={state}
-                    dispatch={dispatch}
-                    organiserFieldKey={organiserFieldKey}
-                    leaderWorkerLock={leaderWorkerLock}
-                    followersCount={leaderFollowers.length}
-                  />
-                )}
+                  {currentStep === "leader" && (
+                    <LeaderStep
+                      campaignId={campaignId}
+                      state={state}
+                      dispatch={dispatch}
+                      organiserFieldKey={organiserFieldKey}
+                      leaderWorkerLock={leaderWorkerLock}
+                      followersCount={leaderFollowers.length}
+                    />
+                  )}
 
-                {currentStep === "activity" && (
-                  <ActivityStep
-                    activities={activities as {
-                      activity_id: number;
-                      title: string;
-                      is_binary: boolean;
-                      supporter_outcome_value: string | null;
-                      assessment_type: string;
-                    }[]}
-                    state={state}
-                    dispatch={dispatch}
-                    selectedActivity={selectedActivity}
-                    onCreateNew={() => setCreateActivityOpen(true)}
-                    onPatchAssessmentType={(activity_id, assessment_type) =>
-                      patchAssessmentType.mutate({ activity_id, assessment_type })
-                    }
-                    isPatching={patchAssessmentType.isPending}
-                  />
-                )}
+                  {currentStep === "activity" && (
+                    <ActivityStep
+                      activities={activities as {
+                        activity_id: number;
+                        title: string;
+                        is_binary: boolean;
+                        supporter_outcome_value: string | null;
+                        assessment_type: string;
+                      }[]}
+                      state={state}
+                      dispatch={dispatch}
+                      selectedActivity={selectedActivity}
+                      onCreateNew={() => setCreateActivityOpen(true)}
+                      onPatchAssessmentType={(activity_id, assessment_type) =>
+                        patchAssessmentType.mutate({ activity_id, assessment_type })
+                      }
+                      isPatching={patchAssessmentType.isPending}
+                    />
+                  )}
 
-                {currentStep === "workers" && (
-                  <WorkersStep
-                    campaignId={campaignId}
-                    leaderWorkerId={leaderWorkerId}
-                    workerIds={state.worker_ids}
-                    preloadedWorkerIds={preloadedWorkerIdsRef.current}
-                    onChange={(ids) => dispatch({ type: "SET_WORKERS", value: ids })}
-                  />
-                )}
+                  {currentStep === "workers" && (
+                    <WorkersStep
+                      campaignId={campaignId}
+                      leaderWorkerId={leaderWorkerId}
+                      workerIds={state.worker_ids}
+                      preloadedWorkerIds={preloadedWorkerIdsRef.current}
+                      onChange={(ids) => dispatch({ type: "SET_WORKERS", value: ids })}
+                    />
+                  )}
 
-                {currentStep === "options" && (
-                  <OptionsStep
-                    state={state}
-                    dispatch={dispatch}
-                    canActivate={canActivate}
-                    hasLeader={hasLeader}
-                    hasActivity={hasActivity}
-                  />
+                  {currentStep === "options" && (
+                    <OptionsStep
+                      state={state}
+                      dispatch={dispatch}
+                      canActivate={canActivate}
+                      hasLeader={hasLeader}
+                      hasActivity={hasActivity}
+                      isEditingLive={isEditingLiveList}
+                    />
+                  )}
+                </div>
+
+                {isEditingExisting && (
+                  <div className="hidden md:block sticky top-0">
+                    <TaskListPhonePreview
+                      campaignName={campaignMeta ?? null}
+                      title={state.title}
+                      leaderInstructions={state.leader_instructions}
+                      activityTitle={selectedActivity?.title ?? null}
+                      includeMembershipAsk={state.include_membership_ask}
+                      workers={previewWorkers}
+                    />
+                  </div>
                 )}
               </div>
+
+              {/* Phone preview on small screens — shown below the form when editing */}
+              {isEditingExisting && (
+                <div className="md:hidden pt-4 border-t">
+                  <TaskListPhonePreview
+                    campaignName={campaignMeta ?? null}
+                    title={state.title}
+                    leaderInstructions={state.leader_instructions}
+                    activityTitle={selectedActivity?.title ?? null}
+                    includeMembershipAsk={state.include_membership_ask}
+                    workers={previewWorkers}
+                  />
+                </div>
+              )}
 
               <DialogFooter className="flex items-center justify-between sm:justify-between gap-2 pt-3 border-t">
                 <div className="flex items-center gap-2">
@@ -891,6 +1047,10 @@ export function CreateTaskListDialog({
                   >
                     {saveTaskList.isPending
                       ? "Saving…"
+                      : isEditingLiveList
+                      ? state.activate_now
+                        ? "Save changes"
+                        : "Save as draft"
                       : state.activate_now
                       ? draft
                         ? "Activate"
@@ -1549,12 +1709,14 @@ function OptionsStep({
   canActivate,
   hasLeader,
   hasActivity,
+  isEditingLive = false,
 }: {
   state: FormState;
   dispatch: React.Dispatch<Action>;
   canActivate: boolean;
   hasLeader: boolean;
   hasActivity: boolean;
+  isEditingLive?: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -1617,7 +1779,9 @@ function OptionsStep({
             <span className="flex-1">
               <span className="block font-medium text-sm">Save as draft</span>
               <span className="block text-xs text-muted-foreground">
-                Stays editable. No tokens can be issued until activated.
+                {isEditingLive
+                  ? "Deactivates this list. Existing leader links stop working until you activate again."
+                  : "Stays editable. No tokens can be issued until activated."}
               </span>
             </span>
           </label>
@@ -1638,9 +1802,13 @@ function OptionsStep({
                     disabled={!canActivate}
                   />
                   <span className="flex-1">
-                    <span className="block font-medium text-sm">Activate now</span>
+                    <span className="block font-medium text-sm">
+                      {isEditingLive ? "Keep active" : "Activate now"}
+                    </span>
                     <span className="block text-xs text-muted-foreground">
-                      Available once both a leader and an assessment are set.
+                      {isEditingLive
+                        ? "Saves changes while keeping the list shareable."
+                        : "Available once both a leader and an assessment are set."}
                     </span>
                   </span>
                 </label>

@@ -13534,11 +13534,13 @@ export type Database = {
       mobilisation_signals: {
         Row: {
           also_seen: Json
+          arrival_at: string | null
           confidence: number
           contractor_id: number | null
           created_at: string
           dedup_key: string
           detected_at: string
+          ends_at: string | null
           external_id: string | null
           extract: string | null
           fingerprint: string
@@ -13562,11 +13564,13 @@ export type Database = {
         }
         Insert: {
           also_seen?: Json
+          arrival_at?: string | null
           confidence: number
           contractor_id?: number | null
           created_at?: string
           dedup_key: string
           detected_at?: string
+          ends_at?: string | null
           external_id?: string | null
           extract?: string | null
           fingerprint: string
@@ -13590,11 +13594,13 @@ export type Database = {
         }
         Update: {
           also_seen?: Json
+          arrival_at?: string | null
           confidence?: number
           contractor_id?: number | null
           created_at?: string
           dedup_key?: string
           detected_at?: string
+          ends_at?: string | null
           external_id?: string | null
           extract?: string | null
           fingerprint?: string

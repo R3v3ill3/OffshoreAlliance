@@ -1,0 +1,134 @@
+{
+  "note": "Computed by build-fixture.ts from the reference lists and variants.json; asserted by replay-fixture.test.ts. Against the production reference of 2026-09-22.",
+  "reference": {
+    "employers": {
+      "exported_at": "2026-09-22T06:16:39Z",
+      "rows": 187,
+      "aliases": 39
+    },
+    "worksites": {
+      "exported_at": "2026-09-22T06:16:39Z",
+      "rows": 194,
+      "aliases": 8
+    }
+  },
+  "file": {
+    "rows": 2400,
+    "distinctEmployerStrings": 232,
+    "distinctWorksiteStrings": 214,
+    "rowsSha256": "e531ec4734b79ef5b90950c06209f775e31cb842100b0e5ee8aec2b63d98b922"
+  },
+  "employers": {
+    "distinctStrings": 232,
+    "firstPass": {
+      "exact": 187,
+      "alias": 0,
+      "auto": 39,
+      "needs_review": 5,
+      "unmatched": 1,
+      "rejected": 0
+    },
+    "autoAliasesWritten": 39,
+    "queued": 6,
+    "decisions": [
+      {
+        "raw": "BW Pty Ltd",
+        "normalisedName": "bw pty ltd",
+        "status": "unmatched",
+        "canonicalId": 1,
+        "canonicalName": "BW"
+      },
+      {
+        "raw": "BW: Site",
+        "normalisedName": "bw: site",
+        "status": "needs_review",
+        "canonicalId": 1,
+        "canonicalName": "BW"
+      },
+      {
+        "raw": "Santos Pty Ltd",
+        "normalisedName": "santos pty ltd",
+        "status": "needs_review",
+        "canonicalId": 692,
+        "canonicalName": "Santos"
+      },
+      {
+        "raw": "Modec Pty Ltd",
+        "normalisedName": "modec pty ltd",
+        "status": "needs_review",
+        "canonicalId": 703,
+        "canonicalName": "Modec"
+      },
+      {
+        "raw": "Steel Diamond Pty Ltd",
+        "normalisedName": "steel diamond pty ltd",
+        "status": "needs_review",
+        "canonicalId": 748,
+        "canonicalName": "Steel Diamond"
+      },
+      {
+        "raw": "Steel Diamond: Site",
+        "normalisedName": "steel diamond: site",
+        "status": "needs_review",
+        "canonicalId": 748,
+        "canonicalName": "Steel Diamond"
+      }
+    ],
+    "referenceCollisions": [],
+    "secondPass": {
+      "exact": 187,
+      "alias": 45,
+      "auto": 0,
+      "needs_review": 0,
+      "unmatched": 0,
+      "rejected": 0
+    },
+    "secondPassQueuedFromVariants": 0
+  },
+  "worksites": {
+    "distinctStrings": 214,
+    "firstPass": {
+      "exact": 192,
+      "alias": 0,
+      "auto": 19,
+      "needs_review": 3,
+      "unmatched": 0,
+      "rejected": 0
+    },
+    "autoAliasesWritten": 19,
+    "queued": 3,
+    "decisions": [
+      {
+        "raw": "Wandoo A Pty Ltd",
+        "normalisedName": "wandoo a pty ltd",
+        "status": "needs_review",
+        "canonicalId": 142,
+        "canonicalName": "Wandoo A"
+      },
+      {
+        "raw": "Alkimos seawater alliance Pty Ltd",
+        "normalisedName": "alkimos seawater alliance pty ltd",
+        "status": "needs_review",
+        "canonicalId": 180,
+        "canonicalName": "Alkimos seawater alliance"
+      }
+    ],
+    "referenceCollisions": [
+      "floatel triumph"
+    ],
+    "secondPass": {
+      "exact": 192,
+      "alias": 21,
+      "auto": 0,
+      "needs_review": 1,
+      "unmatched": 0,
+      "rejected": 0
+    },
+    "secondPassQueuedFromVariants": 0
+  },
+  "queuedTotal": 9,
+  "createdEmployers": 0,
+  "createdWorksites": 0,
+  "secondPassQueuedTotal": 1,
+  "secondPassQueuedFromVariants": 0
+}

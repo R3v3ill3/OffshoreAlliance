@@ -1,0 +1,1512 @@
+{
+  "exported_at": "2026-09-22T06:16:39Z",
+  "source": "production employers + employer_name_aliases",
+  "rows": [
+    {
+      "employer_id": 1,
+      "employer_name": "BW",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 2,
+      "employer_name": "CHEVRON GORGON OPERATIONS",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 3,
+      "employer_name": "CHEVRON WHEATSTONE DOWNSTREAM OPERATIONS",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 4,
+      "employer_name": "CHEVRON WHEATSTONE PLATFORM",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 5,
+      "employer_name": "INPEX - ICHTHYS OPERATIONS",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 6,
+      "employer_name": "JADESTONE ENERGY MONTARA VENTURE",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 7,
+      "employer_name": "JADESTONE ENERGY STAG CPF",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 9,
+      "employer_name": "SANTOS WA ENERGY LIMITED VARANUS ISLAND HUB",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 10,
+      "employer_name": "SHELL PRELUDE",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 11,
+      "employer_name": "UPSTREAM PRODUCTION SOLUTIONS PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 12,
+      "employer_name": "WOODSIDE ENERGY LTD NGUJIMA-YIN AND OHKA FPSO",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 13,
+      "employer_name": "WOODSIDE ENERGY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 14,
+      "employer_name": "WOODSIDE ENERGY MACEDON GAS PLANT",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 15,
+      "employer_name": "TEEKAY SHIPPING (AUSTRALIA) PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 16,
+      "employer_name": "CONTRACT RESOURCES PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 17,
+      "employer_name": "DAMPIER BUNBURY NATURAL GAS PIPELINE (DBNGP)\r\nNATIONAL CONTROL CENTRE",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 18,
+      "employer_name": "DOWNER EDI ENGINEERING ELECTRICAL LNG FACILITY SERVICES",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 19,
+      "employer_name": "ERIS",
+      "trading_name": null,
+      "employer_category": "Labour_Hire",
+      "is_active": true
+    },
+    {
+      "employer_id": 21,
+      "employer_name": "LEGENEERING (AUST.) PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 25,
+      "employer_name": "MIZCO PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 26,
+      "employer_name": "MONADELPHOUS ENGINEERING ASSOCIATES PTY LTD",
+      "trading_name": null,
+      "employer_category": "Major_Contractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 27,
+      "employer_name": "MWOG PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 28,
+      "employer_name": "PROGRAMMED OFFSHORE (AUSTRALIA) PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 29,
+      "employer_name": "ALTRAD",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 33,
+      "employer_name": "UGL RESOURCES (CONTRACTING) PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 34,
+      "employer_name": "WOOD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 35,
+      "employer_name": "VENTIA AUSTRALIA PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 36,
+      "employer_name": "XELERATOR PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 37,
+      "employer_name": "AUSTRALIAN OFFSHORE SOLUTIONS PTY LTD",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 38,
+      "employer_name": "BHAGWAN MARINE LTD",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 39,
+      "employer_name": "DOF MANAGEMENT AUSTRALIA PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 40,
+      "employer_name": "FUGRO AUSTRALIA PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 41,
+      "employer_name": "JETWAVE MARINE SERVICES PTY. LTD.",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 43,
+      "employer_name": "OSM Australia Pty Ltd",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 46,
+      "employer_name": "SIERA MARINE MANAGEMENT PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 47,
+      "employer_name": "SOLSTAD AUSTRALIA PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 48,
+      "employer_name": "TIDEWATER SHIP MANAGEMENT (AUSTRALIA) PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 52,
+      "employer_name": "AURIGA AVIATION HELICOPTER ENGINEERS",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 53,
+      "employer_name": "CHC HELICOPTER (AUSTRALIA) AIRCRAFT ENGINEERS",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 54,
+      "employer_name": "PHI INTERNATIONAL AUSTRALIA ",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 57,
+      "employer_name": "ATLAS PROGRAMMED MARINE (AUSTRALIA) PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 58,
+      "employer_name": "COMPASS GROUP –",
+      "trading_name": null,
+      "employer_category": "Major_Contractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 62,
+      "employer_name": "ENTIER AUSTRALIA PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 64,
+      "employer_name": "SODEXO REMOTE SITE",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 65,
+      "employer_name": "SGS PRELUDE CHEMISTS",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 66,
+      "employer_name": "DURATEC",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 68,
+      "employer_name": "MCDERMOTT AUSTRALIA PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 70,
+      "employer_name": "BAKER HUGHES SERVICES AUSTRALIA PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 71,
+      "employer_name": "DIAMOND",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 72,
+      "employer_name": "ENSCO AUSTRALIA PTY LIMITED",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 73,
+      "employer_name": "NOBLE",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 75,
+      "employer_name": "SEDCO FOREX INTERNATIONAL INC",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 78,
+      "employer_name": "APPLUS+ PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 83,
+      "employer_name": "OCEANEERING AUSTRALIA PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 84,
+      "employer_name": "TOTAL MARINE TECHNOLOGY PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 88,
+      "employer_name": "ISOLOGICS",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 93,
+      "employer_name": "MODEC Management Services",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 97,
+      "employer_name": "TRACE",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 98,
+      "employer_name": "WORKFORCE LOGISTICS PTY LTD",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 688,
+      "employer_name": "Shell",
+      "trading_name": null,
+      "employer_category": "Principal_Employer",
+      "is_active": true
+    },
+    {
+      "employer_id": 689,
+      "employer_name": "Woodside",
+      "trading_name": null,
+      "employer_category": "Principal_Employer",
+      "is_active": true
+    },
+    {
+      "employer_id": 690,
+      "employer_name": "Inpex",
+      "trading_name": null,
+      "employer_category": "Principal_Employer",
+      "is_active": true
+    },
+    {
+      "employer_id": 691,
+      "employer_name": "Chevron",
+      "trading_name": null,
+      "employer_category": "Principal_Employer",
+      "is_active": true
+    },
+    {
+      "employer_id": 692,
+      "employer_name": "Santos",
+      "trading_name": null,
+      "employer_category": "Principal_Employer",
+      "is_active": true
+    },
+    {
+      "employer_id": 693,
+      "employer_name": "Jadestone",
+      "trading_name": null,
+      "employer_category": "Principal_Employer",
+      "is_active": true
+    },
+    {
+      "employer_id": 694,
+      "employer_name": "Vermilion",
+      "trading_name": null,
+      "employer_category": "Principal_Employer",
+      "is_active": true
+    },
+    {
+      "employer_id": 695,
+      "employer_name": "JADESTONE ENERGY ",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 698,
+      "employer_name": "Vertech",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 699,
+      "employer_name": "MMA",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 700,
+      "employer_name": "Bechtel Australia",
+      "trading_name": null,
+      "employer_category": "Major_Contractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 701,
+      "employer_name": "Powertech Pty Ltd",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 702,
+      "employer_name": "Valaris Marine",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 703,
+      "employer_name": "Modec",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 704,
+      "employer_name": "Kaefer Integrated Services Pty Ltd",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 705,
+      "employer_name": "Cyan Renewables",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 706,
+      "employer_name": "AGIG",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 707,
+      "employer_name": "Offshore Services Australasia",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 708,
+      "employer_name": "Weatherford Australia",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 709,
+      "employer_name": "Cleanaway Waste Management",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 710,
+      "employer_name": "Downer EDI Group",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 711,
+      "employer_name": "Parabellum International",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 712,
+      "employer_name": "EnerMech",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 713,
+      "employer_name": "Toll Energy",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 714,
+      "employer_name": "Acciona Construction Australia",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 715,
+      "employer_name": "Qube Ports & Bulk",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 716,
+      "employer_name": "Reach Subsea",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 717,
+      "employer_name": "Solstad Offshore ASA",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 718,
+      "employer_name": "Kent Offshore",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 719,
+      "employer_name": "Mitsui E&P Australia",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 720,
+      "employer_name": "Cameron Services International",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 721,
+      "employer_name": "Helix Robotic Solutions",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 722,
+      "employer_name": "Oceania Engineering Services",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 723,
+      "employer_name": "Auriga Aviation",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 724,
+      "employer_name": "Clough",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 725,
+      "employer_name": "KBSS Engineering",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 726,
+      "employer_name": "Saipem",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 727,
+      "employer_name": "Sitemec Engineering",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 728,
+      "employer_name": "Technip",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 729,
+      "employer_name": "Archer Well Company (Aust) Pl",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 730,
+      "employer_name": "LifeFlight",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 731,
+      "employer_name": "MSS Security",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 732,
+      "employer_name": "Pressure Dynamics",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 733,
+      "employer_name": "SchlumbergerAustralia Pty Ltd",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 734,
+      "employer_name": "Inverse Group",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 735,
+      "employer_name": "JPS Management & Execution",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 736,
+      "employer_name": "Noble Corporation",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 737,
+      "employer_name": "Petrofac",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 738,
+      "employer_name": "Radiation Professionals Australia",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 739,
+      "employer_name": "Safehouse Habitats Australia",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 740,
+      "employer_name": "Score Group",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 741,
+      "employer_name": "Australian Workers' Union WA Branch",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 742,
+      "employer_name": "Cable Restoration Australia",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 743,
+      "employer_name": "IQIP",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 744,
+      "employer_name": "Mechanical Project Services",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 745,
+      "employer_name": "Mermaid Marine",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 746,
+      "employer_name": "NES Fircroft",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 747,
+      "employer_name": "Safety Direct Solutions",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 748,
+      "employer_name": "Steel Diamond",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 749,
+      "employer_name": "Trace JV",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 750,
+      "employer_name": "Veolia Environ Srvs",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 751,
+      "employer_name": "Wirringulla Workforce",
+      "trading_name": null,
+      "employer_category": "Labour_Hire",
+      "is_active": true
+    },
+    {
+      "employer_id": 752,
+      "employer_name": "Acrow",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 753,
+      "employer_name": "Airswift",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 754,
+      "employer_name": "Benthic",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 755,
+      "employer_name": "Broadspectrum Ltd/Transfield",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 756,
+      "employer_name": "Enhanced Drilling",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 757,
+      "employer_name": "Ensign Intn Energy Services",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 758,
+      "employer_name": "Epigroup",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 759,
+      "employer_name": "Everllence",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 760,
+      "employer_name": "Expro Group Aust Pty Ltd",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 761,
+      "employer_name": "Firesafe Group",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 762,
+      "employer_name": "Fortescue Metals Group",
+      "trading_name": null,
+      "employer_category": "Producer",
+      "is_active": true
+    },
+    {
+      "employer_id": 763,
+      "employer_name": "Fuze Group",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 764,
+      "employer_name": "GFS NDT",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 765,
+      "employer_name": "GR Production Services",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 766,
+      "employer_name": "Heat Tech Australia",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 767,
+      "employer_name": "Maersk",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 768,
+      "employer_name": "Maritime Constructions",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 769,
+      "employer_name": "Medical Rescue",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 770,
+      "employer_name": "MEGT Australia",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 771,
+      "employer_name": "Mobilize",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 772,
+      "employer_name": "Nopsema",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 773,
+      "employer_name": "North Kimberley Airport",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 774,
+      "employer_name": "O-Tech Services Pty Ltd",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 775,
+      "employer_name": "Qetra",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 776,
+      "employer_name": "RCSS",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 777,
+      "employer_name": "Royal Flying Doctor Service",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 778,
+      "employer_name": "Saipem Leighton Consortium",
+      "trading_name": null,
+      "employer_category": "Major_Contractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 779,
+      "employer_name": "SLB",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 780,
+      "employer_name": "Sparrows Group",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 781,
+      "employer_name": "Titan Recruitment",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 782,
+      "employer_name": "Toll West",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 783,
+      "employer_name": "Viking Life-Saving Equipment",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 784,
+      "employer_name": "Warrikal Mining",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 785,
+      "employer_name": "Water Corporation WA",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 786,
+      "employer_name": "Zenith Energy",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 787,
+      "employer_name": "TestCo Energy",
+      "trading_name": null,
+      "employer_category": "Producer",
+      "is_active": true
+    },
+    {
+      "employer_id": 788,
+      "employer_name": "Fortis Maintenance Services",
+      "trading_name": null,
+      "employer_category": "Major_Contractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 789,
+      "employer_name": "Pacific Coatings & Insulation",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 790,
+      "employer_name": "Alliance Site Services",
+      "trading_name": null,
+      "employer_category": "Major_Contractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 791,
+      "employer_name": "TestCo 2",
+      "trading_name": null,
+      "employer_category": "Producer",
+      "is_active": true
+    },
+    {
+      "employer_id": 792,
+      "employer_name": "Aegis Offshore Maintenance Pty Ltd",
+      "trading_name": null,
+      "employer_category": "Major_Contractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 793,
+      "employer_name": "NorthStar Marine Coatings",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 794,
+      "employer_name": "Offshore Crew Services Ltd",
+      "trading_name": null,
+      "employer_category": "Major_Contractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 795,
+      "employer_name": "MUA",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 797,
+      "employer_name": "GO OFFSHORE",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 798,
+      "employer_name": "Rigforce Pty Ltd",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 799,
+      "employer_name": "Sea1 Offshore",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 800,
+      "employer_name": "Unknown",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 801,
+      "employer_name": "Jan De Nul",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 813,
+      "employer_name": "Unemployed",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 814,
+      "employer_name": "APA Group",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 815,
+      "employer_name": "ATC Offshore",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 816,
+      "employer_name": "ATC",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 817,
+      "employer_name": "Australian Marine Services",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    },
+    {
+      "employer_id": 819,
+      "employer_name": "Axess Offshore Australia",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 820,
+      "employer_name": "Burgess BLA",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 821,
+      "employer_name": "Caledonia Group",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 822,
+      "employer_name": "Eire Total Access",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 823,
+      "employer_name": "ESI Tech Services",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 825,
+      "employer_name": "Focus Offshore",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 826,
+      "employer_name": "ugl",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 827,
+      "employer_name": "IAS Group",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 828,
+      "employer_name": "Joyce Krane",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 829,
+      "employer_name": "MER Solutions: Port Hedland",
+      "trading_name": null,
+      "employer_category": null,
+      "is_active": true
+    },
+    {
+      "employer_id": 830,
+      "employer_name": "Primero Group",
+      "trading_name": null,
+      "employer_category": "Subcontractor",
+      "is_active": true
+    },
+    {
+      "employer_id": 831,
+      "employer_name": "Siem Offshore",
+      "trading_name": null,
+      "employer_category": "Specialist",
+      "is_active": true
+    }
+  ],
+  "aliases": [
+    {
+      "employer_id": 78,
+      "alias_name": "APPLUS+ PLY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 37,
+      "alias_name": "AOS CONTRACT DREDGING",
+      "source": "merge"
+    },
+    {
+      "employer_id": 37,
+      "alias_name": "AUSTRALIAN OFFSHORE SOLUTIONS (AOS) PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 17,
+      "alias_name": "DBP/APA",
+      "source": "merge"
+    },
+    {
+      "employer_id": 39,
+      "alias_name": "DOF SUBSEA AUSTRALIA PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 33,
+      "alias_name": "IAS GROUP",
+      "source": "merge"
+    },
+    {
+      "employer_id": 33,
+      "alias_name": "UGL OPERATIONS AND",
+      "source": "merge"
+    },
+    {
+      "employer_id": 40,
+      "alias_name": "FUGRO AUSTRALIA MARINE PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 6,
+      "alias_name": "JADESTONE ENERGRY MONTARA VENTURE",
+      "source": "merge"
+    },
+    {
+      "employer_id": 19,
+      "alias_name": "KUIPER AUSTRALIA PTYLTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 19,
+      "alias_name": "KUIPER AUSTRALIA PTYLTD -",
+      "source": "merge"
+    },
+    {
+      "employer_id": 19,
+      "alias_name": "KUIPER ENERGY",
+      "source": "merge"
+    },
+    {
+      "employer_id": 19,
+      "alias_name": "KUIPER ENERGY SOLUTIONS PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 43,
+      "alias_name": "OSM",
+      "source": "merge"
+    },
+    {
+      "employer_id": 19,
+      "alias_name": "ERIS",
+      "source": "merge"
+    },
+    {
+      "employer_id": 21,
+      "alias_name": "LEGENEERING SERVICES PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 68,
+      "alias_name": "MCDERMOTT AUSTRALIA (CREWING SERVICES) PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 26,
+      "alias_name": "M MAINTENANCE SERVICES PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 26,
+      "alias_name": "M&ISS PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 26,
+      "alias_name": "MEA",
+      "source": "merge"
+    },
+    {
+      "employer_id": 26,
+      "alias_name": "MEA PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 26,
+      "alias_name": "MMA",
+      "source": "merge"
+    },
+    {
+      "employer_id": 26,
+      "alias_name": "Monadelphous",
+      "source": "merge"
+    },
+    {
+      "employer_id": 93,
+      "alias_name": "MODEC MANAGEMENT SERVICES PTE",
+      "source": "merge"
+    },
+    {
+      "employer_id": 54,
+      "alias_name": "PHI INTERNATIONAL AUSTRALIA KIMBERLEY ENGINEERING AND RAMP STAFF",
+      "source": "merge"
+    },
+    {
+      "employer_id": 54,
+      "alias_name": "PHI INTERNATIONAL AUSTRALIA PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 29,
+      "alias_name": "RIDGEBAY HOLDINGS KARRATHA",
+      "source": "merge"
+    },
+    {
+      "employer_id": 29,
+      "alias_name": "RIDGEBAY HOLDINGS PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 29,
+      "alias_name": "SPECIALIST PEOPLE",
+      "source": "merge"
+    },
+    {
+      "employer_id": 29,
+      "alias_name": "R.E.C.",
+      "source": "merge"
+    },
+    {
+      "employer_id": 28,
+      "alias_name": "PROGRAMMED MARINE PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 28,
+      "alias_name": "PROGRAMMED OFFSHORE PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 28,
+      "alias_name": "RFM OFFSHORE PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 28,
+      "alias_name": "RFM OS PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 28,
+      "alias_name": "RIGFORCE",
+      "source": "merge"
+    },
+    {
+      "employer_id": 28,
+      "alias_name": "RIGFORCE CONTRACTING PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 29,
+      "alias_name": "SPECIALIST PEOPLE –",
+      "source": "merge"
+    },
+    {
+      "employer_id": 37,
+      "alias_name": "AOS PTY LTD",
+      "source": "merge"
+    },
+    {
+      "employer_id": 58,
+      "alias_name": "COMPASS GROUP - ESS",
+      "source": "merge"
+    }
+  ]
+}

@@ -22,6 +22,7 @@
 // away in organiser mode — proved by `__tests__/nav-reachability.test.ts`.
 
 import { ACTIONS_HUB_PATH } from "@/lib/actions/hub-path";
+import { NAME_REVIEWS_PATH } from "@/lib/name-reviews/path";
 import { MY_CAMPAIGNS_PATH } from "@/lib/workspace/landing";
 import type { WorkspaceModuleId } from "@/lib/workspace/modules";
 import type { ModuleState, WorkspaceMode } from "@/lib/workspace/resolve";
@@ -219,6 +220,16 @@ const DEFS = {
     icon: "mail-open",
     module: "administration",
   },
+  // DA0.3: the queue of import names that matched no employer / worksite.
+  // Admin block only; `user`-role organisers reach it read-only through the
+  // import wizards' link (da0.3.md §7 input 2).
+  name_reviews: {
+    id: "name_reviews",
+    label: "Name Reviews",
+    href: NAME_REVIEWS_PATH,
+    icon: "clipboard-list",
+    module: "administration",
+  },
   email_wrappers: {
     id: "email_wrappers",
     label: "Email Wrappers",
@@ -257,6 +268,7 @@ export const FULL_NAV_ITEMS: readonly NavItemDef[] = [
 /** Today's admin block, in today's order. */
 export const FULL_ADMIN_ITEMS: readonly NavItemDef[] = [
   DEFS.email_imports,
+  DEFS.name_reviews,
   DEFS.email_wrappers,
   DEFS.administration,
 ];

@@ -75,7 +75,7 @@ function everyItem(model: NavModel): NavItem[] {
 }
 
 describe("full mode is byte-identical to the pinned fixture", () => {
-  it("an admin sees today's 12 + 3 rows, in today's order, with today's labels", () => {
+  it("an admin sees today's 12 + 4 rows, in today's order, with today's labels", () => {
     expect([...fullAdmin.primary, ...fullAdmin.admin].map(toFixtureRow)).toEqual(
       FULL_MODE_FIXTURE
     );
@@ -88,19 +88,23 @@ describe("full mode is byte-identical to the pinned fixture", () => {
     expect(fullUser.admin).toEqual([]);
   });
 
-  it("the only differences from the pre-WP1.5 sidebar are row 7's three fields and the added Surveys & Forms and Mobilisation rows", () => {
-    // Surveys & Forms and Mobilisation are additions, not edits: take them
-    // out and the remaining rows must line up with the pre-WP1.2 sidebar.
+  it("the only differences from the pre-WP1.5 sidebar are row 7's three fields and the added Surveys & Forms, Mobilisation and Name Reviews rows", () => {
+    // Surveys & Forms, Mobilisation and (DA0.3) Name Reviews are additions,
+    // not edits: take them out and the remaining rows must line up with the
+    // pre-WP1.2 sidebar.
     const added = FULL_MODE_FIXTURE.filter((row) => !TODAY_SIDEBAR_ROWS.some((t) => t.id === row.id));
-    expect(added.map((row) => row.id)).toEqual(["mobilisation", "surveys_forms"]);
+    expect(added.map((row) => row.id)).toEqual(["mobilisation", "surveys_forms", "name_reviews"]);
     expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "mobilisation")).toBe(
       FULL_MODE_FIXTURE.findIndex((row) => row.id === "upcoming_projects") + 1
     );
     expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "surveys_forms")).toBe(
       FULL_MODE_FIXTURE.findIndex((row) => row.id === "reports") + 1
     );
+    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "name_reviews")).toBe(
+      FULL_MODE_FIXTURE.findIndex((row) => row.id === "email_imports") + 1
+    );
     const withoutAdded = FULL_MODE_FIXTURE.filter(
-      (row) => row.id !== "surveys_forms" && row.id !== "mobilisation"
+      (row) => row.id !== "surveys_forms" && row.id !== "mobilisation" && row.id !== "name_reviews"
     );
     expect(withoutAdded).toHaveLength(TODAY_SIDEBAR_ROWS.length);
 
@@ -312,6 +316,7 @@ describe("allNavHrefs", () => {
         "/help",
         "/mobilisation",
         "/my-campaigns",
+        "/name-reviews",
         "/overview",
         "/reports",
         "/sms",

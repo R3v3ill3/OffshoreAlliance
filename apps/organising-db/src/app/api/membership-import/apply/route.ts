@@ -10,6 +10,7 @@ import {
   loadCampaignProtectedWorkerIds,
   stripCampaignProtectedFields,
 } from "@/lib/workers/campaign-protected-fields";
+import { accumulateImportLog, rawNameColumns } from "@/lib/import/import-log";
 import type { ParsedMembershipRow } from "../parse/route";
 import type { MembershipImportType } from "@/lib/import/membership-import-types";
 
@@ -63,6 +64,13 @@ interface ApplyRequest {
   /** 1-based batch position when the wizard splits a large file. */
   batchIndex?: number;
   batchCount?: number;
+  /**
+   * DA0.3: the file's `import_logs` row, created by POST /api/import/resolve-names
+   * (persist: true) before the first batch; every batch accumulates into it
+   * (one row per file, no "(batch i/n)" suffix). Absent: the route logs a
+   * row of its own, as before.
+   */
+  importId?: number | null;
 }
 
 export interface MembershipImportApplyResponse {
@@ -73,6 +81,8 @@ export interface MembershipImportApplyResponse {
   /** Updated rows where employer / worksite / job title were kept from the campaign. */
   protectedUpdates: number;
   errors: string[];
+  /** Non-fatal notes: the rows were written but something around them (e.g. the import log) was not. */
+  warnings?: string[];
 }
 
 export async function POST(request: NextRequest) {
@@ -110,6 +120,7 @@ export async function POST(request: NextRequest) {
     fileName,
     batchIndex,
     batchCount,
+    importId = null,
   } = body;
   if (!rows || !Array.isArray(rows)) {
     return NextResponse.json({ success: false, error: "rows array is required" }, { status: 400 });
@@ -236,6 +247,7 @@ export async function POST(request: NextRequest) {
   let skipped = 0;
   let protectedUpdates = 0;
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   // Pre-load resigned member type id (for resignations import)
   const { data: membershipTypes } = await supabase
@@ -352,7 +364,15 @@ export async function POST(request: NextRequest) {
         }
 
         const stripped = stripCampaignProtectedFields(patch, isProtected);
-        patch = stripped.patch;
+        // The raw strings are provenance, not a protected field: written
+        // alongside — not inside — the campaign-protected strip (DA0.3).
+        patch = {
+          ...stripped.patch,
+          ...rawNameColumns(
+            { employerRaw: row.employerRaw, worksiteRaw: row.worksiteRaw, importId },
+            "update"
+          ),
+        };
 
         const { error } = await supabase
           .from("workers")
@@ -402,6 +422,10 @@ export async function POST(request: NextRequest) {
               row.rosterPanelRaw,
               row.resolvedRosterPanelId
             ) ?? null,
+          ...rawNameColumns(
+            { employerRaw: row.employerRaw, worksiteRaw: row.worksiteRaw, importId },
+            "create"
+          ),
           updated_at: new Date().toISOString(),
         };
 
@@ -456,23 +480,35 @@ export async function POST(request: NextRequest) {
         ])}`
       : null;
 
-  const batchSuffix =
-    batchIndex != null && batchCount != null && batchCount > 1
-      ? ` (batch ${batchIndex}/${batchCount})`
-      : "";
+  const logErrors =
+    errors.length > 0 || protectedNote
+      ? [...(protectedNote ? [protectedNote] : []), ...errors].join("\n")
+      : null;
 
-  // Log to import_logs
-  await supabase.from("import_logs").insert({
-    file_name: `${fileName?.trim() || `membership_${importType}`}${batchSuffix}`,
-    import_type: `membership_${importType}`,
-    records_created: created,
-    records_updated: updated,
-    errors:
-      errors.length > 0 || protectedNote
-        ? [...(protectedNote ? [protectedNote] : []), ...errors].join("\n")
-        : null,
-    imported_by: user.id,
-  });
+  if (importId != null) {
+    // One import_logs row per file (DA0.3): accumulate this batch into the
+    // row the resolve-names call created.
+    const logError = await accumulateImportLog(supabase, importId, {
+      created,
+      updated,
+      errorsText: logErrors,
+    });
+    // The rows landed; a log that did not accumulate is a warning, not a failure.
+    if (logError) warnings.push(`${logError} — the rows of this batch were written; Import History may undercount.`);
+  } else {
+    const batchSuffix =
+      batchIndex != null && batchCount != null && batchCount > 1
+        ? ` (batch ${batchIndex}/${batchCount})`
+        : "";
+    await supabase.from("import_logs").insert({
+      file_name: `${fileName?.trim() || `membership_${importType}`}${batchSuffix}`,
+      import_type: `membership_${importType}`,
+      records_created: created,
+      records_updated: updated,
+      errors: logErrors,
+      imported_by: user.id,
+    });
+  }
 
   return NextResponse.json({
     success: true,
@@ -481,5 +517,6 @@ export async function POST(request: NextRequest) {
     skipped,
     protectedUpdates,
     errors,
+    ...(warnings.length > 0 ? { warnings } : {}),
   } satisfies MembershipImportApplyResponse);
 }

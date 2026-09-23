@@ -10,10 +10,14 @@ import {
   API_FETCH_TIMEOUT_UPLOAD_MS,
   API_FETCH_TIMEOUT_LLM_MS,
 } from "@/lib/api/fetch-api";
-import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
-import type { WorksiteCandidate } from "@/lib/utils/worksite-fuzzy";
-import { matchEmployerCandidates } from "@/lib/utils/employer-match";
-import type { EmployerCandidate } from "@/lib/utils/employer-match";
+import {
+  distinctNameInputs,
+  outcomeForRaw,
+  outcomesByFold,
+  requestNameResolution,
+} from "@/lib/import/resolve-names-client";
+import type { ResolutionOutcome } from "@/lib/import/resolve-names-types";
+import { NameResolutionTable, NameReviewsLink } from "@/components/import/name-resolution-table";
 import type { ParsedWorkerRow, ParsedWorkerGroup } from "@/app/api/worker-import/parse/route";
 import { parseMembershipStatus } from "@/lib/workers/worker-import-membership";
 import { chunkArray, fetchInChunks } from "@/lib/supabase/chunk-in-filter";
@@ -23,8 +27,7 @@ import type {
   WorkerImportRow,
   WorkerImportRowResult,
 } from "@/app/api/worker-import/apply/route";
-import type { CampaignOuType, Worksite, WorksiteType } from "@/types/database";
-import { WORKSITE_TYPES } from "@/types/database";
+import type { CampaignOuType } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -113,25 +116,12 @@ interface ColumnMapping {
   field: MappableField;
 }
 
-interface WorksiteResolution {
-  groupName: string;
-  worksiteId: number | null;
-  worksiteName: string | null;
-  candidates: WorksiteCandidate[];
-  confirmed: boolean;
-  createdDuringImport?: boolean;
-}
+/** Read-only outcome of the single resolution path per distinct worksite string (DA0.3). */
+type WorksiteResolution = ResolutionOutcome;
 
-interface EmployerResolution {
-  /** Raw employer value from the mapped employer column */
-  rawValue: string;
-  occurrences: number;
-  employerId: number | null;
-  employerName: string | null;
-  candidates: EmployerCandidate[];
-  confirmed: boolean;
-  createdDuringImport?: boolean;
-}
+/** Read-only outcome of the single resolution path per distinct employer string (DA0.3). */
+type EmployerResolution = ResolutionOutcome;
+
 
 interface OuResolution {
   rawValue: string;
@@ -161,6 +151,9 @@ interface MemberRoleType {
 
 interface ReviewRow extends ParsedWorkerRow {
   groupName: string;
+  /** DA0.3: the employer / worksite strings as they appear in the file (provenance). */
+  employerNameRaw: string | null;
+  worksiteNameRaw: string | null;
   resolvedWorksiteId: number | null;
   resolvedWorksiteName: string | null;
   /** Per-row employer resolved from a mapped employer column (multi-employer imports) */
@@ -240,13 +233,6 @@ interface RatingLevel {
   label: string;
   short_label: string;
   code: string;
-}
-
-interface EmployerWorksiteRole {
-  employer_id: number;
-  worksite_id: number;
-  role_type: string;
-  is_current: boolean;
 }
 
 interface AssessmentValueResolution {
@@ -470,13 +456,6 @@ function normalisePhoneClient(raw: string | null | undefined): string | null {
   return raw.trim();
 }
 
-function confidenceBadgeVariant(
-  confidence: "high" | "medium" | "low"
-): "default" | "secondary" | "destructive" | "outline" {
-  if (confidence === "high") return "default";
-  if (confidence === "medium") return "secondary";
-  return "outline";
-}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -520,13 +499,6 @@ export function WorkerImportWizard({
   const [worksiteResolutions, setWorksiteResolutions] = useState<WorksiteResolution[]>([]);
   const [valueResolutions, setValueResolutions] = useState<ValueResolution[]>([]);
   const [assessmentResolutions, setAssessmentResolutions] = useState<AssessmentColumnResolution[]>([]);
-  const [worksiteSearch, setWorksiteSearch] = useState<Record<string, string>>({}); 
-  const [createWorksiteFor, setCreateWorksiteFor] = useState<string | null>(null);
-  const [newWorksiteName, setNewWorksiteName] = useState("");
-  const [newWorksiteType, setNewWorksiteType] = useState<WorksiteType | "">("");
-  const [newWorksiteRoleType, setNewWorksiteRoleType] = useState("Other");
-  const [isCreatingWorksite, setIsCreatingWorksite] = useState(false);
-  const [createWorksiteError, setCreateWorksiteError] = useState<string | null>(null);
   const [ouResolutions, setOuResolutions] = useState<OuResolution[]>([]);
   const [ouSearch, setOuSearch] = useState<Record<string, string>>({});
   const [createOuFor, setCreateOuFor] = useState<string | null>(null);
@@ -540,14 +512,10 @@ export function WorkerImportWizard({
   const [employerSearch, setEmployerSearch] = useState("");
   // Multi-employer matching (header format with a mapped employer column)
   const [employerResolutions, setEmployerResolutions] = useState<EmployerResolution[]>([]);
-  const [employerMatchSearch, setEmployerMatchSearch] = useState<Record<string, string>>({});
-  const [createEmployerFor, setCreateEmployerFor] = useState<string | null>(null);
-  const [newEmployerName, setNewEmployerName] = useState("");
-  const [isCreatingEmployer, setIsCreatingEmployer] = useState(false);
-  const [createEmployerError, setCreateEmployerError] = useState<string | null>(null);
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [dedupMatches, setDedupMatches] = useState<DedupMatch[]>([]);
   const [dedupError, setDedupError] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
   const [protectCampaignWorkers, setProtectCampaignWorkers] = useState(true);
   const [applyProgress, setApplyProgress] = useState<{
     done: number;
@@ -563,37 +531,13 @@ export function WorkerImportWizard({
     skipped: number;
     protectedUpdates: number;
     errors: string[];
+    /** Employer / worksite names queued for review on the Name Reviews page. */
+    queued: number;
     rowResults: WorkerImportRowResult[];
   } | null>(null);
 
   // ── Data queries ──────────────────────────────────────────────────────────
   const supabase = createClient();
-
-  const { data: worksites = [], refetch: refetchWorksites } = useQuery<Worksite[]>({
-    queryKey: ["worksites-all"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("worksites")
-        .select("*")
-        .order("worksite_name");
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: open,
-  });
-
-  const { data: employerWorksiteRoles = [] } = useQuery<EmployerWorksiteRole[]>({
-    queryKey: ["employer-worksite-roles-current"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("employer_worksite_roles")
-        .select("employer_id, worksite_id, role_type, is_current")
-        .eq("is_current", true);
-      if (error) throw error;
-      return (data ?? []) as EmployerWorksiteRole[];
-    },
-    enabled: open,
-  });
 
   const { data: unionMembershipTypes = [] } = useQuery<UnionMembershipTypeRow[]>({
     queryKey: ["union-membership-types"],
@@ -780,26 +724,6 @@ export function WorkerImportWizard({
     return hasEmployerColumn() ? "employer_matching" : "employer_selection";
   }
 
-  function buildEmployerResolutions(): EmployerResolution[] {
-    const employerCol = columnMappings.find((m) => m.field === "employer")?.header ?? "";
-    if (!employerCol) return [];
-    const unique = [
-      ...new Set(headerRows.map((r) => String(r[employerCol] ?? "").trim()).filter(Boolean)),
-    ];
-    return unique.map((val) => {
-      const candidates = matchEmployerCandidates(val, employers);
-      const top = candidates[0];
-      const autoAccept = top?.confidence === "high";
-      return {
-        rawValue: val,
-        occurrences: headerRows.filter((r) => String(r[employerCol] ?? "").trim() === val).length,
-        employerId: autoAccept ? top.employer.employer_id : null,
-        employerName: autoAccept ? top.employer.employer_name : null,
-        candidates,
-        confirmed: autoAccept,
-      };
-    });
-  }
 
   function scoreOu(raw: string, ou: { name: string }): number {
     const tokenize = (s: string) =>
@@ -836,42 +760,6 @@ export function WorkerImportWizard({
     });
   }
 
-  function worksitePrincipalEmployerId(worksite: Worksite): number | null {
-    return (worksite as Worksite & { principal_employer_id?: number | null }).principal_employer_id ?? null;
-  }
-
-  function worksiteEmployerContext(worksite: Worksite): "linked" | "principal" | "other" {
-    if (!selectedEmployerId) return "other";
-    if (
-      employerWorksiteRoles.some(
-        (role) =>
-          role.worksite_id === worksite.worksite_id &&
-          role.employer_id === selectedEmployerId &&
-          role.is_current
-      )
-    ) {
-      return "linked";
-    }
-    if (worksitePrincipalEmployerId(worksite) === selectedEmployerId) return "principal";
-    return "other";
-  }
-
-  function worksiteContextLabel(worksite: Worksite) {
-    const context = worksiteEmployerContext(worksite);
-    if (context === "linked") return "Employer linked";
-    if (context === "principal") return "Principal employer";
-    return selectedEmployerId ? "Other employer" : worksite.worksite_type;
-  }
-
-  function sortWorksiteCandidatesForEmployer(candidates: WorksiteCandidate[]) {
-    const order = { linked: 0, principal: 1, other: 2 };
-    return [...candidates].sort((a, b) => {
-      const contextDelta =
-        order[worksiteEmployerContext(a.worksite)] - order[worksiteEmployerContext(b.worksite)];
-      if (contextDelta !== 0) return contextDelta;
-      return b.score - a.score;
-    });
-  }
 
   function assessmentValueForRaw(raw: string, isBinary: boolean): AssessmentValueResolution {
     const lower = raw.trim().toLowerCase();
@@ -1034,41 +922,48 @@ export function WorkerImportWizard({
     );
   }
 
-  function buildGroupWorksiteResolutions(parsedGroups: ParsedWorkerGroup[]): WorksiteResolution[] {
-    return parsedGroups.map((g) => {
-      const candidates = matchWorksiteCandidates(g.groupName, worksites);
-      const top = candidates[0];
-      const autoAccept = top?.confidence === "high";
-      return {
-        groupName: g.groupName,
-        worksiteId: autoAccept ? top.worksite.worksite_id : null,
-        worksiteName: autoAccept ? top.worksite.worksite_name : null,
-        candidates,
-        confirmed: autoAccept,
-      };
-    });
+  // ─── Name resolution (DA0.3: the single path, read-only in the wizard) ──────
+  // Dry run over the distinct employer / worksite strings of the file:
+  // nothing is written, the outcomes are shown on the Employers and Worksites
+  // steps, decisions are made on the Name Reviews page.
+  async function resolveNamesForPreview(
+    employerStrings: string[],
+    worksiteStrings: string[],
+    forFileName: string
+  ): Promise<void> {
+    setResolveError(null);
+    if (employerStrings.length === 0 && worksiteStrings.length === 0) {
+      setEmployerResolutions([]);
+      setWorksiteResolutions([]);
+      return;
+    }
+    try {
+      const employerNames = distinctNameInputs(
+        employerStrings.map((employer) => ({ employer, worksite: null }))
+      ).employerNames;
+      const worksiteNames = distinctNameInputs(
+        worksiteStrings.map((worksite) => ({ employer: null, worksite }))
+      ).worksiteNames;
+      const resolved = await requestNameResolution({
+        importType: "workers_wizard",
+        fileName: forFileName || "worker import",
+        persist: false,
+        employerNames,
+        worksiteNames,
+      });
+      setEmployerResolutions(resolved.employers);
+      setWorksiteResolutions(resolved.worksites);
+    } catch (error) {
+      setEmployerResolutions([]);
+      setWorksiteResolutions([]);
+      setResolveError(
+        `Could not resolve employer and worksite names: ${
+          error instanceof Error ? error.message : String(error)
+        }. Go back and try again.`
+      );
+    }
   }
 
-  function buildHeaderWorksiteResolutions(
-    rawRows: Record<string, string>[],
-    worksiteHeader: string
-  ): WorksiteResolution[] {
-    const unique = [
-      ...new Set(rawRows.map((r) => String(r[worksiteHeader] ?? "").trim()).filter(Boolean)),
-    ];
-    return unique.map((val) => {
-      const candidates = matchWorksiteCandidates(val, worksites);
-      const top = candidates[0];
-      const autoAccept = top?.confidence === "high";
-      return {
-        groupName: val,
-        worksiteId: autoAccept ? top.worksite.worksite_id : null,
-        worksiteName: autoAccept ? top.worksite.worksite_name : null,
-        candidates,
-        confirmed: autoAccept,
-      };
-    });
-  }
 
   // ─── State reset ──────────────────────────────────────────────────────────
 
@@ -1087,8 +982,6 @@ export function WorkerImportWizard({
     setWorksiteResolutions([]);
     setValueResolutions([]);
     setAssessmentResolutions([]);
-    setWorksiteSearch({});
-    setNewWorksiteRoleType("Other");
     setOuResolutions([]);
     setOuSearch({});
     setCreateOuFor(null);
@@ -1102,14 +995,10 @@ export function WorkerImportWizard({
     setSelectedEmployerName(null);
     setEmployerSearch("");
     setEmployerResolutions([]);
-    setEmployerMatchSearch({});
     setDedupError(null);
+    setResolveError(null);
     setProtectCampaignWorkers(true);
     setApplyProgress(null);
-    setCreateEmployerFor(null);
-    setNewEmployerName("");
-    setIsCreatingEmployer(false);
-    setCreateEmployerError(null);
     setReviewRows([]);
     setDedupMatches([]);
     setResult(null);
@@ -1163,7 +1052,7 @@ export function WorkerImportWizard({
         } else {
           setFileFormat("group");
           setGroups(json.groups);
-          setWorksiteResolutions(buildGroupWorksiteResolutions(json.groups));
+          await resolveNamesForPreview([], (json.groups as ParsedWorkerGroup[]).map((g) => g.groupName), json.fileName);
           setStep("employer_selection");
         }
       } catch (e) {
@@ -1172,8 +1061,7 @@ export function WorkerImportWizard({
         setIsLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [worksites]
+    [preferredFormat]
   );
 
   const handleDrop = useCallback(
@@ -1248,13 +1136,20 @@ export function WorkerImportWizard({
     return resolutions;
   }
 
-  function proceedFromColumnMapping() {
-    const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header;
-    if (worksiteCol) {
-      setWorksiteResolutions(buildHeaderWorksiteResolutions(headerRows, worksiteCol));
-    } else {
-      setWorksiteResolutions([]);
+  async function proceedFromColumnMapping() {
+    const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header ?? "";
+    const employerCol = columnMappings.find((m) => m.field === "employer")?.header ?? "";
+    setIsLoading(true);
+    try {
+      await resolveNamesForPreview(
+        employerCol ? headerRows.map((r) => String(r[employerCol] ?? "").trim()) : [],
+        worksiteCol ? headerRows.map((r) => String(r[worksiteCol] ?? "").trim()) : [],
+        fileName
+      );
+    } finally {
+      setIsLoading(false);
     }
+
 
     // Eagerly build OU resolutions so the step is ready when reached
     setOuResolutions(buildOuResolutions());
@@ -1263,10 +1158,6 @@ export function WorkerImportWizard({
     // Eagerly build occupation resolutions so the step is ready when reached
     setOccupationResolutions(buildOccupationResolutions());
     setOccupationSearch({});
-
-    // Eagerly build employer resolutions for the multi-employer matching step
-    setEmployerResolutions(buildEmployerResolutions());
-    setEmployerMatchSearch({});
 
     const vr = buildValueResolutions();
     setValueResolutions(vr);
@@ -1291,38 +1182,9 @@ export function WorkerImportWizard({
   }
 
   function proceedFromEmployerSelection() {
+    // Worksites were resolved by name server-side when the file was parsed;
+    // no cross-employer re-ranking (DA0.3 §2.1 row 6).
     if (worksiteResolutions.length > 0) {
-      setWorksiteResolutions((prev) =>
-        prev.map((resolution) => {
-          const candidates = sortWorksiteCandidatesForEmployer(
-            matchWorksiteCandidates(resolution.groupName, worksites, 8)
-          );
-          const currentWorksite = worksites.find(
-            (worksite) => worksite.worksite_id === resolution.worksiteId
-          );
-          const currentIsCrossEmployer =
-            currentWorksite != null && worksiteEmployerContext(currentWorksite) === "other";
-          const top = candidates[0];
-          const shouldAutoAccept =
-            !resolution.confirmed &&
-            top?.confidence === "high" &&
-            worksiteEmployerContext(top.worksite) !== "other";
-          return {
-            ...resolution,
-            candidates,
-            ...(currentIsCrossEmployer
-              ? { worksiteId: null, worksiteName: null, confirmed: false }
-              : {}),
-            ...(shouldAutoAccept
-              ? {
-                  worksiteId: top.worksite.worksite_id,
-                  worksiteName: top.worksite.worksite_name,
-                  confirmed: true,
-                }
-              : {}),
-          };
-        })
-      );
       setStep("worksite_matching");
     } else if (hasOuColumn() && numericCampaignId != null && ouResolutions.length > 0) {
       setStep("ou_matching");
@@ -1333,9 +1195,8 @@ export function WorkerImportWizard({
     }
   }
 
-  // Multi-employer path: worksite matching here is independent of any single
-  // employer, so we skip the employer-context re-sorting that
-  // proceedFromEmployerSelection applies.
+
+  // Multi-employer path (header format with a mapped employer column).
   function proceedFromEmployerMatching() {
     if (worksiteResolutions.length > 0) {
       setStep("worksite_matching");
@@ -1370,105 +1231,6 @@ export function WorkerImportWizard({
     proceedToRowReview();
   }
 
-  function resolveWorksite(groupName: string, worksite: Worksite | null) {
-    setWorksiteResolutions((prev) =>
-      prev.map((r) =>
-        r.groupName === groupName
-          ? {
-              ...r,
-              worksiteId: worksite?.worksite_id ?? null,
-              worksiteName: worksite?.worksite_name ?? null,
-              confirmed: true,
-            }
-          : r
-      )
-    );
-  }
-
-  async function handleCreateWorksite(groupName: string) {
-    if (!newWorksiteName.trim() || !newWorksiteType) return;
-    setIsCreatingWorksite(true);
-    setCreateWorksiteError(null);
-    try {
-      const response = await fetchApi("/api/worker-import/worksites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          worksiteName: newWorksiteName.trim(),
-          worksiteType: newWorksiteType,
-          employerId: selectedEmployerId,
-          employerRoleType: newWorksiteRoleType,
-        }),
-      });
-      const json = await response.json();
-      if (!response.ok || !json.success) {
-        throw new Error(json.error ?? "Failed to create worksite");
-      }
-      resolveWorksite(groupName, json.worksite as Worksite);
-      await refetchWorksites();
-      await queryClient.invalidateQueries({ queryKey: ["employer-worksite-roles-current"] });
-      setCreateWorksiteFor(null);
-      setNewWorksiteName("");
-      setNewWorksiteType("");
-      setNewWorksiteRoleType("Other");
-    } catch (err) {
-      setCreateWorksiteError(
-        err instanceof Error ? err.message : "Failed to create worksite"
-      );
-    } finally {
-      setIsCreatingWorksite(false);
-    }
-  }
-
-  function resolveEmployer(
-    rawValue: string,
-    employer: { employer_id: number; employer_name: string } | null
-  ) {
-    setEmployerResolutions((prev) =>
-      prev.map((r) =>
-        r.rawValue === rawValue
-          ? {
-              ...r,
-              employerId: employer?.employer_id ?? null,
-              employerName: employer?.employer_name ?? null,
-              confirmed: true,
-            }
-          : r
-      )
-    );
-  }
-
-  async function handleCreateEmployer(rawValue: string) {
-    if (!newEmployerName.trim()) return;
-    setIsCreatingEmployer(true);
-    setCreateEmployerError(null);
-    try {
-      const response = await fetchApi("/api/worker-import/employers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employerName: newEmployerName.trim() }),
-      });
-      const json = await response.json();
-      if (!response.ok || !json.success) {
-        throw new Error(json.error ?? "Failed to create employer");
-      }
-      resolveEmployer(rawValue, json.employer as { employer_id: number; employer_name: string });
-      setEmployerResolutions((prev) =>
-        prev.map((r) =>
-          r.rawValue === rawValue ? { ...r, createdDuringImport: true } : r
-        )
-      );
-      await queryClient.invalidateQueries({ queryKey: ["employers-active"] });
-      setCreateEmployerFor(null);
-      setNewEmployerName("");
-    } catch (err) {
-      setCreateEmployerError(
-        err instanceof Error ? err.message : "Failed to create employer"
-      );
-    } finally {
-      setIsCreatingEmployer(false);
-    }
-  }
 
   function resolveOu(rawValue: string, ou: { ou_id: number; name: string; ou_type: string } | null) {
     setOuResolutions((prev) =>
@@ -1521,8 +1283,8 @@ export function WorkerImportWizard({
   }
 
   function proceedToRowReview() {
-    const resolutionMap = new Map(worksiteResolutions.map((r) => [r.groupName, r]));
-    const employerResMap = new Map(employerResolutions.map((r) => [r.rawValue, r]));
+    const resolutionMap = outcomesByFold(worksiteResolutions);
+    const employerResMap = outcomesByFold(employerResolutions);
     const ouResMap = new Map(ouResolutions.map((r) => [r.rawValue, r]));
     const occResMap = new Map(occupationResolutions.map((r) => [r.rawValue, r]));
     const assessmentCols = assessmentResolutions.map((assessment) => assessment.columnHeader);
@@ -1564,9 +1326,9 @@ export function WorkerImportWizard({
           const rawWorksiteVal = worksiteCol
             ? String(row[worksiteCol] ?? "").trim()
             : "";
-          const resolution = resolutionMap.get(rawWorksiteVal);
+          const resolution = outcomeForRaw(resolutionMap, rawWorksiteVal);
           const rawEmployerVal = employerCol ? String(row[employerCol] ?? "").trim() : "";
-          const employerRes = rawEmployerVal ? employerResMap.get(rawEmployerVal) : undefined;
+          const employerRes = outcomeForRaw(employerResMap, rawEmployerVal);
           const rawOuVal = ouCol ? String(row[ouCol] ?? "").trim() : "";
           const ouRes = ouResMap.get(rawOuVal);
 
@@ -1683,10 +1445,12 @@ export function WorkerImportWizard({
             parseWarnings,
             nonOaUnionBadgeInitials,
             groupName: rawWorksiteVal,
-            resolvedWorksiteId: resolution?.worksiteId ?? null,
-            resolvedWorksiteName: resolution?.worksiteName ?? null,
-            resolvedEmployerId: employerRes?.confirmed ? (employerRes.employerId ?? null) : null,
-            resolvedEmployerName: employerRes?.confirmed ? (employerRes.employerName ?? null) : null,
+            employerNameRaw: rawEmployerVal || null,
+            worksiteNameRaw: rawWorksiteVal || null,
+            resolvedWorksiteId: resolution?.resolvedId ?? null,
+            resolvedWorksiteName: resolution?.resolvedName ?? null,
+            resolvedEmployerId: employerRes?.resolvedId ?? null,
+            resolvedEmployerName: employerRes?.resolvedName ?? null,
             resolvedOuId: ouRes?.confirmed ? (ouRes.ouId ?? null) : null,
             resolvedOuName: ouRes?.confirmed ? (ouRes.ouName ?? null) : null,
             rawOccupation,
@@ -1703,15 +1467,17 @@ export function WorkerImportWizard({
       setReviewRows(rows);
     } else {
       const rows: ReviewRow[] = groups.flatMap((g) => {
-        const resolution = resolutionMap.get(g.groupName);
+        const resolution = outcomeForRaw(resolutionMap, g.groupName);
         return g.rows.map((row) => ({
           ...row,
           notes: null,
           joinDate: null,
           rejoinDate: null,
           groupName: g.groupName,
-          resolvedWorksiteId: resolution?.worksiteId ?? null,
-          resolvedWorksiteName: resolution?.worksiteName ?? null,
+          employerNameRaw: null,
+          worksiteNameRaw: g.groupName,
+          resolvedWorksiteId: resolution?.resolvedId ?? null,
+          resolvedWorksiteName: resolution?.resolvedName ?? null,
           resolvedEmployerId: null,
           resolvedEmployerName: null,
           resolvedOuId: null,
@@ -1880,6 +1646,50 @@ export function WorkerImportWizard({
     setIsLoading(true);
     const dedupMap = new Map(dedupMatches.map((m) => [m.rowIndex, m]));
 
+    // DA0.3: the file's employer and worksite strings go through the single
+    // resolution path once, for the rows that will be written. This creates
+    // the import_logs row, writes the auto aliases and the queue rows; the
+    // FKs come from the outcomes (null when queued or rejected) and the raw
+    // strings travel with each row. Nothing is created here.
+    let importId: number | null = null;
+    let queuedNames = 0;
+    let empMap = new Map<string, ResolutionOutcome>();
+    let wsMap = new Map<string, ResolutionOutcome>();
+    try {
+      const written = reviewRows.filter((row) => dedupMap.get(row.rowIndex)?.action !== "skip");
+      const inputs = distinctNameInputs(
+        written.map((row) => ({ employer: row.employerNameRaw, worksite: row.worksiteNameRaw }))
+      );
+      const resolved = await requestNameResolution({
+        importType: "workers_wizard",
+        fileName: fileName || "worker import",
+        persist: true,
+        employerNames: inputs.employerNames,
+        worksiteNames: inputs.worksiteNames,
+      });
+      importId = resolved.importId;
+      queuedNames = resolved.queued;
+      empMap = outcomesByFold(resolved.employers);
+      wsMap = outcomesByFold(resolved.worksites);
+    } catch (error) {
+      setResult({
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        protectedUpdates: 0,
+        queued: 0,
+        errors: [
+          `Import not started — employer and worksite names could not be resolved (no worker rows were written): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        ],
+        rowResults: [],
+      });
+      setStep("done");
+      setIsLoading(false);
+      return;
+    }
+
     const rows: WorkerImportRow[] = reviewRows.map((row) => {
       const dedup = dedupMap.get(row.rowIndex);
       let action: WorkerImportRow["action"] = "create";
@@ -1912,10 +1722,12 @@ export function WorkerImportWizard({
         resignationDate: row.resignationDate,
         joinDate: row.overrideJoinDate ?? row.joinDate ?? null,
         rejoinDate: row.overrideRejoinDate ?? row.rejoinDate ?? null,
-        worksiteId: row.resolvedWorksiteId,
-        // Per-row employer (multi-employer imports) takes precedence; otherwise
-        // fall back to the single employer chosen for the whole import.
-        employerId: row.resolvedEmployerId ?? selectedEmployerId,
+        worksiteId: outcomeForRaw(wsMap, row.worksiteNameRaw)?.resolvedId ?? null,
+        // Per-row employer from the mapped employer column (resolved server-side)
+        // takes precedence; otherwise the single employer chosen for the import.
+        employerId: outcomeForRaw(empMap, row.employerNameRaw)?.resolvedId ?? selectedEmployerId,
+        employerNameRaw: row.employerNameRaw,
+        worksiteNameRaw: row.worksiteNameRaw,
         rawMembershipStatus: row.rawMembershipStatus,
         notes: row.overrideNotes ?? row.notes ?? null,
         canonicalOccupationId: row.resolvedOccupationId ?? null,
@@ -1962,11 +1774,12 @@ export function WorkerImportWizard({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              fileName: batches.length > 1 ? `${fileName} (batch ${i + 1}/${batches.length})` : fileName,
+              fileName,
               campaignId: numericCampaignId,
               assessmentColumns,
               rows: batch,
               protectCampaignWorkers,
+              importId,
             }),
             timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
           });
@@ -1976,6 +1789,7 @@ export function WorkerImportWizard({
           totals.skipped += json.skipped ?? 0;
           totals.protectedUpdates += json.protectedUpdates ?? 0;
           totals.errors.push(...(json.errors ?? (json.error ? [String(json.error)] : [])));
+          totals.errors.push(...((json.warnings ?? []) as string[]).map((w) => `Warning (rows were written): ${w}`));
           totals.rowResults.push(...(json.rowResults ?? []));
           if (!res.ok && !json.rowResults) {
             totals.errors.push(`Batch ${i + 1}/${batches.length} failed (HTTP ${res.status}); stopped.`);
@@ -1999,7 +1813,7 @@ export function WorkerImportWizard({
           rowsTotal: rows.length,
         });
       }
-      setResult(totals);
+      setResult({ ...totals, queued: queuedNames });
       setStep("done");
     } finally {
       setApplyProgress(null);
@@ -2771,232 +2585,16 @@ export function WorkerImportWizard({
   }
 
   function renderEmployerMatching() {
-    const allConfirmed = employerResolutions.every((r) => r.confirmed);
-    const employerCol = columnMappings.find((m) => m.field === "employer")?.header ?? "";
     const hasWorksites = columnMappings.some((m) => m.field === "worksite");
-
     return (
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          {employerResolutions.length} unique employer
-          {employerResolutions.length !== 1 ? "s" : ""} detected. Match each to an
-          existing employer, create a new one, or leave unassigned.
-        </p>
-
-        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-          {employerResolutions.map((resolution) => {
-            const workerCount = employerCol
-              ? headerRows.filter(
-                  (r) => String(r[employerCol] ?? "").trim() === resolution.rawValue
-                ).length
-              : 0;
-
-            const searchTerm = employerMatchSearch[resolution.rawValue] ?? "";
-            const filteredEmployers = searchTerm
-              ? employers.filter(
-                  (e) =>
-                    e.employer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    (e.trading_name ?? "").toLowerCase().includes(searchTerm.toLowerCase())
-                )
-              : [];
-
-            return (
-              <div
-                key={resolution.rawValue}
-                className="border rounded-lg p-4 space-y-3"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-medium text-sm">{resolution.rawValue}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {workerCount} worker{workerCount !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  {resolution.confirmed ? (
-                    <Badge variant="default" className="gap-1">
-                      <CheckCircle2 className="h-3 w-3" />
-                      {resolution.employerName ?? "No Employer"}
-                      {resolution.createdDuringImport ? " (new)" : ""}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">Needs Review</Badge>
-                  )}
-                </div>
-
-                {resolution.candidates.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      Suggested matches — click to select:
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {resolution.candidates.map((c) => {
-                        const isSelected =
-                          resolution.confirmed &&
-                          resolution.employerId === c.employer.employer_id;
-                        return (
-                          <Button
-                            key={c.employer.employer_id}
-                            variant={isSelected ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => resolveEmployer(resolution.rawValue, c.employer)}
-                            className="h-8 text-xs gap-1.5"
-                          >
-                            {isSelected && (
-                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <Badge
-                              variant={
-                                isSelected
-                                  ? "secondary"
-                                  : confidenceBadgeVariant(c.confidence)
-                              }
-                              className="text-[10px] px-1 py-0 h-4"
-                            >
-                              {c.confidence}
-                            </Badge>
-                            {c.employer.employer_name}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Search employers..."
-                    value={searchTerm}
-                    onChange={(e) =>
-                      setEmployerMatchSearch((prev) => ({
-                        ...prev,
-                        [resolution.rawValue]: e.target.value,
-                      }))
-                    }
-                    className="pl-8 h-8 text-sm"
-                  />
-                  {searchTerm && filteredEmployers.length > 0 && (
-                    <div className="absolute z-10 top-full left-0 right-0 mt-1 border rounded-md bg-background shadow-md max-h-40 overflow-y-auto">
-                      {filteredEmployers.slice(0, 30).map((e) => (
-                        <button
-                          key={e.employer_id}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
-                          onClick={() => {
-                            resolveEmployer(resolution.rawValue, e);
-                            setEmployerMatchSearch((prev) => ({
-                              ...prev,
-                              [resolution.rawValue]: "",
-                            }));
-                          }}
-                        >
-                          {e.employer_name}
-                          {e.trading_name && (
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              ({e.trading_name})
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {createEmployerFor === resolution.rawValue ? (
-                  <div className="border rounded-md p-3 space-y-2 bg-muted/30">
-                    <p className="text-xs font-medium">New employer</p>
-                    <Input
-                      placeholder="Employer name"
-                      value={newEmployerName}
-                      onChange={(e) => setNewEmployerName(e.target.value)}
-                      className="h-8 text-sm"
-                      autoFocus
-                    />
-                    {createEmployerError && (
-                      <p className="text-xs text-destructive">{createEmployerError}</p>
-                    )}
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={!newEmployerName.trim() || isCreatingEmployer}
-                        onClick={() => handleCreateEmployer(resolution.rawValue)}
-                      >
-                        {isCreatingEmployer ? (
-                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                        ) : (
-                          <Plus className="h-3 w-3 mr-1" />
-                        )}
-                        Create
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          setCreateEmployerFor(null);
-                          setNewEmployerName("");
-                          setCreateEmployerError(null);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="flex gap-2">
-                  <Button
-                    variant={
-                      resolution.confirmed && !resolution.employerId
-                        ? "default"
-                        : "outline"
-                    }
-                    size="sm"
-                    onClick={() =>
-                      setEmployerResolutions((prev) =>
-                        prev.map((r) =>
-                          r.rawValue === resolution.rawValue
-                            ? {
-                                ...r,
-                                employerId: null,
-                                employerName: null,
-                                confirmed: true,
-                                createdDuringImport: false,
-                              }
-                            : r
-                        )
-                      )
-                    }
-                    className="text-xs h-7 gap-1"
-                  >
-                    {resolution.confirmed && !resolution.employerId ? (
-                      <CheckCircle2 className="h-3 w-3" />
-                    ) : (
-                      <X className="h-3 w-3" />
-                    )}
-                    No Employer
-                  </Button>
-                  {createEmployerFor !== resolution.rawValue && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-7 gap-1"
-                      onClick={() => {
-                        setCreateEmployerFor(resolution.rawValue);
-                        setNewEmployerName(resolution.rawValue);
-                        setCreateEmployerError(null);
-                      }}
-                    >
-                      <Plus className="h-3 w-3" />
-                      Create new
-                    </Button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
+        {resolveError && (
+          <div className="rounded-md bg-destructive/10 p-3 text-xs text-destructive flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{resolveError}</span>
+          </div>
+        )}
+        <NameResolutionTable entity="employer" outcomes={employerResolutions} />
         <DialogFooter>
           <Button
             variant="outline"
@@ -3012,7 +2610,7 @@ export function WorkerImportWizard({
           >
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
-          <Button onClick={proceedFromEmployerMatching} disabled={!allConfirmed}>
+          <Button onClick={proceedFromEmployerMatching}>
             {hasWorksites ? (
               <>Match Worksites <ArrowRight className="h-4 w-4 ml-1" /></>
             ) : (
@@ -3025,290 +2623,14 @@ export function WorkerImportWizard({
   }
 
   function renderWorksiteMatching() {
-    const allConfirmed = worksiteResolutions.every((r) => r.confirmed);
-
     return (
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          {worksiteResolutions.length} unique worksite
-          {worksiteResolutions.length !== 1 ? "s" : ""} detected. Confirm or override
-          the mapping for each.
-        </p>
-
-        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-          {worksiteResolutions.map((resolution) => {
-            const workerCount =
-              fileFormat === "group"
-                ? (groups.find((g) => g.groupName === resolution.groupName)?.rows.length ?? 0)
-                : headerRows.filter((r) => {
-                    const wCol =
-                      columnMappings.find((m) => m.field === "worksite")?.header ?? "";
-                    return String(r[wCol] ?? "").trim() === resolution.groupName;
-                  }).length;
-
-            const searchTerm = worksiteSearch[resolution.groupName] ?? "";
-            const filteredWorksites = searchTerm
-              ? worksites
-                  .filter((ws) =>
-                    ws.worksite_name.toLowerCase().includes(searchTerm.toLowerCase())
-                  )
-                  .sort((a, b) => {
-                    const order = { linked: 0, principal: 1, other: 2 };
-                    return order[worksiteEmployerContext(a)] - order[worksiteEmployerContext(b)];
-                  })
-              : [];
-
-            return (
-              <div
-                key={resolution.groupName}
-                className="border rounded-lg p-4 space-y-3"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-medium text-sm">{resolution.groupName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {workerCount} worker{workerCount !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  {resolution.confirmed ? (
-                    <Badge variant="default" className="gap-1">
-                      <CheckCircle2 className="h-3 w-3" />
-                      {resolution.worksiteName ?? "No Worksite"}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">Needs Review</Badge>
-                  )}
-                </div>
-
-                {resolution.candidates.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      Suggested matches — click to select:
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {resolution.candidates.map((c) => {
-                        const isSelected =
-                          resolution.confirmed &&
-                          resolution.worksiteId === c.worksite.worksite_id;
-                        return (
-                          <Button
-                            key={c.worksite.worksite_id}
-                            variant={isSelected ? "default" : "outline"}
-                            size="sm"
-                            onClick={() =>
-                              resolveWorksite(resolution.groupName, c.worksite)
-                            }
-                            className="h-8 text-xs gap-1.5"
-                          >
-                            {isSelected && (
-                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <Badge
-                              variant={
-                                isSelected
-                                  ? "secondary"
-                                  : confidenceBadgeVariant(c.confidence)
-                              }
-                              className="text-[10px] px-1 py-0 h-4"
-                            >
-                              {c.confidence}
-                            </Badge>
-                            {c.worksite.worksite_name}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Search worksites..."
-                    value={searchTerm}
-                    onChange={(e) =>
-                      setWorksiteSearch((prev) => ({
-                        ...prev,
-                        [resolution.groupName]: e.target.value,
-                      }))
-                    }
-                    className="pl-8 h-8 text-sm"
-                  />
-                  {searchTerm && filteredWorksites.length > 0 && (
-                    <div className="absolute z-10 top-full left-0 right-0 mt-1 border rounded-md bg-background shadow-md max-h-40 overflow-y-auto">
-                      {filteredWorksites.map((ws) => (
-                        <button
-                          key={ws.worksite_id}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
-                          onClick={() => {
-                            resolveWorksite(resolution.groupName, ws);
-                            setWorksiteSearch((prev) => ({
-                              ...prev,
-                              [resolution.groupName]: "",
-                            }));
-                          }}
-                        >
-                          {ws.worksite_name}
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            {worksiteContextLabel(ws)}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {createWorksiteFor === resolution.groupName ? (
-                  <div className="border rounded-md p-3 space-y-2 bg-muted/30">
-                    <p className="text-xs font-medium">New worksite</p>
-                    <Input
-                      placeholder="Worksite name"
-                      value={newWorksiteName}
-                      onChange={(e) => setNewWorksiteName(e.target.value)}
-                      className="h-8 text-sm"
-                      autoFocus
-                    />
-                    {selectedEmployerName && (
-                      <p className="text-xs text-muted-foreground">
-                        Will link this worksite to {selectedEmployerName}.
-                      </p>
-                    )}
-                    <Select
-                      value={newWorksiteType}
-                      onValueChange={(v) => setNewWorksiteType(v as WorksiteType)}
-                    >
-                      <SelectTrigger className="h-8 text-sm">
-                        <SelectValue placeholder="Select type..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {WORKSITE_TYPES.map((t) => (
-                          <SelectItem key={t} value={t}>
-                            {t.replace(/_/g, " ")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {selectedEmployerId && (
-                      <Select value={newWorksiteRoleType} onValueChange={setNewWorksiteRoleType}>
-                        <SelectTrigger className="h-8 text-sm">
-                          <SelectValue placeholder="Employer role..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[
-                            "Owner",
-                            "Operator",
-                            "Principal_Contractor",
-                            "Subcontractor",
-                            "Labour_Hire",
-                            "Maintenance",
-                            "Drilling",
-                            "Aviation",
-                            "Other",
-                          ].map((role) => (
-                            <SelectItem key={role} value={role}>
-                              {role.replace(/_/g, " ")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {createWorksiteError && (
-                      <p className="text-xs text-destructive">{createWorksiteError}</p>
-                    )}
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={
-                          !newWorksiteName.trim() ||
-                          !newWorksiteType ||
-                          isCreatingWorksite
-                        }
-                        onClick={() => handleCreateWorksite(resolution.groupName)}
-                      >
-                        {isCreatingWorksite ? (
-                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                        ) : (
-                          <Plus className="h-3 w-3 mr-1" />
-                        )}
-                        Create
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          setCreateWorksiteFor(null);
-                          setNewWorksiteName("");
-                          setNewWorksiteType("");
-                          setNewWorksiteRoleType("Other");
-                          setCreateWorksiteError(null);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="flex gap-2">
-                  <Button
-                    variant={
-                      resolution.confirmed && !resolution.worksiteId
-                        ? "default"
-                        : "outline"
-                    }
-                    size="sm"
-                    onClick={() =>
-                      setWorksiteResolutions((prev) =>
-                        prev.map((r) =>
-                          r.groupName === resolution.groupName
-                            ? {
-                                ...r,
-                                worksiteId: null,
-                                worksiteName: null,
-                                confirmed: true,
-                              }
-                            : r
-                        )
-                      )
-                    }
-                    className="text-xs h-7 gap-1"
-                  >
-                    {resolution.confirmed && !resolution.worksiteId ? (
-                      <CheckCircle2 className="h-3 w-3" />
-                    ) : (
-                      <X className="h-3 w-3" />
-                    )}
-                    No Worksite
-                  </Button>
-                  {createWorksiteFor !== resolution.groupName && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-7 gap-1"
-                      onClick={() => {
-                        setCreateWorksiteFor(resolution.groupName);
-                        setNewWorksiteName(resolution.groupName);
-                        setNewWorksiteType("");
-                        setCreateWorksiteError(null);
-                      }}
-                    >
-                      <Plus className="h-3 w-3" />
-                      Create new
-                    </Button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
+        <NameResolutionTable entity="worksite" outcomes={worksiteResolutions} />
         <DialogFooter>
           <Button variant="outline" onClick={() => setStep(firstEmployerStep())}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
-          <Button onClick={proceedFromWorksiteMatching} disabled={!allConfirmed}>
+          <Button onClick={proceedFromWorksiteMatching}>
             {hasOccupationColumn() ? (
               <>Match Occupations <ArrowRight className="h-4 w-4 ml-1" /></>
             ) : (
@@ -4453,7 +3775,7 @@ export function WorkerImportWizard({
       else toCreate++;
     }
 
-    const worksiteSummary = worksiteResolutions.filter((r) => r.worksiteId);
+    const worksiteSummary = worksiteResolutions.filter((r) => r.resolvedId != null);
     const assessmentEventCount = reviewRows.reduce(
       (sum, row) => sum + (row.assessmentEvents?.length ?? 0),
       0
@@ -4502,17 +3824,17 @@ export function WorkerImportWizard({
             {worksiteSummary.map((r) => {
               const count =
                 fileFormat === "group"
-                  ? (groups.find((g) => g.groupName === r.groupName)?.rows.length ?? 0)
+                  ? (groups.find((g) => g.groupName === r.rawName)?.rows.length ?? 0)
                   : headerRows.filter((row) => {
                       const wCol =
                         columnMappings.find((m) => m.field === "worksite")?.header ?? "";
-                      return String(row[wCol] ?? "").trim() === r.groupName;
+                      return String(row[wCol] ?? "").trim() === r.rawName;
                     }).length;
               return (
-                <div key={r.groupName} className="flex justify-between text-xs">
-                  <span className="font-medium">{r.groupName}</span>
+                <div key={r.normalisedName} className="flex justify-between text-xs">
+                  <span className="font-medium">{r.rawName}</span>
                   <span className="text-muted-foreground">
-                    → {r.worksiteName} ({count} workers)
+                    → {r.resolvedName} ({count} workers)
                   </span>
                 </div>
               );
@@ -4623,6 +3945,12 @@ export function WorkerImportWizard({
                 ? ` · ${result.protectedUpdates} kept campaign employer/worksite/job title`
                 : ""}
             </p>
+            {result.queued > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                <NameReviewsLink queued={result.queued} /> — those workers were imported without the
+                queued employer / worksite and are filled in when the queue is decided.
+              </p>
+            )}
           </div>
         </div>
 

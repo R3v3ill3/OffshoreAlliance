@@ -1,14 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { Info } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils/cn";
 import { MobilisationTabs, confidenceLabel, layerLabel } from "./_components/tabs";
 
 interface SignalRow {
@@ -46,6 +59,7 @@ interface AlertRow {
   snoozed_until: string | null;
   watch_contractor_id: number | null;
   vessel_id: number | null;
+  signal_ids: number[];
 }
 
 async function loadSignals(): Promise<SignalRow[]> {
@@ -65,12 +79,27 @@ async function loadAlerts(): Promise<AlertRow[]> {
   const sb = createClient();
   const { data, error } = await sb
     .from("mobilisation_alerts")
-    .select("alert_id, status, priority, title, summary, confidence, created_at, snoozed_until, watch_contractor_id, vessel_id")
+    .select(
+      "alert_id, status, priority, title, summary, confidence, created_at, snoozed_until, watch_contractor_id, vessel_id, mobilisation_alert_signals(signal_id)"
+    )
     .order("created_at", { ascending: false })
     .limit(40);
   if (error) throw new Error(error.message);
-  return (data ?? []) as AlertRow[];
+  return (data ?? []).map((row) => {
+    const links = (row.mobilisation_alert_signals ?? []) as { signal_id: number }[];
+    const { mobilisation_alert_signals: _links, ...rest } = row as typeof row & {
+      mobilisation_alert_signals?: { signal_id: number }[];
+    };
+    void _links;
+    return {
+      ...rest,
+      signal_ids: links.map((link) => Number(link.signal_id)).filter((id) => Number.isFinite(id)),
+    } as AlertRow;
+  });
 }
+
+const SNOOZE_HINT =
+  "Hides this alert from the open list for 3 days. After that it comes back so you can act on it or dismiss it.";
 
 export default function MobilisationFeedPage() {
   const { canWrite, user, isAdmin } = useAuth();
@@ -84,6 +113,7 @@ export default function MobilisationFeedPage() {
   const [region, setRegion] = useState("all");
   const [operator, setOperator] = useState("all");
   const [sector, setSector] = useState("all");
+  const [focusSignalId, setFocusSignalId] = useState<number | null>(null);
 
   const names = useMemo(() => {
     const set = new Set<string>();
@@ -118,6 +148,7 @@ export default function MobilisationFeedPage() {
   }, [signals.data]);
 
   const filtered = (signals.data ?? []).filter((row) => {
+    if (focusSignalId != null && row.signal_id === focusSignalId) return true;
     if (!includeOutOfRegion && !row.in_region) return false;
     if (layer !== "all" && row.source_layer !== layer) return false;
     if (contractor !== "all" && row.watch?.canonical_name !== contractor) return false;
@@ -127,6 +158,13 @@ export default function MobilisationFeedPage() {
     if (Number(row.confidence) < Number(minConfidence)) return false;
     return true;
   });
+
+  useEffect(() => {
+    if (focusSignalId == null) return;
+    const el = document.getElementById(`signal-${focusSignalId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusSignalId, filtered]);
 
   const updateAlert = useMutation({
     mutationFn: async (patch: { alert_id: number; status: string; snoozed_until?: string | null; status_note?: string }) => {
@@ -174,6 +212,22 @@ export default function MobilisationFeedPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  function openAlertInFeed(alert: AlertRow) {
+    const known = new Set((signals.data ?? []).map((row) => row.signal_id));
+    const signalId =
+      alert.signal_ids.find((id) => known.has(id)) ??
+      (alert.signal_ids.length > 0 ? Math.max(...alert.signal_ids) : null);
+    if (signalId == null) {
+      toast.message("No linked feed item for this alert yet.");
+      return;
+    }
+    if (!known.has(signalId)) {
+      toast.message("That feed item is older than the list on this page.");
+      return;
+    }
+    setFocusSignalId(signalId);
+  }
+
   const openAlerts = (alerts.data ?? []).filter((a) => a.status === "new" || a.status === "snoozed");
 
   return (
@@ -205,7 +259,19 @@ export default function MobilisationFeedPage() {
         <h2 className="text-sm font-medium">Open alerts</h2>
         {openAlerts.length === 0 && <p className="text-sm text-muted-foreground">No open alerts.</p>}
         {openAlerts.map((alert) => (
-          <div key={alert.alert_id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border p-3">
+          <div
+            key={alert.alert_id}
+            role="button"
+            tabIndex={0}
+            onClick={() => openAlertInFeed(alert)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openAlertInFeed(alert);
+              }
+            }}
+            className="flex cursor-pointer flex-wrap items-start justify-between gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <div>
               <div className="flex items-center gap-2">
                 <Badge variant={alert.priority === "critical" || alert.priority === "high" ? "destructive" : "secondary"}>
@@ -219,36 +285,76 @@ export default function MobilisationFeedPage() {
                 {alert.vessel_id && (
                   <>
                     {" "}
-                    · <Link className="underline" href={`/mobilisation/vessels/${alert.vessel_id}`}>vessel</Link>
+                    ·{" "}
+                    <Link
+                      className="underline"
+                      href={`/mobilisation/vessels/${alert.vessel_id}`}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      vessel
+                    </Link>
                   </>
                 )}
                 {alert.watch_contractor_id && (
                   <>
                     {" "}
-                    · <Link className="underline" href={`/mobilisation/contractors/${alert.watch_contractor_id}`}>contractor</Link>
+                    ·{" "}
+                    <Link
+                      className="underline"
+                      href={`/mobilisation/contractors/${alert.watch_contractor_id}`}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      contractor
+                    </Link>
                   </>
                 )}
+                <span className="text-muted-foreground/80"> · Open in feed</span>
               </p>
             </div>
             {canWrite && alert.status !== "dismissed" && (
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
                 <Button size="sm" variant="outline" onClick={() => updateAlert.mutate({ alert_id: alert.alert_id, status: "acknowledged", status_note: "Acknowledged" })}>
                   Acknowledge
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    updateAlert.mutate({
-                      alert_id: alert.alert_id,
-                      status: "snoozed",
-                      snoozed_until: new Date(Date.now() + 3 * 86400000).toISOString(),
-                      status_note: "Snoozed 3 days",
-                    })
-                  }
-                >
-                  Snooze 3d
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      updateAlert.mutate({
+                        alert_id: alert.alert_id,
+                        status: "snoozed",
+                        snoozed_until: new Date(Date.now() + 3 * 86400000).toISOString(),
+                        status_note: "Snoozed 3 days",
+                      })
+                    }
+                  >
+                    Snooze
+                  </Button>
+                  <TooltipProvider delayDuration={200}>
+                    <Popover>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                              aria-label={SNOOZE_HINT}
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </PopoverTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-64">
+                          {SNOOZE_HINT}
+                        </TooltipContent>
+                      </Tooltip>
+                      <PopoverContent side="top" align="end" className="w-64 p-3 text-sm">
+                        {SNOOZE_HINT}
+                      </PopoverContent>
+                    </Popover>
+                  </TooltipProvider>
+                </div>
                 <Button size="sm" variant="ghost" onClick={() => updateAlert.mutate({ alert_id: alert.alert_id, status: "dismissed", status_note: "Dismissed as false positive" })}>
                   Dismiss
                 </Button>
@@ -304,7 +410,14 @@ export default function MobilisationFeedPage() {
       {signals.error && <p className="text-sm text-destructive">{(signals.error as Error).message}</p>}
       <ul className="divide-y rounded-lg border">
         {filtered.map((row) => (
-          <li key={row.signal_id} className="space-y-1 p-3">
+          <li
+            key={row.signal_id}
+            id={`signal-${row.signal_id}`}
+            className={cn(
+              "space-y-1 p-3 scroll-mt-24",
+              focusSignalId === row.signal_id && "bg-muted/60 ring-2 ring-ring ring-offset-2"
+            )}
+          >
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">{layerLabel(row.source_layer)}</Badge>
               <Badge variant="secondary">{row.signal_type.replaceAll("_", " ")}</Badge>

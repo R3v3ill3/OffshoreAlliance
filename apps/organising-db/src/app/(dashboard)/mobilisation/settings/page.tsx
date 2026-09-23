@@ -127,6 +127,8 @@ function SettingsBody({
         <PrefsForm key={prefsKey} userId={userId} initial={prefs} />
       )}
 
+      {isAdmin && <RecipientPicker />}
+
       <section className="space-y-2">
         <h2 className="font-medium">Alert rules</h2>
         <ul className="divide-y rounded-lg border">
@@ -150,6 +152,95 @@ function SettingsBody({
         <TeamForm key={settingsKey} initial={settings} />
       )}
     </div>
+  );
+}
+
+function RecipientPicker() {
+  const queryClient = useQueryClient();
+  const list = useQuery({
+    queryKey: ["mobilisation-recipients"],
+    queryFn: async () => {
+      const response = await fetch("/api/mobilisation/recipients");
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Failed to load recipients");
+      return body.recipients as {
+        userId: string;
+        displayName: string;
+        email: string | null;
+        role: string;
+        enabled: boolean;
+      }[];
+    },
+  });
+  const [selected, setSelected] = useState<Set<string> | null>(null);
+  const current = selected ?? new Set((list.data ?? []).filter((row) => row.enabled).map((row) => row.userId));
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/mobilisation/recipients", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userIds: [...current] }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Failed to save recipients");
+      return body;
+    },
+    onSuccess: () => {
+      toast.success("Alert recipients saved");
+      setSelected(null);
+      queryClient.invalidateQueries({ queryKey: ["mobilisation-recipients"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  function toggle(userId: string) {
+    const next = new Set(current);
+    if (next.has(userId)) next.delete(userId);
+    else next.add(userId);
+    setSelected(next);
+  }
+
+  return (
+    <section className="max-w-lg space-y-3">
+      <div>
+        <h2 className="font-medium">Who receives alerts</h2>
+        <p className="text-sm text-muted-foreground">
+          Only checked staff get email, push and digests. Each person still controls their own channels and threshold above.
+        </p>
+      </div>
+      {list.isLoading && <p className="text-sm text-muted-foreground">Loading staff…</p>}
+      {list.error && <p className="text-sm text-destructive">{(list.error as Error).message}</p>}
+      <ul className="divide-y rounded-lg border">
+        {(list.data ?? []).map((row) => (
+          <li key={row.userId} className="flex items-start gap-3 p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={current.has(row.userId)}
+              onChange={() => toggle(row.userId)}
+              aria-label={`Send mobilisation alerts to ${row.displayName}`}
+            />
+            <div>
+              <div className="font-medium">{row.displayName}</div>
+              <div className="text-xs text-muted-foreground">
+                {row.email ?? "No email on account"} · {row.role}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {(list.data?.length ?? 0) === 0 && !list.isLoading && (
+        <p className="text-sm text-muted-foreground">No admin or organiser accounts found.</p>
+      )}
+      <Button
+        type="button"
+        disabled={list.isLoading || save.isPending || selected === null}
+        onClick={() => save.mutate()}
+      >
+        Save recipients
+      </Button>
+    </section>
   );
 }
 

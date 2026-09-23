@@ -110,10 +110,18 @@ async function unsnooze(db: Db): Promise<void> {
 }
 
 async function loadStaff(db: Db): Promise<StaffPref[]> {
-  const { data: profiles, error } = await db.from("user_profiles").select("user_id, role").in("role", ["admin", "user"]);
+  const recipientIds = await loadRecipientIds(db);
+  let profileQuery = db.from("user_profiles").select("user_id, role").in("role", ["admin", "user"]);
+  if (recipientIds !== null) {
+    if (recipientIds.length === 0) return [];
+    profileQuery = profileQuery.in("user_id", recipientIds);
+  }
+  const { data: profiles, error } = await profileQuery;
   if (error) throw new Error(error.message);
   const ids = (profiles ?? []).map((p) => p.user_id as string);
-  const { data: prefs } = await db.from("mobilisation_prefs").select("*").in("user_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+  if (ids.length === 0) return [];
+
+  const { data: prefs } = await db.from("mobilisation_prefs").select("*").in("user_id", ids);
   const prefById = new Map((prefs ?? []).map((p) => [p.user_id as string, p]));
   const emails = await emailsById(db, ids);
   return ids.map((userId) => {
@@ -127,6 +135,18 @@ async function loadStaff(db: Db): Promise<StaffPref[]> {
       minPriority: pref?.min_priority ?? "high",
     };
   });
+}
+
+/** Enabled recipient user ids, or null when the recipients table is not applied yet. */
+async function loadRecipientIds(db: Db): Promise<string[] | null> {
+  const { data, error } = await db.from("mobilisation_recipients").select("user_id").eq("enabled", true);
+  if (error) {
+    if (/mobilisation_recipients|schema cache|does not exist/i.test(error.message)) {
+      return null;
+    }
+    throw new Error(error.message);
+  }
+  return [...new Set((data ?? []).map((row) => row.user_id as string))];
 }
 
 async function emailsById(db: Db, ids: string[]): Promise<Map<string, string>> {

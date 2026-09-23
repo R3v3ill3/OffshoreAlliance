@@ -11,6 +11,7 @@ import {
 import type { AisPosition } from "../types";
 import { aisDedup, aisFingerprint } from "../dedup";
 import { classifyMovement, nextPollMinutes } from "../movement";
+import { movementSchedule } from "../schedule";
 import { distanceToGeometryNm } from "../geo";
 import { primaryWatchContractor } from "../match";
 import type { EntityMatch, SignalDraft, WatchVessel } from "../types";
@@ -176,12 +177,15 @@ export async function pollAis(db: Db, ctx: RadarContext, force = false): Promise
       // an NW geofence. Low-relevance PLSVs do not raise course alerts.
       if (vessel.relevance === "low" && event.type !== "vessel_area_entry") continue;
       const kind = event.type === "vessel_area_entry" ? "entry" : event.type === "vessel_area_exit" ? "exit" : "inbound";
+      const schedule = movementSchedule(position.observedAt, event);
       drafts.push({
         source_layer: "ais",
         source: `${provider.id} area`,
         source_key: "ais",
         signal_type: event.type,
         occurred_at: position.observedAt,
+        arrival_at: schedule.arrivalAt,
+        ends_at: schedule.endsAt,
         title: `${vessel.name} — ${event.geofence_name}`,
         extract: event.reason,
         url: null,
@@ -348,12 +352,15 @@ async function pollAisStream(db: Db, ctx: RadarContext, apiKey: string): Promise
     for (const event of movement.events) {
       if (vessel.relevance === "low" && event.type !== "vessel_area_entry") continue;
       const kind = event.type === "vessel_area_entry" ? "entry" : event.type === "vessel_area_exit" ? "exit" : "inbound";
+      const schedule = movementSchedule(position.observedAt, event);
       drafts.push({
         source_layer: "ais",
         source: "AISStream area",
         source_key: "ais",
         signal_type: event.type,
         occurred_at: position.observedAt,
+        arrival_at: schedule.arrivalAt,
+        ends_at: schedule.endsAt,
         title: `${vessel.name} — ${event.geofence_name}`,
         extract: event.reason,
         url: null,

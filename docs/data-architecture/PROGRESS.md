@@ -23,6 +23,13 @@ Status key: **not started** · **blocked (D-n)** · **planning** · **approved**
   only under their own run sheet, per the UX ledger), `20260918120000_email_draft_attachments`,
   `20260921030000_membership_updates` and `20260922040000_mobilisation_radar`. Owner of the clone at the time of
   writing: this workstream (Phase 0 rehearsals); the UX programme's WP2.5 has not started.
+- **Fresh clone `plbldfctqhnbyrsypuri` (from 2026-09-24, D17):** restored by the operator from a production backup taken
+  after every Phase 0 run sheet had landed (ledger 20 rows ending `20260924010000`; 5,900 workers / 5,085 active; 179
+  employers; 190 worksites; 22 campaigns; `_oux_hygiene_log` 3,878 rows; `name_match_reviews` and `vessels` present).
+  Marked `clone` by the orchestrator on creation day. The Phase 1 rehearsal target; not wired to Vercel, cron,
+  webhooks or messaging. Its display name was left at the dashboard's default and is to be renamed by the operator.
+  **The 12 September clone `yqjkuobcawvigsfpgrcm` is retired** once the pack comparison in `wp/da0.1.md` §7 is
+  recorded: pause it, delete after the UX programme confirms nothing is in flight there.
 - **Normal dev `dpnnmkhabysfdogllsyh`**: read freely; mutate with the operator's approval per file.
 - **Branch (deviation from the prompt's `feat/da-<wp-id>-<slug>` rule):** this session is bound to
   `claude/determined-hypatia-y2cqau` by the harness and may not push elsewhere, so every Phase 0 package is
@@ -98,7 +105,7 @@ that no other checkout applied a different version of the DDL.
 | Supply `OUX_CONTRACT_*` accounts (dev) so the two DA0.3 contract suites (`src/lib/import/__contract__/`, `src/lib/hooks/__contract__/`) can run, and `E2E_USER_*` for the preview replay of `scripts/data-hygiene/da0.3/fixtures/replay_status_sync.xlsx` through the membership wizard (plan §3.4) | DA0.3 | pending — both precede the DA0.3 production run sheet |
 | **DA0.2 P7** and **P1, P2, P6** (`wp/da0.2.md` §5) before the production run sheet | DA0.2 | **Done 2026-09-24**: P7 authorised, rollback rehearsed and proven after fix rounds 3–4b; P1 and P2 confirmed; P6 acknowledged (ten roles). Production run sheet: `scripts/data-hygiene/da0.2/prod/` |
 | Confirm the D15 finding above (the mobilisation radar in this repository owns the sixteen tables; no other checkout applied a different DDL) | DA0.4 | **Confirmed by the operator 2026-09-24 (O-1)**; O-4 and DA0.3 §5 items 1–9 confirmed the same day |
-| Create a fresh production-shaped clone after Phase 0's run sheets have landed on production (D17); then run the pack on it and on production, confirm the counts match, record the new ref here and in the UX ledger, retire the 12 September clone | D17 | pending — instructions in the Phase 0 hand-over |
+| Create a fresh production-shaped clone after Phase 0's run sheets have landed on production (D17); then run the pack on it and on production, confirm the counts match, record the new ref here and in the UX ledger, retire the 12 September clone | D17 | **Created 2026-09-24: `plbldfctqhnbyrsypuri`** (marker set; pack comparison in progress → `wp/da0.1.md` §7); operator to rename it and pause the 12 September clone once the comparison is recorded |
 | Run the Phase 0 production run sheets in the order DA0.2 → DA0.5 → DA0.3 | Phase 0 | **Done 2026-09-24** (every step matched; records in each `wp/*.md` §11.1) |
 | Open the pull request from `claude/determined-hypatia-y2cqau` into `main` and merge it; check the gen-types workflow's regeneration produces no diff | DA0.3 | **Merged 2026-09-24** ([#67](https://github.com/R3v3ill3/OffshoreAlliance/pull/67), operator instruction in the session). Validate-migrations run 77 and gen-types run 203 both succeeded on `a6a3d2d9`; the regeneration from production committed nothing, so the hand-added DA0.3 and mobilisation types were exact (DA0.3 deviation and DA0.5 deviation 2 closed) |
 | Import the next weekly membership batch as usual, then run `scripts/data-hygiene/da0.3/prod/P3_preflight_after.sql` again: queue rows present, employers/worksites md5 unchanged (Phase 0 exit criterion); work the queue at `/name-reviews` | Phase 0 exit | pending |

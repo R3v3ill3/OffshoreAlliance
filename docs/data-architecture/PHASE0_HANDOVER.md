@@ -103,7 +103,7 @@ Ready-to-paste files in `scripts/data-hygiene/da0.3/prod/`. The two contract sui
 Run the pack `00`–`07` on production once more: `workers_active` 5,085, no `test` cluster, employers and worksites
 unchanged by the weekly batch. Paste into `PROGRESS.md` "Phase exits".
 
-## 4. Setting up the fresh production-shaped clone (decision D17)
+## 4. Setting up the fresh production-shaped clone (decision D17) — DONE 24 Sep: `plbldfctqhnbyrsypuri`; rename it in Project Settings → General; steps 3–6 done by the orchestrator; step 7 (pause the old clone) remains
 
 Do this **after** §3.1–§3.3 have landed on production, so the clone carries the synthetic removal, the vessel-tracking
 ledger row and DA0.3's migration. The agent never clones production.

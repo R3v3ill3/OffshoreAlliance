@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ExternalLink, Loader2, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,15 +20,25 @@ import type {
   MatchStatus,
   UpcomingProjectRow,
 } from "@/lib/hooks/useUpcomingProjects";
+import type { RadarSignal } from "@/lib/projects/merge-work-programme";
+import { watchContractorDiffers } from "@/lib/projects/merge-work-programme";
+import { confidenceLabel, layerLabel } from "@/app/(dashboard)/mobilisation/_components/tabs";
+import { projectContractorPath, projectVesselPath } from "@/lib/projects/routes";
 
 interface Props {
-  row: UpcomingProjectRow | null;
+  row: (UpcomingProjectRow & {
+    radar?: RadarSignal | null;
+    radarOnly?: boolean;
+    matched_employer_name?: string | null;
+    radar_watch_name?: string | null;
+  }) | null;
+  related?: RadarSignal[];
   isAdmin: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function MatchReviewPanel({ row, isAdmin, open, onOpenChange }: Props) {
+export function MatchReviewPanel({ row, related = [], isAdmin, open, onOpenChange }: Props) {
   const [notes, setNotes] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
@@ -117,19 +128,43 @@ export function MatchReviewPanel({ row, isAdmin, open, onOpenChange }: Props) {
             <Field label="Status" value={row.status ?? "—"} />
             <Field label="Start date" value={row.start_date ?? "—"} />
             <Field label="End date" value={row.end_date ?? "—"} />
+            {match?.role_type && <Field label="Employer role" value={match.role_type.replaceAll("_", " ")} />}
           </div>
 
-          <div>
-            <a
-              href={row.source_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-            >
-              View on NOPSEMA
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          </div>
+          {row.radar && <RadarStrip radar={row.radar} showWatch={watchContractorDiffers(row)} />}
+          {related.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="font-semibold">Related commercial and AIS signals</h3>
+              <ul className="divide-y rounded border">
+                {related.map((signal) => (
+                  <li key={signal.signal_id} className="space-y-1 p-2 text-xs">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline">{layerLabel(signal.source_layer)}</Badge>
+                      <span>{confidenceLabel(signal.confidence)}</span>
+                    </div>
+                    <div className="font-medium">{signal.title}</div>
+                    {signal.url && (
+                      <a className="underline" href={signal.url} target="_blank" rel="noreferrer">Source</a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {row.source_url && (
+            <div>
+              <a
+                href={row.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+              >
+                View source
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          )}
 
           <div className="border-t pt-4">
             <h3 className="font-semibold mb-2">Employer match</h3>
@@ -346,6 +381,49 @@ export function MatchReviewPanel({ row, isAdmin, open, onOpenChange }: Props) {
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function RadarStrip({ radar, showWatch }: { radar: RadarSignal; showWatch: boolean }) {
+  return (
+    <div className="rounded border bg-muted/20 p-3 space-y-1">
+      <div className="text-xs text-muted-foreground">Radar</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{layerLabel(radar.source_layer)}</Badge>
+        <Badge variant="secondary">{radar.signal_type.replaceAll("_", " ")}</Badge>
+        <span className="text-xs text-muted-foreground">{confidenceLabel(radar.confidence)}</span>
+        <span className="text-xs text-muted-foreground">{radar.source}</span>
+      </div>
+      {showWatch && radar.watch_contractor_id && (
+        <div>
+          Watchlist contractor:{" "}
+          <Link className="underline" href={projectContractorPath(radar.watch_contractor_id)}>
+            {radar.watch_name}
+          </Link>
+        </div>
+      )}
+      {radar.vessel_id && (
+        <div>
+          Vessel:{" "}
+          <Link className="underline" href={projectVesselPath(radar.vessel_id)}>
+            {radar.vessel_name ?? "Vessel"}
+          </Link>
+        </div>
+      )}
+      {radar.operator_id && (
+        <div>
+          Operator:{" "}
+          <Link className="underline" href={`/employers/${radar.operator_id}`}>
+            {radar.operator_name ?? "Operator"}
+          </Link>
+        </div>
+      )}
+      {radar.worksite_id && (
+        <div>
+          <Link className="underline" href={`/worksites/${radar.worksite_id}`}>Worksite</Link>
+        </div>
+      )}
+    </div>
   );
 }
 

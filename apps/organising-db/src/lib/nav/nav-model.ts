@@ -42,6 +42,8 @@ export interface NavItem {
   mutedReason?: string;
   /** Set only when the count is > 0. */
   badge?: number;
+  /** Screen-reader label for `badge`. Set only when `badge` is set. */
+  badgeLabel?: string;
   /** Extra prefixes that also light this row (see `isNavRowActive`). */
   activeHrefs?: string[];
 }
@@ -72,6 +74,8 @@ export interface BuildNavModelInput {
   canShowEverything: boolean;
   showEverything: boolean;
   unreadEmail: number;
+  /** Open mobilisation alerts plus employer matches that need review or are unmatched. */
+  projectsAttention: number;
 }
 
 /** Plan 5.2, verbatim. One copy, on every muted row. */
@@ -93,8 +97,8 @@ export const ALL_CAMPAIGNS_HREF = "/campaigns";
 
 /** A row before its state is known. `badged` is internal; it never reaches a NavItem. */
 type NavItemDef = Omit<NavItem, "state" | "mutedReason" | "badge"> & {
-  /** Carries the email unread count. Only `/email/inbox` has a count to carry. */
-  badged?: true;
+  /** Which count this row carries. Omitted rows never show a badge. */
+  badged?: "email" | "projects";
 };
 
 /**
@@ -140,17 +144,13 @@ const DEFS = {
   },
   upcoming_projects: {
     id: "upcoming_projects",
-    label: "Upcoming Projects",
-    href: "/upcoming-projects",
-    icon: "compass",
-    module: "organisation_databases",
-  },
-  mobilisation: {
-    id: "mobilisation",
-    label: "Mobilisation",
-    href: "/mobilisation",
+    label: "Projects",
+    href: "/projects",
     icon: "radar",
     module: "organisation_databases",
+    // Old bookmarks still light this row until the redirect completes.
+    activeHrefs: ["/upcoming-projects", "/mobilisation"],
+    badged: "projects",
   },
   email_inbox: {
     id: "email_inbox",
@@ -158,7 +158,7 @@ const DEFS = {
     href: "/email/inbox",
     icon: "inbox",
     module: "inbox",
-    badged: true,
+    badged: "email",
   },
   inbox: {
     id: "inbox",
@@ -166,7 +166,7 @@ const DEFS = {
     href: "/email/inbox",
     icon: "inbox",
     module: "inbox",
-    badged: true,
+    badged: "email",
   },
   // WP1.5 renamed the hub to "Actions" and turned `/sms` into a redirect, then
   // handed this one row to WP1.2. `activeHrefs` keeps `/sms/new` and
@@ -245,7 +245,6 @@ export const FULL_NAV_ITEMS: readonly NavItemDef[] = [
   DEFS.overview,
   DEFS.worksites,
   DEFS.upcoming_projects,
-  DEFS.mobilisation,
   DEFS.email_inbox,
   DEFS.actions,
   DEFS.sms_inbox,
@@ -276,7 +275,6 @@ const ORGANISER_PRIMARY: readonly NavItemDef[] = [
 const ORGANISATION_ITEMS: readonly NavItemDef[] = [
   DEFS.worksites,
   DEFS.upcoming_projects,
-  DEFS.mobilisation,
   DEFS.overview,
   DEFS.dashboard,
   DEFS.reports,
@@ -315,7 +313,12 @@ export function isNavRowActive(
   return (item.activeHrefs ?? []).some((h) => isNavItemActive(pathname, h, allHrefs));
 }
 
-function toItem(def: NavItemDef, state: NavItemState, unreadEmail: number): NavItem {
+function toItem(
+  def: NavItemDef,
+  state: NavItemState,
+  unreadEmail: number,
+  projectsAttention: number
+): NavItem {
   const item: NavItem = {
     id: def.id,
     label: def.label,
@@ -327,7 +330,14 @@ function toItem(def: NavItemDef, state: NavItemState, unreadEmail: number): NavI
   if (def.activeHrefs) item.activeHrefs = [...def.activeHrefs];
   if (state === "muted") item.mutedReason = MUTED_REASON;
   // The clamp (`>99 → "99+"`) and the aria-label stay in the renderers.
-  if (def.badged && state !== "hidden" && unreadEmail > 0) item.badge = unreadEmail;
+  if (def.badged === "email" && state !== "hidden" && unreadEmail > 0) {
+    item.badge = unreadEmail;
+    item.badgeLabel = "unread email conversations";
+  }
+  if (def.badged === "projects" && state !== "hidden" && projectsAttention > 0) {
+    item.badge = projectsAttention;
+    item.badgeLabel = "open alerts and employer matches needing attention";
+  }
   return item;
 }
 
@@ -337,7 +347,7 @@ const FOOTER: NavModel["footer"] = {
 };
 
 export function buildNavModel(input: BuildNavModelInput): NavModel {
-  const { mode, moduleState, isAdmin, canShowEverything, showEverything, unreadEmail } =
+  const { mode, moduleState, isAdmin, canShowEverything, showEverything, unreadEmail, projectsAttention } =
     input;
 
   // "active" is reachable only from an expanded organiser: `resolveWorkspace`
@@ -351,11 +361,11 @@ export function buildNavModel(input: BuildNavModelInput): NavModel {
       ? "active"
       : "offer";
 
-  const admin = isAdmin ? FULL_ADMIN_ITEMS.map((d) => toItem(d, "on", unreadEmail)) : [];
+  const admin = isAdmin ? FULL_ADMIN_ITEMS.map((d) => toItem(d, "on", unreadEmail, projectsAttention)) : [];
 
   if (mode === "full") {
     return {
-      primary: FULL_NAV_ITEMS.map((d) => toItem(d, "on", unreadEmail)),
+      primary: FULL_NAV_ITEMS.map((d) => toItem(d, "on", unreadEmail, projectsAttention)),
       organisation: { collapsed: false, items: [] },
       admin,
       footer: FOOTER,
@@ -364,12 +374,12 @@ export function buildNavModel(input: BuildNavModelInput): NavModel {
   }
 
   return {
-    primary: ORGANISER_PRIMARY.map((d) => toItem(d, "on", unreadEmail)),
+    primary: ORGANISER_PRIMARY.map((d) => toItem(d, "on", unreadEmail, projectsAttention)),
     organisation: {
       // Plan 5.2: collapsed by default, every render.
       collapsed: true,
       items: ORGANISATION_ITEMS.map((d) =>
-        toItem(d, d.module ? moduleState(d.module) : "on", unreadEmail)
+        toItem(d, d.module ? moduleState(d.module) : "on", unreadEmail, projectsAttention)
       ),
     },
     // Always `[]` in practice — `resolveWorkspace` returns `full` for every

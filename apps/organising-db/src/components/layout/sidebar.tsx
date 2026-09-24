@@ -26,6 +26,7 @@ import {
 } from "@/lib/nav/nav-model";
 import { useWorkspace } from "@/lib/workspace/use-workspace";
 import { useEmailInboxUnreadCount } from "@/lib/hooks/useEmailInbox";
+import { useProjectsAttention } from "@/lib/hooks/useProjectsAttention";
 import { NavRow } from "./nav-row";
 
 /**
@@ -67,6 +68,7 @@ export function Sidebar() {
   const [signOutInProgress, setSignOutInProgress] = useState(false);
   const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
   const { data: emailUnreadCount = 0 } = useEmailInboxUnreadCount(!!user);
+  const { total: projectsAttention } = useProjectsAttention();
   const workspace = useWorkspace();
   const { mode, moduleState, canShowEverything, showEverything } = workspace;
 
@@ -79,8 +81,9 @@ export function Sidebar() {
         canShowEverything,
         showEverything,
         unreadEmail: emailUnreadCount,
+        projectsAttention,
       }),
-    [mode, moduleState, isAdmin, canShowEverything, showEverything, emailUnreadCount]
+    [mode, moduleState, isAdmin, canShowEverything, showEverything, emailUnreadCount, projectsAttention]
   );
 
   // Closed on every first paint, then re-synced whenever the mode changes.

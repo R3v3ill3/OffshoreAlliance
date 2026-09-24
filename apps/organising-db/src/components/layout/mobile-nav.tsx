@@ -12,6 +12,7 @@ import { NavRow } from "./nav-row";
 import { ALL_NAV_HREFS, buildNavModel, isNavRowActive } from "@/lib/nav/nav-model";
 import { useWorkspace } from "@/lib/workspace/use-workspace";
 import { useEmailInboxUnreadCount } from "@/lib/hooks/useEmailInbox";
+import { useProjectsAttention } from "@/lib/hooks/useProjectsAttention";
 
 const ROW_BASE =
   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors";
@@ -34,6 +35,7 @@ export function MobileNav() {
     isAdmin,
   } = useAuth();
   const { data: emailUnreadCount = 0 } = useEmailInboxUnreadCount(!!user);
+  const { total: projectsAttention } = useProjectsAttention();
   const workspace = useWorkspace();
   const { mode, moduleState, canShowEverything, showEverything } = workspace;
 
@@ -46,8 +48,9 @@ export function MobileNav() {
         canShowEverything,
         showEverything,
         unreadEmail: emailUnreadCount,
+        projectsAttention,
       }),
-    [mode, moduleState, isAdmin, canShowEverything, showEverything, emailUnreadCount]
+    [mode, moduleState, isAdmin, canShowEverything, showEverything, emailUnreadCount, projectsAttention]
   );
 
   // Closed on every first paint, then re-synced on a mode change. A

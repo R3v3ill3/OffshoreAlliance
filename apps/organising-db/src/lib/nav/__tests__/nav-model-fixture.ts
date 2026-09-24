@@ -42,17 +42,15 @@ export const TODAY_SIDEBAR_ROWS: readonly FixtureRow[] = [
  * `TODAY_SIDEBAR_ROWS` except row 7, which WP1.5 renamed to Actions and
  * moved to `/actions` (it explicitly handed this one sidebar line to WP1.2),
  * plus the Surveys & Forms row inserted after Reports by the Action Network
- * survey importer, and the Mobilisation row after Upcoming Projects.
- * `/sms` keeps working as a redirect, so no URL is lost —
- * decision 7.
+ * survey importer. Upcoming Projects and Mobilisation are one Projects row.
+ * `/sms`, `/upcoming-projects` and `/mobilisation` keep working as redirects.
  */
 export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
   { id: "campaigns", label: "Campaigns", href: "/campaigns", icon: "megaphone", module: "wall_chart_people", state: "on" },
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: "layout-dashboard", module: "insights", state: "on" },
   { id: "overview", label: "Overview", href: "/overview", icon: "layout-grid", module: "organisation_databases", state: "on" },
   { id: "worksites", label: "Worksites", href: "/worksites", icon: "map-pin", module: "organisation_databases", state: "on" },
-  { id: "upcoming_projects", label: "Upcoming Projects", href: "/upcoming-projects", icon: "compass", module: "organisation_databases", state: "on" },
-  { id: "mobilisation", label: "Mobilisation", href: "/mobilisation", icon: "radar", module: "organisation_databases", state: "on" },
+  { id: "upcoming_projects", label: "Projects", href: "/projects", icon: "radar", module: "organisation_databases", state: "on" },
   { id: "email_inbox", label: "Email Inbox", href: "/email/inbox", icon: "inbox", module: "inbox", state: "on" },
   // WP1.5 rename — the one deliberate deviation from today's sidebar.
   { id: "actions", label: "Actions", href: "/actions", icon: "layout-list", module: "actions", state: "on" },
@@ -68,16 +66,15 @@ export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
 ];
 
 /** The number of primary (non-admin) rows in full mode. */
-export const FULL_MODE_PRIMARY_COUNT = 12;
+export const FULL_MODE_PRIMARY_COUNT = 11;
 
-/** The 12 labels a full-mode sidebar renders, in order (mirrored by the e2e spec). */
+/** The 11 labels a full-mode sidebar renders, in order (mirrored by the e2e spec). */
 export const FULL_MODE_LABELS: readonly string[] = [
   "Campaigns",
   "Dashboard",
   "Overview",
   "Worksites",
-  "Upcoming Projects",
-  "Mobilisation",
+  "Projects",
   "Email Inbox",
   "Actions",
   "SMS Inbox",

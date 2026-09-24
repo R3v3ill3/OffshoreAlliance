@@ -53,6 +53,7 @@ function modelFor(
     canShowEverything: resolved.canShowEverything,
     showEverything: resolveInput.sessionShowEverything,
     unreadEmail: opts.unreadEmail ?? 0,
+    projectsAttention: 0,
   });
 }
 

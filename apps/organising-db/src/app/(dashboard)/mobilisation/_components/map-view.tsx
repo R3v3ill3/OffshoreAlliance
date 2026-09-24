@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { projectVesselPath } from "@/lib/projects/routes";
 
 interface GeofenceShape {
   geofence_id: number;
@@ -20,12 +21,22 @@ interface VesselPoint {
   owner_name: string;
 }
 
+export interface ActivityPoint {
+  id: number;
+  title: string;
+  latitude: number;
+  longitude: number;
+  lifecycle: string | null;
+}
+
 interface Props {
   geofences: GeofenceShape[];
   vessels: VesselPoint[];
+  activities?: ActivityPoint[];
   height?: string;
   draft?: [number, number][];
   onClick?: (lng: number, lat: number) => void;
+  onActivityClick?: (id: number) => void;
 }
 
 type LatLng = [number, number];
@@ -43,7 +54,20 @@ function rings(geometry: GeofenceShape["geometry"]): LatLng[][] {
  * Internal map of geofences and last-known positions. Positions come from the
  * AIS poll and stay inside the signed-in app.
  */
-export function MobilisationMap({ geofences, vessels, height = "560px", draft, onClick }: Props) {
+const LIFECYCLE_COLOR: { test: RegExp; color: string }[] = [
+  { test: /exploration/i, color: "#64748b" },
+  { test: /production|operation/i, color: "#10b981" },
+  { test: /decommission/i, color: "#f43f5e" },
+  { test: /development/i, color: "#0ea5e9" },
+  { test: /appraisal/i, color: "#f59e0b" },
+];
+
+function activityColor(lifecycle: string | null): string {
+  if (!lifecycle) return "#71717a";
+  return LIFECYCLE_COLOR.find((rule) => rule.test.test(lifecycle))?.color ?? "#71717a";
+}
+
+export function MobilisationMap({ geofences, vessels, activities = [], height = "560px", draft, onClick, onActivityClick }: Props) {
   const [mods, setMods] = useState<{
     MapContainer: React.ComponentType<Record<string, unknown>>;
     TileLayer: React.ComponentType<Record<string, unknown>>;
@@ -112,6 +136,22 @@ export function MobilisationMap({ geofences, vessels, height = "560px", draft, o
             pathOptions={{ color: "#b45309", weight: 2, dashArray: "4 4", fillOpacity: 0.08 }}
           />
         )}
+        {activities.map((activity) => (
+          <CircleMarker
+            key={`activity-${activity.id}`}
+            center={[activity.latitude, activity.longitude]}
+            radius={6}
+            pathOptions={{ color: activityColor(activity.lifecycle), fillColor: activityColor(activity.lifecycle), fillOpacity: 0.85 }}
+            eventHandlers={onActivityClick ? { click: () => onActivityClick(activity.id) } : undefined}
+          >
+            <Popup>
+              <div className="text-sm">
+                <div className="font-medium">{activity.title}</div>
+                {activity.lifecycle && <div>{activity.lifecycle}</div>}
+              </div>
+            </Popup>
+          </CircleMarker>
+        ))}
         {positioned.map((vessel) => (
           <CircleMarker
             key={vessel.vessel_id}
@@ -121,7 +161,7 @@ export function MobilisationMap({ geofences, vessels, height = "560px", draft, o
           >
             <Popup>
               <div className="text-sm">
-                <Link href={`/mobilisation/vessels/${vessel.vessel_id}`} className="font-medium underline">
+                <Link href={projectVesselPath(vessel.vessel_id)} className="font-medium underline">
                   {vessel.name}
                 </Link>
                 <div>{vessel.owner_name}</div>

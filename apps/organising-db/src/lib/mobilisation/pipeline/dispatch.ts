@@ -263,7 +263,7 @@ async function sendPush(db: Db, alertId: number, userId: string, title: string, 
     try {
       await webpush.sendNotification(
         { endpoint: sub.endpoint as string, keys: { p256dh: sub.p256dh as string, auth: sub.auth as string } },
-        JSON.stringify({ title, body: body.slice(0, 240), url: appUrl() ?? "/mobilisation" })
+        JSON.stringify({ title, body: body.slice(0, 240), url: appUrl() ?? "/projects/alerts" })
       );
       await db.from("mobilisation_notifications").insert({
         alert_id: alertId,
@@ -332,8 +332,8 @@ async function postTeam(
 }
 
 function appUrl(): string | null {
-  if (process.env.NEXT_PUBLIC_APP_URL) return `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/mobilisation`;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/mobilisation`;
+  if (process.env.NEXT_PUBLIC_APP_URL) return `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/projects/alerts`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/projects/alerts`;
   return null;
 }
 

@@ -51,6 +51,8 @@ export interface UpcomingProjectRow {
   region_code: string | null;
   jurisdiction: "WA" | "NT" | null;
   location_text: string | null;
+  latitude: number | null;
+  longitude: number | null;
   start_date: string | null;
   end_date: string | null;
   status: string | null;
@@ -99,7 +101,7 @@ export function useUpcomingProjects() {
         .select(
           `id, source, external_id, title, activity_type, lifecycle_classification,
            project_name, associated_project, organisation, region_code, jurisdiction,
-           location_text, start_date, end_date, status, source_url, is_active,
+           location_text, latitude, longitude, start_date, end_date, status, source_url, is_active,
            first_seen_at, last_seen_at, last_changed_at,
            upcoming_project_employers!left (
              id, upcoming_project_id, employer_id, role_type, is_primary,

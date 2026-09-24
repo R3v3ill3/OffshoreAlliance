@@ -7,7 +7,7 @@ self.addEventListener("push", (event) => {
   }
   const title = payload.title || "Mobilisation";
   const body = payload.body || "";
-  const url = payload.url || "/mobilisation";
+  const url = payload.url || "/projects/alerts";
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
@@ -19,6 +19,6 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/mobilisation";
+  const url = (event.notification.data && event.notification.data.url) || "/projects/alerts";
   event.waitUntil(self.clients.openWindow(url));
 });

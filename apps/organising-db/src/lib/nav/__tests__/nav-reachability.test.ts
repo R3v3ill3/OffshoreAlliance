@@ -59,6 +59,7 @@ function modelFor(input: Partial<ResolveWorkspaceInput>, isAdmin: boolean): NavM
     canShowEverything: resolved.canShowEverything,
     showEverything: resolveInput.sessionShowEverything,
     unreadEmail: 0,
+    projectsAttention: 0,
   });
 }
 
@@ -75,33 +76,26 @@ function everyItem(model: NavModel): NavItem[] {
 }
 
 describe("full mode is byte-identical to the pinned fixture", () => {
-  it("an admin sees today's 12 + 3 rows, in today's order, with today's labels", () => {
+  it("an admin sees today's 11 + 3 rows, in today's order, with today's labels", () => {
     expect([...fullAdmin.primary, ...fullAdmin.admin].map(toFixtureRow)).toEqual(
       FULL_MODE_FIXTURE
     );
   });
 
-  it("a non-admin sees the same 12 and no admin block", () => {
+  it("a non-admin sees the same 11 and no admin block", () => {
     expect(fullUser.primary.map(toFixtureRow)).toEqual(
       FULL_MODE_FIXTURE.slice(0, FULL_MODE_PRIMARY_COUNT)
     );
     expect(fullUser.admin).toEqual([]);
   });
 
-  it("the only differences from the pre-WP1.5 sidebar are row 7's three fields and the added Surveys & Forms and Mobilisation rows", () => {
-    // Surveys & Forms and Mobilisation are additions, not edits: take them
-    // out and the remaining rows must line up with the pre-WP1.2 sidebar.
+  it("the only differences from the pre-WP1.5 sidebar are the Actions rename, the Projects row, and Surveys & Forms", () => {
     const added = FULL_MODE_FIXTURE.filter((row) => !TODAY_SIDEBAR_ROWS.some((t) => t.id === row.id));
-    expect(added.map((row) => row.id)).toEqual(["mobilisation", "surveys_forms"]);
-    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "mobilisation")).toBe(
-      FULL_MODE_FIXTURE.findIndex((row) => row.id === "upcoming_projects") + 1
-    );
+    expect(added.map((row) => row.id)).toEqual(["surveys_forms"]);
     expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "surveys_forms")).toBe(
       FULL_MODE_FIXTURE.findIndex((row) => row.id === "reports") + 1
     );
-    const withoutAdded = FULL_MODE_FIXTURE.filter(
-      (row) => row.id !== "surveys_forms" && row.id !== "mobilisation"
-    );
+    const withoutAdded = FULL_MODE_FIXTURE.filter((row) => row.id !== "surveys_forms");
     expect(withoutAdded).toHaveLength(TODAY_SIDEBAR_ROWS.length);
 
     const diffs = TODAY_SIDEBAR_ROWS.map((before, i) => ({ before, after: withoutAdded[i] }))
@@ -110,13 +104,19 @@ describe("full mode is byte-identical to the pinned fixture", () => {
 
     expect(diffs).toEqual([
       {
+        id: "upcoming_projects",
+        before: TODAY_SIDEBAR_ROWS[4],
+        after: withoutAdded[4],
+      },
+      {
         id: "actions",
         before: TODAY_SIDEBAR_ROWS[6],
         after: withoutAdded[6],
       },
     ]);
-    // Mobilisation sits ahead of Actions in the full fixture, so compare the
-    // Actions row by id. Within that row, only label / href / icon moved.
+    const projects = FULL_MODE_FIXTURE.find((row) => row.id === "upcoming_projects");
+    expect([projects?.label, projects?.href, projects?.icon]).toEqual(["Projects", "/projects", "radar"]);
+    // Within the Actions row, only label / href / icon moved.
     const fullActions = FULL_MODE_FIXTURE.find((row) => row.id === "actions");
     expect(fullActions).toBeDefined();
     expect(TODAY_SIDEBAR_ROWS[6].module).toBe(fullActions?.module);
@@ -148,8 +148,7 @@ describe("reachability — decision 7", () => {
     ],
     organisation: [
       { label: "Worksites", href: "/worksites", state: "muted" },
-      { label: "Upcoming Projects", href: "/upcoming-projects", state: "muted" },
-      { label: "Mobilisation", href: "/mobilisation", state: "muted" },
+      { label: "Projects", href: "/projects", state: "muted" },
       { label: "Overview", href: "/overview", state: "muted" },
       { label: "Dashboard", href: "/dashboard", state: "muted" },
       { label: "Reports", href: "/reports", state: "muted" },
@@ -313,6 +312,7 @@ describe("allNavHrefs", () => {
         "/mobilisation",
         "/my-campaigns",
         "/overview",
+        "/projects",
         "/reports",
         "/sms",
         "/sms/inbox",

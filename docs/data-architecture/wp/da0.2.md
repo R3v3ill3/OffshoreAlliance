@@ -1820,3 +1820,268 @@ Advisories A–C of round 2 applied by the orchestrator, 2026-09-23 (plan §3.2 
 | P1 | `prod/P1_preflight_before.sql` | matched §3.1.2 | ids_present 8/4/2/1/4; scope 664/664, md5 `f6589df6e2507a35542632026c3d0c34`; reference_id_not_null 0; member_number_not_null 304 (shape alpha1digits 7=160 / 8=144); employer-less 681, 1537; cwm/cwo outside 15/37 none; 1536 emp=791 ws=197 cwm 37/50/64 cwo 37:25; roles 82,83,84,85,87,89,91,93,95,97; set_null 3,4,5 / 4,5,6 / 1; E Σ 3119/72; F Σ 16; G Σ 2; G2 20/2351; H clean (program 6; worksites 196–199); J workers_active 5749, cwm 3460, cwo 2510; K hygiene_log 736, pending 0/0, env_marker absent, bypassrls t, session_replication_role f. (First attempt errored at `LINE 1: WHERE fk.del …`: a truncated copy from the session's file panel; the full file ran clean.) |
 | P2 | `prod/P2_remove_test_dataset.sql` | **matched §3.2 exactly** | workers_active 5085, workers_total 5900, campaigns_15_37 0, employers_787_794 0, worksites_196_199 0, roles 0, w1536 emp=741 ws=185 cwm=50, test_worksite_cluster 0, log_rows_pending 3139, snapshot_rows_logged 3138 |
 | P3 | `prod/P3_preflight_after.sql` | **matched §4**: ids_present 0/0/0/0/0; workers 5900/5085; scope 0; 1536 emp=741 ws=185, activist profile and membership in 50 only, cwo none, campaign-64 list items 2 / email-list items 4 kept; every campaign checksum identical to P1 except 15/37 (gone) and 64 (mem_n 364 → 363, ou 398 / `35d998b8…` unchanged); J: employers 179, worksites 190 (184 active), roles 241, worksite_scopes 13, employer_scopes 10, programs 3, program_worksites 7, projects 16, campaigns 22, groups 24, units 250, cwm 3072, cwo 2195, campaign_employers 46, campaign_worksites 116; `05` clusters none; K: hygiene_log 3875 (= 736 + 3139), pending 3139/0, fingerprints unchanged, no trigger left disabled | |
+
+### 11.2 P4 — profiling pack on production after P2 (verifier, 2026-09-24)
+
+Per decision D0, the agent ran the profiling pack (`scripts/data-hygiene/oa-universe/00`–`07`) read-only against
+production `gteygwfgjvczanmrwgbr`, one statement per call, after the synthetic dataset was removed (P2/P3, §11.1).
+Nothing was written; `apply_migration` and the CLI were not used; the clone and dev were not touched.
+
+#### (a) Full raw output
+
+**`00_profile_counts.sql`**
+
+```
+t | n
+agreement_employers | 5
+agreement_scopes | 0
+agreement_worksites | 54
+agreements | 136
+campaign_employers | 46
+campaign_groups | 24
+campaign_organising_units | 250
+campaign_worker_membership | 3072
+campaign_worker_ou | 2195
+campaign_worksites | 116
+campaigns | 22
+employer_merge_events | 23
+employer_name_aliases | 39
+employer_scopes | 10
+employer_worksite_roles | 241
+employers | 179
+import_logs | 68
+occupation_aliases | 1488
+occupation_groups | 19
+occupations | 182
+organiser_patch_assignments | 8
+organiser_patches | 2
+organisers | 11
+program_worksites | 7
+programs | 3
+projects | 16
+sectors | 16
+upcoming_project_employers | 84
+upcoming_projects | 84
+work_scopes | 22
+worker_agreements | 0
+worker_assignments | 0
+workers | 5900
+workers_active | 5085
+worksite_contracts | 0
+worksite_name_aliases | 8
+worksite_scopes | 13
+worksites | 190
+worksites_active | 184
+worksites_with_parent | 1
+```
+
+(`membership_update_batches` is deliberately excluded from `00` per its header comment — DA0.1 — and counted in `00b` instead.)
+
+**`00b_profile_supplementary.sql`**
+
+```
+Statement 1 — employer_worksite_roles by role_type:
+role_type | n
+Operator | 179
+Other | 51
+Subcontractor | 9
+Owner | 1
+Principal_Contractor | 1
+
+Statement 2 — membership_update_batches:
+t | n
+membership_update_batches | 1
+```
+
+**`05_candidate_clusters.sql`**
+
+```
+Statement 1 — employer near-duplicate clusters (key, n, members):
+chevron | 4 | 2:CHEVRON GORGON OPERATIONS || 3:CHEVRON WHEATSTONE DOWNSTREAM OPERATIONS || 4:CHEVRON WHEATSTONE PLATFORM || 691:Chevron
+jadestone | 4 | 6:JADESTONE ENERGY MONTARA VENTURE || 7:JADESTONE ENERGY STAG CPF || 693:Jadestone || 695:JADESTONE ENERGY
+woodside | 4 | 12:WOODSIDE ENERGY LTD NGUJIMA-YIN AND OHKA FPSO || 13:WOODSIDE ENERGY LTD || 14:WOODSIDE ENERGY MACEDON GAS PLANT || 689:Woodside
+atc | 2 | 815:ATC Offshore || 816:ATC
+auriga | 2 | 52:AURIGA AVIATION HELICOPTER ENGINEERS || 723:Auriga Aviation
+downer | 2 | 18:DOWNER EDI ENGINEERING ELECTRICAL LNG FACILITY SERVICES || 710:Downer EDI Group
+inpex | 2 | 5:INPEX - ICHTHYS OPERATIONS || 690:Inpex
+modec | 2 | 93:MODEC Management Services || 703:Modec
+noble | 2 | 73:NOBLE || 736:Noble Corporation
+saipem | 2 | 726:Saipem || 778:Saipem Leighton Consortium
+santos | 2 | 9:SANTOS WA ENERGY LIMITED VARANUS ISLAND HUB || 692:Santos
+shell | 2 | 10:SHELL PRELUDE || 688:Shell
+solstad | 2 | 47:SOLSTAD AUSTRALIA PTY LTD || 717:Solstad Offshore ASA
+toll | 2 | 713:Toll Energy || 782:Toll West
+trace | 2 | 97:TRACE || 749:Trace JV
+ugl | 2 | 33:UGL RESOURCES (CONTRACTING) PTY LTD || 826:ugl
+
+Statement 2 — worksite near-duplicate clusters (key, n, members):
+mma | 10 | 166:MMA Pinnacle [Vessel] || 167:MMA Plover [Vessel] || 172:MMA Vigilant [Vessel] || 173:MMA Brewster [Vessel] || 174:Mma coral [Vessel] || 175:MMA Inscription [Vessel] || 233:MMA Harmony [Vessel] || 234:MMA Monarch [Vessel] || 238:MMA LEEUWIN [Vessel] || 270:MMA vessel [Vessel]
+pacific | 8 | 188:Pacific Dilgence [Vessel] || 189:Pacific Liberty [Vessel] || 206:Pacific Guillemot [Vessel] || 214:Pacific Valor [Vessel] || 216:Pacific Grackle [Vessel] || 220:Pacific Vulcan [Vessel] || 260:Pacific Rapier [Vessel] || 447:Pacific Dove [Vessel]
+siem | 6 | 203:Siem Thiima [Vessel] || 205:Siem Aquamarine [Vessel] || 209:Siem Pilot [Vessel] || 210:Siem AHTS [Vessel] || 212:Siem symphony [Vessel] || 218:Siem Amethyst [Vessel]
+skandi | 6 | 228:Skandi Hercules [Other] || 252:Skandi Darwin [Vessel] || 254:Skandi Vessels [Vessel] || 255:skandi peregrino [Vessel] || 256:Skandi Singapore [Other] || 426:skandi inventor [Vessel]
+fugro | 4 | 221:Fugro Etive [Vessel] || 227:Fugro Etive, Furgo Maali, Fugro Kwilena [Other] || 422:Fugro Workshop [Other] || 423:Fugro unmanned remote [Other]
+karratha | 4 | 20:Karratha (Town/Industrial) [Other] || 21:Karratha MPT Heliport [Heliport] || 136:Karratha Gas Plant [Gas_Plant] || 159:Karratha Airport [Airfield]
+valaris | 4 | 152:Valaris 107 [Vessel] || 193:Valaris 247 [Vessel] || 194:Valaris DPS-1 [Vessel] || 424:Valaris MS-1 [Vessel]
+alkimos | 3 | 170:Alkimos [Other] || 180:Alkimos seawater alliance [Other] || 181:Alkimos marine works [Other]
+ichthys | 3 | 7:Ichthys LNG [FPSO] || 147:Ichthys FPSO [FPSO] || 148:Ichthys [Other]
+normand | 3 | 263:Normand Saracen [Vessel] || 265:Normand Ranger [Other] || 418:Normand Scorpion [Other]
+pluto | 3 | 137:Pluto LNG [Onshore_LNG] || 138:Pluto 2 [Onshore_LNG] || 442:Pluto Alpha Platform [Platform]
+sea1 | 3 | 204:Sea1 Emerald [Vessel] || 207:Sea1 Sapphire [Vessel] || 219:SEA1 Anchor Handlers [Vessel]
+seven | 3 | 176:Seven Oceanic Subsea 7 [Vessel] || 415:Seven Sisters [Vessel] || 429:Seven Arctic [Vessel]
+transocean | 3 | 155:Transocean Endurance [Platform] || 191:Transocean [Other] || 445:Transocean Equinox [Vessel]
+wheatstone | 3 | 2:Wheatstone LNG (Downstream) [Onshore_LNG] || 3:Wheatstone Platform [Platform] || 139:Wheatstone LNG [Onshore_LNG]
+darwin | 2 | 140:Darwin ILNG [Onshore_LNG] || 187:Darwin Airport [Airfield]
+dof | 2 | 215:DOF Vessels [Vessel] || 253:Dof Subsea [Vessel]
+floatel | 2 | 240:Floatel triumph [Accommodation_Vessel] || 261:Floatel Triumph [Accommodation_Vessel]
+inpex | 2 | 160:Inpex Venturer FPSO [FPSO] || 443:Inpex Endeavour CPF [Platform]
+jetwave | 2 | 244:Jetwave Jasmin [Vessel] || 266:Jetwave Lightning [Vessel]
+mermaid | 2 | 235:Mermaid Sound [Other] || 236:Mermaid Cove [Vessel]
+noble | 2 | 242:Noble Deliverer [Vessel] || 446:Noble Tom Prosser [Vessel]
+ocean | 2 | 154:Ocean Apex [Vessel] || 168:Ocean Monarch [Vessel]
+wandoo | 2 | 141:Wandoo B [Platform] || 142:Wandoo A [Platform]
+
+Statement 3 — exact worksite duplicates after case/space folding:
+floatel triumph | 2 | 261,240
+
+Statement 4 — exact employer duplicates after case/space folding:
+(0 rows)
+```
+
+**`07_hierarchy_and_patches.sql`**
+
+```
+Statement 1 — campaign universes (24 rows, campaigns with is_sms_episode IS NOT TRUE):
+campaign_id | name | campaign_type | status | sector_wide | is_standing | parent_campaign_id | universe_employers | universe_worksites | members | groups | units
+21 | Toll Energy | bargaining | active | false | false | — | Toll Energy | 1 | 67 | work_area:Work area | 3
+23 | Mono's Inpex Coordinators and Supervisors | bargaining | active | false | false | — | MONADELPHOUS ENGINEERING ASSOCIATES PTY LTD | 3 | 48 | custom:Deployment | 4
+26 | Decom sector | bargaining | active | true | false | — | ERIS; MCDERMOTT AUSTRALIA PTY LTD | 4 | 216 | employer:Employer, occupation:Occupation, custom:Custom | 15
+27 | Mono's Woodside | bargaining | active | false | false | — | MONADELPHOUS ENGINEERING ASSOCIATES PTY LTD | 3 | 382 | shift:Shift | 5
+41 | ESS Woodside | bargaining | active | false | false | — | COMPASS GROUP – | 4 | 61 | worksite:Worksite | 5
+42 | EDI Downer Chevron | bargaining | active | false | false | — | Downer EDI Group | 2 | 144 | worksite:Worksite, shift:Shift, custom:Custom | 6
+47 | UGL Varanus | bargaining | active | false | false | — | UGL RESOURCES (CONTRACTING) PTY LTD | 1 | 223 | work_area:Work area, custom:Union | 12
+48 | UGL WA Oil | bargaining | active | false | false | — | UGL RESOURCES (CONTRACTING) PTY LTD | 0 | 219 | work_area:Work area | 3
+49 | OA Membership Outreach | organising | active | false | true | — | — | 0 | 0 | — | 0
+50 | Offshore Allliance internal | organising | active | false | false | — | Australian Workers' Union WA Branch; MUA | 1 | 11 | — | 0
+55 | AOS catering | bargaining | active | false | false | — | — | 0 | 11 | worksite:Worksite | 1
+57 | Deck officer and Engineers 2026 | bargaining | active | false | false | — | AUSTRALIAN OFFSHORE SOLUTIONS PTY LTD; BHAGWAN MARINE LTD; Cyan Renewables; DOF MANAGEMENT AUSTRALIA PTY LTD; GO OFFSHORE; Jan De Nul; JETWAVE MARINE SERVICES PTY. LTD.; Maersk; OSM Australia Pty Ltd; PROGRAMMED OFFSHORE (AUSTRALIA) PTY LTD; Rigforce Pty Ltd; Sea1 Offshore; SIERA MARINE MANAGEMENT PTY LTD; Solstad Offshore ASA; TIDEWATER SHIP MANAGEMENT (AUSTRALIA) PTY LTD; Unemployed; Unknown; Valaris Marine | 85 | 639 | worksite:Worksite, employer:Employer | 161
+58 | Jadestone Stag | bargaining | active | false | false | — | JADESTONE ENERGY STAG CPF | 1 | 28 | work_area:Work area | 5
+59 | Mono's Shell Crux | bargaining | active | false | false | — | MONADELPHOUS ENGINEERING ASSOCIATES PTY LTD | 1 | 196 | work_area:Work area | 8
+60 | UGL CO2 | organising | active | false | false | — | UGL RESOURCES (CONTRACTING) PTY LTD | 1 | 224 | — | 0
+61 | Fugro | bargaining | active | false | false | 64 | FUGRO AUSTRALIA PTY LTD | 3 | 52 | worksite:Worksite, custom:Custom | 6
+62 | programmed ROV | bargaining | active | false | false | 64 | PROGRAMMED OFFSHORE (AUSTRALIA) PTY LTD | 3 | 64 | custom:Vessel | 3
+64 | ROV sector wide | political | active | false | false | — | DOF MANAGEMENT AUSTRALIA PTY LTD; FUGRO AUSTRALIA PTY LTD; Helix Robotic Solutions; OCEANEERING AUSTRALIA PTY LTD; PROGRAMMED OFFSHORE (AUSTRALIA) PTY LTD; Reach Subsea; Technip; TOTAL MARINE TECHNOLOGY PTY LTD | 0 | 363 | employer:Employer, work_area:Work area | 10
+65 | Parrabellum | bargaining | planning | false | false | — | Parabellum International | 2 | 15 | — | 0
+66 | Parabellum Barrow | bargaining | planning | false | false | — | Parabellum International | 1 | 14 | — | 0
+68 | Oceaneering EB A | bargaining | active | false | false | — | OCEANEERING AUSTRALIA PTY LTD | 0 | 39 | — | 0
+69 | TMT Bargaining 2026 | bargaining | active | false | false | 64 | TOTAL MARINE TECHNOLOGY PTY LTD | 0 | 56 | work_area:Work area | 3
+
+Statement 2 — organising-unit bases by ou_type:
+ou_type | units | with_employer | with_worksite | custom
+worksite | 153 | 143 | 132 | 0
+work_area | 31 | 0 | 0 | 19
+employer | 28 | 28 | 0 | 0
+custom | 21 | 0 | 0 | 9
+job_type | 9 | 0 | 0 | 0
+shift | 8 | 0 | 0 | 3
+
+Statement 3 — organiser patches (patch_id, patch_name, organiser_name, entity_type, entity_id, entity):
+1 | Jason | <organiser 1> | agreement | 5 | INPEX - ICHTHYS OPERATIONS ENTERPRISE AGREEMENT 2022-2026
+1 | Jason | <organiser 1> | agreement | 7 | Jadestone Stag
+1 | Jason | <organiser 1> | agreement | 10 | Shell Prelude
+1 | Jason | <organiser 1> | agreement | 63 | PHI INTERNATIONAL AUSTRALIA PTY LTD KARRATHA MPT HELICOPTER ENGINEERS ENTERPRISE AGREEMENT 2023
+1 | Jason | <organiser 1> | agreement | 68 | COMPASS GROUP – ESS OFFSHORE OIL & GAS (WHEATSTONE PLATFORM) ENTERPRISE AGREEMENT 2022
+1 | Jason | <organiser 1> | employer | 6 | JADESTONE ENERGY MONTARA VENTURE
+1 | Jason | <organiser 1> | employer | 56 |
+1 | Jason | <organiser 1> | employer | 60 |
+2 | Jarred | <organiser 2> |  |  |
+```
+
+`organiser_name` (<organiser 1>, <organiser 2>) is a person field, but it is staff/organiser data, not worker/member
+data, and DA0.1 §2 pasted the identical rows for this same query un-redacted (`da0.1.md:1564`); treated as
+consistent with that precedent rather than an "unexpected" person field, so not redacted here. Flagged per the
+verifier brief's redaction rule regardless — see the "anything unexpected" note in the reply to this task.
+
+#### (b) `00` delta table — DA0.1 baseline → P4, and vs. the plan's predicted pack delta (§4)
+
+| row | DA0.1 baseline (`da0.1.md` §2) | P4 (this run) | Δ | plan §4 predicted pack delta | matches prediction? |
+|---|---:|---:|---:|---|---|
+| workers | 6564 | 5900 | −664 | −664 | yes |
+| workers_active | 5749 | 5085 | −664 | −664 | yes |
+| employers | 187 | 179 | −8 | 187 → 179 | yes |
+| employer_name_aliases | 39 | 39 | 0 | (none) | n/a |
+| employer_merge_events | 23 | 23 | 0 | (none) | n/a |
+| worksites | 194 | 190 | −4 | 194 → 190 | yes |
+| worksites_active | 188 | 184 | −4 | 188 → 184 | yes |
+| worksites_with_parent | 1 | 1 | 0 | (none) | n/a |
+| worksite_name_aliases | 8 | 8 | 0 | (none) | n/a |
+| employer_worksite_roles | 251 | 241 | −10 | 251 → 241 | yes |
+| worksite_scopes | 49 | 13 | −36 | 49 → 13 | yes |
+| employer_scopes | 28 | 10 | −18 | 28 → 10 | yes |
+| work_scopes | 22 | 22 | 0 | (none) | n/a |
+| worksite_contracts | 0 | 0 | 0 | (none) | n/a |
+| worker_assignments | 0 | 0 | 0 | (none) | n/a |
+| agreements | 136 | 136 | 0 | (none) | n/a |
+| agreement_worksites | 54 | 54 | 0 | (none) | n/a |
+| agreement_employers | 5 | 5 | 0 | (none) | n/a |
+| agreement_scopes | 0 | 0 | 0 | (none) | n/a |
+| worker_agreements | 0 | 0 | 0 | (none) | n/a |
+| programs | 4 | 3 | −1 | 4 → 3 | yes |
+| program_worksites | 10 | 7 | −3 | 10 → 7 | yes |
+| projects | 20 | 16 | −4 | 20 → 16 | yes |
+| organiser_patches | 2 | 2 | 0 | (none) | n/a |
+| organiser_patch_assignments | 8 | 8 | 0 | (none) | n/a |
+| organisers | 11 | 11 | 0 | (none) | n/a |
+| campaigns | 24 | 22 | −2 | 24 → 22 | yes |
+| campaign_groups | 25 | 24 | −1 | 25 → 24 | yes |
+| campaign_organising_units | 253 | 250 | −3 | 253 → 250 | yes |
+| campaign_worker_ou | 2506 | 2195 | −311 | 2,506 → 2,191 | **no: 2195** (matches P3's 2195 exactly — sync-on-open drift, expected; see note below) |
+| campaign_worker_membership | 3456 | 3072 | −384 | 3,456 → 3,068 | **no: 3072** (matches P3's 3072 exactly — sync-on-open drift, expected; see note below) |
+| campaign_employers | 48 | 46 | −2 | 48 → 46 | yes |
+| campaign_worksites | 122 | 116 | −6 | 122 → 116 | yes |
+| occupations | 182 | 182 | 0 | (none) | n/a |
+| occupation_aliases | 1488 | 1488 | 0 | (none) | n/a |
+| occupation_groups | (not in DA0.1 `00`) | 19 | n/a | (none) | n/a — table added to the pack after DA0.1 |
+| upcoming_projects | 84 | 84 | 0 | (none) | n/a |
+| upcoming_project_employers | 84 | 84 | 0 | (none) | n/a |
+| import_logs | 68 | 68 | 0 | (none) | n/a |
+| sectors | 16 | 16 | 0 | (none) | n/a |
+| membership_update_batches (`00b`) | 1 | 1 | 0 | (none) | n/a |
+
+**campaign_worker_ou / campaign_worker_membership note:** both drift from the plan's static prediction because the
+app syncs campaign membership/OU rows on open, as the brief anticipated. The P4 values (2195, 3072) match §11.1's
+P3 post-removal values exactly (P1 3460/2510 before removal → P3 3072/2195 after), confirming the drift is the
+expected sync effect already recorded at P3, not a new or unexplained change. Every other row in the plan's
+18-row pack-delta prediction matches exactly.
+
+#### (c) `01`/`02`/`03`/`04`/`06` — counts and summary statements only
+
+- **`01_profile_employers.sql`**: 179 employer rows (= `00`'s `employers`); 39 alias rows (= `employer_name_aliases`);
+  23 merge-event rows (= `employer_merge_events`); category distribution 7 buckets ((null) 73, Subcontractor 63,
+  Specialist 29, Principal_Employer 7, Major_Contractor 4, Labour_Hire 2, Producer 1); naming-convention split by
+  month, 9 buckets. **Confirmed: 0 employers with `employer_id` in 787–794** (the removed synthetic range).
+- **`02_profile_worksites.sql`**: 190 worksite rows (= `00`'s `worksites`); type distribution 18 buckets (Vessel 83,
+  Other 50, Platform 11, FPSO 10, Gas_Plant 7, Onshore_LNG 6, Airfield 5, Onshore_Facilities 4, Gas_Field 3, CPF 2,
+  Accommodation_Vessel 2, Region 1, FPU 1, Heliport 1, FLNG 1, Drill_Centre 1, Vessel_Other 1, Pipeline 1); basin
+  distribution 6 buckets ((null) 164, Carnarvon 14, N/A 5, Browse 4, Bonaparte 2, Multiple 1); 8 alias rows.
+  **Confirmed: 0 worksites with `worksite_id` in 196–199** (the removed synthetic range).
+- **`03_profile_workers_links.sql`**: coverage summary — active 5085, total 5900, no_employer 37, no_worksite 929,
+  neither 33, no_member_number 5085, no_reference_id 642, no_canonical_occupation 693, no_union 5085,
+  no_membership_type 182, has_project 0, has_shift_area_or_panel 0; bulk-load signature 6 monthly buckets
+  (2026-04..2026-09, dominated by 4157 in 2026-09); 533 distinct active employer×worksite pairs, 376 not recorded
+  in `employer_worksite_roles`, covering 2202 workers; 60-row occupation-frequency summary (titles/counts only, no
+  personal data); import history 13 (import_type, month) buckets.
+- **`04_profile_agreements.sql`**: status 2 buckets (Current 86, Expired 50); agreement_scope 1 bucket ((null) 136);
+  source_sheet 16 buckets (Expired 27, Maintenance 22, Production 15, Catering 12, Marine-Deck Officers 11,
+  Marine-Engineers 9, Drilling 8, ROV 6, Offshore Construction 6, Decommissioning 6, Aircraft Maint. 5, Inspection
+  4, Dredging 2, Chemists 1, Hydrographics 1, (null) 1); worksite-link coverage: no link 89, has link 47; 136
+  agreement rows total (= `00`'s `agreements`).
+- **`06_oa_universe_crossmatch.sql`**: asset cross-match — 32 matched / 23 no-match of 55 OA Universe assets;
+  employer cross-match — 74 matched / 14 no-match of 88 OA Universe companies.
+
+#### (d) `05` verdict
+
+`05_candidate_clusters.sql` lists 16 employer near-duplicate clusters and 24 worksite near-duplicate clusters
+(heuristic first-token grouping), plus 1 exact worksite duplicate after case/space folding (`floatel triumph`,
+ids 240/261) and 0 exact employer duplicates. **No cluster key is `test` and no employer cluster is `testco`** in
+either the heuristic grouping or the exact-duplicate folding — confirming the synthetic TestCo/Test-prefixed rows
+removed at P2 left no residue in the near-duplicate candidate lists.

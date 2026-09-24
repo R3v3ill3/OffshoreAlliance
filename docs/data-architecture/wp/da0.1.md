@@ -1562,15 +1562,15 @@ Statement 3 — organiser patches:
 
 ```
 patch_id | patch_name | organiser_name | entity_type | entity_id | entity
-1 | Jason | Jason Lipscombe | agreement | 5 | INPEX - ICHTHYS OPERATIONS ENTERPRISE AGREEMENT 2022-2026
-1 | Jason | Jason Lipscombe | agreement | 7 | Jadestone Stag
-1 | Jason | Jason Lipscombe | agreement | 10 | Shell Prelude
-1 | Jason | Jason Lipscombe | agreement | 63 | PHI INTERNATIONAL AUSTRALIA PTY LTD KARRATHA MPT HELICOPTER ENGINEERS ENTERPRISE AGREEMENT 2023
-1 | Jason | Jason Lipscombe | agreement | 68 | COMPASS GROUP – ESS OFFSHORE OIL & GAS (WHEATSTONE PLATFORM) ENTERPRISE AGREEMENT 2022
-1 | Jason | Jason Lipscombe | employer | 6 | JADESTONE ENERGY MONTARA VENTURE
-1 | Jason | Jason Lipscombe | employer | 56 | 
-1 | Jason | Jason Lipscombe | employer | 60 | 
-2 | Jarred | Jarred Payne |  |  | 
+1 | Jason | <organiser 1> | agreement | 5 | INPEX - ICHTHYS OPERATIONS ENTERPRISE AGREEMENT 2022-2026
+1 | Jason | <organiser 1> | agreement | 7 | Jadestone Stag
+1 | Jason | <organiser 1> | agreement | 10 | Shell Prelude
+1 | Jason | <organiser 1> | agreement | 63 | PHI INTERNATIONAL AUSTRALIA PTY LTD KARRATHA MPT HELICOPTER ENGINEERS ENTERPRISE AGREEMENT 2023
+1 | Jason | <organiser 1> | agreement | 68 | COMPASS GROUP – ESS OFFSHORE OIL & GAS (WHEATSTONE PLATFORM) ENTERPRISE AGREEMENT 2022
+1 | Jason | <organiser 1> | employer | 6 | JADESTONE ENERGY MONTARA VENTURE
+1 | Jason | <organiser 1> | employer | 56 | 
+1 | Jason | <organiser 1> | employer | 60 | 
+2 | Jarred | <organiser 2> |  |  | 
 ```
 
 ## 3. Clone profile
@@ -2716,15 +2716,15 @@ Statement 3 — organiser patches:
 
 ```
 patch_id | patch_name | organiser_name | entity_type | entity_id | entity
-1 | Jason | Jason Lipscombe | agreement | 5 | INPEX - ICHTHYS OPERATIONS ENTERPRISE AGREEMENT 2022-2026
-1 | Jason | Jason Lipscombe | agreement | 7 | Jadestone Stag
-1 | Jason | Jason Lipscombe | agreement | 10 | Shell Prelude
-1 | Jason | Jason Lipscombe | agreement | 63 | PHI INTERNATIONAL AUSTRALIA PTY LTD KARRATHA MPT HELICOPTER ENGINEERS ENTERPRISE AGREEMENT 2023
-1 | Jason | Jason Lipscombe | agreement | 68 | COMPASS GROUP – ESS OFFSHORE OIL & GAS (WHEATSTONE PLATFORM) ENTERPRISE AGREEMENT 2022
-1 | Jason | Jason Lipscombe | employer | 6 | JADESTONE ENERGY MONTARA VENTURE
-1 | Jason | Jason Lipscombe | employer | 56 | 
-1 | Jason | Jason Lipscombe | employer | 60 | 
-2 | Jarred | Jarred Payne |  |  | 
+1 | Jason | <organiser 1> | agreement | 5 | INPEX - ICHTHYS OPERATIONS ENTERPRISE AGREEMENT 2022-2026
+1 | Jason | <organiser 1> | agreement | 7 | Jadestone Stag
+1 | Jason | <organiser 1> | agreement | 10 | Shell Prelude
+1 | Jason | <organiser 1> | agreement | 63 | PHI INTERNATIONAL AUSTRALIA PTY LTD KARRATHA MPT HELICOPTER ENGINEERS ENTERPRISE AGREEMENT 2023
+1 | Jason | <organiser 1> | agreement | 68 | COMPASS GROUP – ESS OFFSHORE OIL & GAS (WHEATSTONE PLATFORM) ENTERPRISE AGREEMENT 2022
+1 | Jason | <organiser 1> | employer | 6 | JADESTONE ENERGY MONTARA VENTURE
+1 | Jason | <organiser 1> | employer | 56 | 
+1 | Jason | <organiser 1> | employer | 60 | 
+2 | Jarred | <organiser 2> |  |  | 
 ```
 
 ## 4. Delta
@@ -2818,7 +2818,7 @@ worksite_contracts / worker_assignments / worker_agreements | 0 / 0 / 0 | the de
 agreements | 136 (86 Current, 50 Expired) | agreement_scope null on 136; 89 with no worksite; holder null on 1 | 136 (00); 86 Current / 50 Expired (04_1); agreement_scope null on 136 (04_2); 89 no-worksite-link (04_4); holder null on exactly 1 row confirmed in 04_5 (agreement_id 1096, 'Vertech WA & NT ', decision_no AE530815, holder blank) | yes
 sectors | 16 | the tabs of the agreements spreadsheet | 16 (00) | yes
 programs / program_worksites / projects | 4 / 10 / 20 |  | 4 / 10 / 20 (00) | yes
-organiser_patches / organiser_patch_assignments | 2 / 8 | one organiser; entity types agreement (5) and employer (3) | 2 / 8 (00); 07_3 shows patch 1 (Jason) has 5 agreement rows + 3 employer rows = 8, patch 2 (Jarred) has 0 assignments (one null row from the LEFT JOIN) | yes
+organiser_patches / organiser_patch_assignments | 2 / 8 | one organiser; entity types agreement (5) and employer (3) | 2 / 8 (00); 07_3 shows patch 1 (organiser 1) has 5 agreement rows + 3 employer rows = 8, patch 2 (organiser 2) has 0 assignments (one null row from the LEFT JOIN) | yes
 campaigns / campaign_groups / campaign_organising_units | 24 / 25 / 253 | groups exist since WP2.1; families since WP3.8 | 24 / 25 / 253 (00); 07_1 lists 24 non-episode campaigns | yes
 campaign_employers / campaign_worksites / campaign_worker_membership | 48 / 122 / 3,415 | universe definition and its materialisation | 48 / 122 (00); campaign_worker_membership = 3456 (00), not 3,415 | explained: measured 3,456 against the plan's 3,415 (+41). Campaign membership is materialised by the universe sync that runs whenever a writer opens a wall chart (UX ledger incidental finding of 2026-09-14), so this total drifts with normal use between two reads on the same day; the plan's own §7 says before/after evidence compares checksums, not row totals
 occupations / occupation_aliases / occupation_groups | 182 / 1,488 / 19 | 4,392 active workers carry a canonical occupation | 182 / 1488 (00); occupation_groups not selected by 00 (pack has no occupation_groups row) — not directly reproduced; 4392 with canonical occupation reproduced via 03_5 (null-occupation row: with_canonical=4392) | yes: 182 / 1488 (00), occupation_groups 19 (amended 00, §4.1), 4,392 with a canonical occupation (03_5)

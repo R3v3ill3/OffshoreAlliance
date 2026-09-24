@@ -15,7 +15,7 @@ SELECT ou_type, count(*) AS units,
 FROM campaign_organising_units GROUP BY 1 ORDER BY 2 DESC;
 
 -- Organiser patches as they stand
-SELECT p.patch_id, p.patch_name, o.organiser_name, pa.entity_type, pa.entity_id,
+SELECT p.patch_id, p.patch_name, p.organiser_id, pa.entity_type, pa.entity_id,
        CASE pa.entity_type WHEN 'worksite' THEN (SELECT worksite_name FROM worksites WHERE worksite_id = pa.entity_id)
                            WHEN 'employer' THEN (SELECT employer_name FROM employers WHERE employer_id = pa.entity_id)
                            WHEN 'agreement' THEN (SELECT coalesce(short_name, agreement_name) FROM agreements WHERE agreement_id = pa.entity_id) END AS entity

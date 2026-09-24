@@ -992,6 +992,27 @@ LINE 73: SELECT log_id, before_row AS before_state, after_row AS after_state
 
 **Per the verifier's stop rule: no further step was run.** Steps 5–7 of this rerun (the third `00`, forward 2, the fourth `00`) were **not executed**. **The clone is currently left in the post-forward-1 state (00 #2 above), NOT rolled back** — `_oux_hygiene_log` holds 2653 pending (`rolled_back_at IS NULL`) rows of `10_remove_test_dataset`, and the 19 scoped entities are absent, worker 1536 is on 741/185/cwm=50. This is a hold state pending a fix to `90_rollback.sql`, not the "leave forward" end state the run sheet calls for (which presumes a completed forward-back-forward rehearsal). Production must not be run until `90_rollback.sql` is fixed and this rehearsal (or at minimum steps 4–7) is repeated successfully, per the risk in §3.4 item 1 (reversibility is unproven while this bug stands).
 
+---
+
+### Resumed after P7, 2026-09-24 — verifier (Sonnet), via the connector under the orchestrator's approval
+
+Fix round 3 (P7) confirmed applied: `scripts/data-hygiene/da0.2/90_rollback.sql:68` now projects `after_row` in `_da02_pending` (`SELECT log_id, action, table_name, row_pk, before_row, after_row`); nothing else in `10_remove_test_dataset.sql` or `90_rollback.sql` changed (607 lines, same as before). Resumed from step 4 against the clone's current state (post-forward-1: 19 scoped entities absent, worker 1536 on 741/185/cwm=50, 2,653 pending `10_remove_test_dataset` log rows, per "00 #2" above). Context noted from the coordinator: DA0.3's rehearsal ran on this clone since DA0.2's forward 1 and left its migration applied (three nullable columns added to `workers`: `employer_name_raw`, `worksite_name_raw`, `names_import_id`) plus its own (rolled-back) `_oux_hygiene_log` rows under `da0.3/*` script names.
+
+#### Step 4 — `90_rollback.sql` — STOP (error)
+
+The `after_row` bug is fixed — that specific error did not recur. A **different** error occurred, inside the replay's step 4 (mutual-reference fallback), before reaching the post-assertions. **This is not the byte-identity / whole-row-jsonb check the coordinator flagged as the likely DA0.3-column risk** — it is a foreign-key-violation during row reinsertion, raised before any byte-identity comparison is reached.
+
+```text
+ERROR:  P0001: 90: email_send_log {"send_id": 274} cannot be reinserted (foreign-key violation with no nullable key to relax)
+CONTEXT:  PL/pgSQL function inline_code_block line 117 at RAISE
+```
+
+**Diagnosis:** `90_rollback.sql:270–309` (step 2) replays every pending row once in reverse log order; a `delete`-action row whose `INSERT` hits `foreign_key_violation` is deferred (`_da02_deferred`). `:312–397` (step 3) retries deferred rows in passes; when a pass makes no progress, `:361–390` (step 4) tries to reinsert each still-deferred row with its nullable foreign-key columns pointing at a table still in `_da02_pending` set to NULL, to complete later (step 5). For `email_send_log` row `{"send_id": 274}`, `:364–367`'s lookup of nullable FK columns from `_da02_edges` (columns of `email_send_log` that are NOT NOT-NULL and reference a table still in `_da02_pending`) returned nothing (`v_null_cols IS NULL`), so `:368–369` raises this exception — meaning every foreign key `email_send_log` holds into a table this rollback is still reinserting is `NOT NULL`, so the row can be neither reinserted directly (its parent isn't back yet after all retry passes) nor relaxed. This is a limitation of the replay's fallback (it only handles nullable-FK cycles) exposed by at least one NOT-NULL FK cycle or late-arriving-parent case among the tables `10` deleted — independent of DA0.3's `workers` columns (those are unrelated to `email_send_log`'s foreign keys).
+
+The transaction rolled back automatically before `COMMIT`; nothing in this submission persisted. **The clone remains in the same post-forward-1 state as before this call** (00 #2: entities absent, 1536 on 741/185/cwm=50, 2,653 pending log rows) — unchanged by this attempt.
+
+**Per the verifier's stop rule: no further step was run.** Steps 5–7 (00 #3, forward 2, 00 #4) were **not executed**. The clone is still not in a state that proves reversibility; production must not be run until `90_rollback.sql`'s reinsert-ordering/fallback is fixed for this case and the rehearsal (from step 4, or from a fresh 00 if the fix requires a clean run) is repeated successfully.
+
 ## 10. Review
 
 **2026-09-22 — Reviewer: Fable, round 1.** Read `00_preflight.sql`, `10_remove_test_dataset.sql`, `90_rollback.sql`
@@ -1326,3 +1347,14 @@ Advisories A–C of round 2 applied by the orchestrator, 2026-09-23 (plan §3.2 
 | 4 (rerun) | `90_rollback.sql` | **ERROR — STOP.** `42703: column "after_row" does not exist` at line 73 (`_da02_pending`, created at line 67–70, omits `after_row` from its column list, but line 73 selects it). Bug in the committed script. Transaction rolled back automatically; clone left in the post-forward-1 (00 #2) state, NOT rolled back — 2653 pending log rows remain, entities still absent, 1536 on 741/185/cwm=50 | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
 | 5–7 (rerun) | `00_preflight.sql` / `10_remove_test_dataset.sql` | **NOT RUN** — verifier stopped at step 4 per the stop rule | — | — |
 | 8 | leave clone forward | **NOT APPLICABLE YET** — the clone is currently forward from forward-1 only (not a completed forward-back-forward rehearsal); reversibility is unproven pending a fix to `90_rollback.sql` | 2026-09-24 | verifier (Sonnet) |
+| 4 (resumed after P7) | `90_rollback.sql` (fix round 3: `_da02_pending` now projects `after_row`) | **ERROR — STOP.** `P0001: 90: email_send_log {"send_id": 274} cannot be reinserted (foreign-key violation with no nullable key to relax)` — a NOT-NULL FK from `email_send_log` into a still-pending table has no nullable column to relax (the replay's step-4 fallback only handles nullable-FK cycles). Not the byte-identity/DA0.3-column issue flagged; occurs earlier, during reinsertion. Transaction rolled back automatically; clone unchanged, still in the post-forward-1 (00 #2) state | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| 5–7 (resumed) | `00_preflight.sql` / `10_remove_test_dataset.sql` | **NOT RUN** — verifier stopped at step 4 per the stop rule | — | — |
+
+## 12. Operator decisions received (session, 2026-09-24)
+
+| Input | Decision | Effect |
+|---|---|---|
+| P7 | Authorised: fix round 3 and the resumed rollback rehearsal | Rehearsal resumed; `90` stopped on a second defect (reinsert order across roots, `email_send_log` 274) — fix round 4 in progress under the same authorisation |
+| P1 | The 304 synthetic workers carrying `workers.member_number` are synthetic data and are removed | `10`'s reading stands; no change to scope |
+| P2 | Workers 681, 1537 and 1541 confirmed synthetic | as planned |
+| P6 | Clarification requested (10 vs 11 roles): the scope is defined by the entities, not by a role list; the ten rows are every `employer_worksite_roles` row whose employer is 787–794 or whose worksite is 196–199 (ids 82, 83, 84, 85, 87, 89, 91, 93, 95, 97: TestCo Energy Operator, Fortis Maintenance Services Principal_Contractor, Pacific Coatings & Insulation Subcontractor and Alliance Site Services Principal_Contractor at Test Onshore Gas Plant; TestCo 2 Operator and NorthStar Marine Coatings Subcontractor at each of Alpha FPSO, Bravo Platform and Charlie FPU). Employers 792 and 794 hold no role row. The gaps in the id sequence (86 is Toll Energy at Gorgon LNG; 88, 90, 92, 94, 96 do not exist) are unrelated. The plan's "11" was a written count with no list behind it | pending the operator's acknowledgement |

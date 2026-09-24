@@ -93,8 +93,8 @@ that no other checkout applied a different version of the DDL.
 | Task | Raised by | Status |
 |---|---|---|
 | Supply `OUX_CONTRACT_*` accounts (dev) so the two DA0.3 contract suites (`src/lib/import/__contract__/`, `src/lib/hooks/__contract__/`) can run, and `E2E_USER_*` for the preview replay of `scripts/data-hygiene/da0.3/fixtures/replay_status_sync.xlsx` through the membership wizard (plan §3.4) | DA0.3 | pending — both precede the DA0.3 production run sheet |
-| **DA0.2 P7: authorise fix round 3** (the one-line `90_rollback.sql` projection fix) and the resumed clone rehearsal from step 4; then **P1, P2, P6** (`wp/da0.2.md` §5) before the production run sheet | DA0.2 | pending — first item of the Phase 0 hand-over |
-| Confirm the D15 finding above (the mobilisation radar in this repository owns the sixteen tables; no other checkout applied a different DDL) | DA0.4 | pending |
+| **DA0.2 P7: authorise fix round 3** (the one-line `90_rollback.sql` projection fix) and the resumed clone rehearsal from step 4; then **P1, P2, P6** (`wp/da0.2.md` §5) before the production run sheet | DA0.2 | **P7 authorised 2026-09-24; P1 and P2 confirmed (the 304 `member_number` rows and workers 681/1537/1541 are synthetic); P6 awaiting the operator's acknowledgement of the ten-row list (`wp/da0.2.md` §12).** The resumed rehearsal found a second rollback defect (reinsert order across roots); fix round 4 in progress under the same authorisation |
+| Confirm the D15 finding above (the mobilisation radar in this repository owns the sixteen tables; no other checkout applied a different DDL) | DA0.4 | **Confirmed by the operator 2026-09-24 (O-1)**; O-4 and DA0.3 §5 items 1–9 confirmed the same day |
 | Create a fresh production-shaped clone after Phase 0's run sheets have landed on production (D17); then run the pack on it and on production, confirm the counts match, record the new ref here and in the UX ledger, retire the 12 September clone | D17 | pending — instructions in the Phase 0 hand-over |
 | Run the Phase 0 production run sheets in the order DA0.2 → DA0.5 → DA0.3 (one file per submission, output pasted back before the next) | Phase 0 | pending |
 

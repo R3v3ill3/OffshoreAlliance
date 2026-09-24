@@ -887,3 +887,10 @@ met: no blocking finding remains, so the clone rehearsal may proceed.
 | prod 1 | `00_catalog_check.sql` O (before) | production | | | operator |
 | prod 2 | `10_record_ledger_row.sql` with `SET LOCAL oux.env = 'production';` | production | | | operator |
 | prod 3 | `00_catalog_check.sql` A–J, K–N (after) | production | | | operator |
+
+## 12. Operator decisions received (session, 2026-09-24)
+
+| Input | Decision |
+|---|---|
+| O-1 | Confirmed: the mobilisation radar in this repository owns the sixteen tables; no other checkout applied a different DDL. The production ledger-row run sheet is unblocked |
+| O-4 | Confirmed as accepted by the orchestrator (acceptance split with Phase 1) |

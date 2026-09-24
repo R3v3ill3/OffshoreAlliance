@@ -1081,3 +1081,6 @@ _Reviewer's ranked findings with `path:line`, blocking/advisory, verdict; fix ro
 
 No real-looking person field appeared in any result (all rows were synthetic `Fixture` / `Person n`). Production `gteygwfgjvczanmrwgbr` and normal dev `dpnnmkhabysfdogllsyh` were not touched.
 
+## 12. Operator decisions received (session, 2026-09-24)
+
+§5 items 1–9 confirmed as decided by the orchestrator in §7 (wizards read-only for names; admin-block nav; synthetic fixture; dev and clone applies; `api/campaign-import/apply` to DA4.2; worksite CHECK widened; back-fill fills null FKs only; sticky `rejected`; one `import_logs` row per file).

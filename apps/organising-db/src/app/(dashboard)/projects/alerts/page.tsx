@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils/cn";
 import { confidenceLabel, layerLabel } from "@/app/(dashboard)/mobilisation/_components/tabs";
+import { scheduleColumnMissing } from "@/lib/mobilisation/schedule";
 import { projectContractorPath, projectVesselPath } from "@/lib/projects/routes";
 
 interface SignalRow {
@@ -43,6 +44,8 @@ interface SignalRow {
   watch_contractor_id: number | null;
   operator_id: number | null;
   worksite_id: number | null;
+  arrival_at?: string | null;
+  ends_at?: string | null;
   vessels: { name: string; imo: string | null } | null;
   watch: { canonical_name: string; employer_id: number | null } | null;
   operator: { employer_name: string } | null;
@@ -63,17 +66,32 @@ interface AlertRow {
   signal_ids: number[];
 }
 
+const SIGNAL_COLUMNS =
+  "signal_id, source_layer, source, signal_type, occurred_at, title, extract, url, confidence, in_region, region_label, matched_terms, vessel_id, contractor_id, watch_contractor_id, operator_id, worksite_id, vessels(name, imo), watch:mobilisation_watch_contractors(canonical_name, employer_id), operator:employers!mobilisation_signals_operator_id_fkey(employer_name), sector:sectors(sector_name)";
+
 async function loadSignals(): Promise<SignalRow[]> {
   const sb = createClient();
-  const { data, error } = await sb
+  const withSchedule = await sb
     .from("mobilisation_signals")
-    .select(
-      "signal_id, source_layer, source, signal_type, occurred_at, title, extract, url, confidence, in_region, region_label, matched_terms, vessel_id, contractor_id, watch_contractor_id, operator_id, worksite_id, vessels(name, imo), watch:mobilisation_watch_contractors(canonical_name, employer_id), operator:employers!mobilisation_signals_operator_id_fkey(employer_name), sector:sectors(sector_name)"
-    )
+    .select(`${SIGNAL_COLUMNS}, arrival_at, ends_at`)
     .order("occurred_at", { ascending: false })
-    .limit(250);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as SignalRow[];
+    .limit(1000);
+  const result =
+    withSchedule.error && scheduleColumnMissing(withSchedule.error.message)
+      ? await sb.from("mobilisation_signals").select(SIGNAL_COLUMNS).order("occurred_at", { ascending: false }).limit(1000)
+      : withSchedule;
+  if (result.error) throw new Error(result.error.message);
+  return (result.data ?? []) as unknown as SignalRow[];
+}
+
+function hashSignalId(): number | null {
+  const match = window.location.hash.match(/^#signal-(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+function subscribeToHash(onChange: () => void) {
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
 }
 
 async function loadAlerts(): Promise<AlertRow[]> {
@@ -114,7 +132,10 @@ export default function MobilisationFeedPage() {
   const [region, setRegion] = useState("all");
   const [operator, setOperator] = useState("all");
   const [sector, setSector] = useState("all");
-  const [focusSignalId, setFocusSignalId] = useState<number | null>(null);
+  const linkedSignalId = useSyncExternalStore(subscribeToHash, hashSignalId, () => null);
+  const [clickedSignalId, setClickedSignalId] = useState<number | null>(null);
+  const focusSignalId = clickedSignalId ?? linkedSignalId;
+  const warnedMissingSignal = useRef(false);
   const [query, setQuery] = useState("");
 
   const names = useMemo(() => {
@@ -166,6 +187,13 @@ export default function MobilisationFeedPage() {
   });
 
   useEffect(() => {
+    if (linkedSignalId == null || !signals.data || warnedMissingSignal.current) return;
+    if (signals.data.some((row) => row.signal_id === linkedSignalId)) return;
+    warnedMissingSignal.current = true;
+    toast.message("That feed item is older than the list on this page.");
+  }, [linkedSignalId, signals.data]);
+
+  useEffect(() => {
     if (focusSignalId == null) return;
     const el = document.getElementById(`signal-${focusSignalId}`);
     if (!el) return;
@@ -215,7 +243,7 @@ export default function MobilisationFeedPage() {
       toast.message("That feed item is older than the list on this page.");
       return;
     }
-    setFocusSignalId(signalId);
+    setClickedSignalId(signalId);
   }
 
   const openAlerts = (alerts.data ?? []).filter((a) => a.status === "new" || a.status === "snoozed");
@@ -401,6 +429,16 @@ export default function MobilisationFeedPage() {
             </div>
             <div className="font-medium">{row.title}</div>
             {row.extract && <p className="text-sm text-muted-foreground line-clamp-3">{row.extract}</p>}
+            {(row.arrival_at || row.ends_at) && (
+              <p className="text-xs text-muted-foreground">
+                {[
+                  row.arrival_at ? `Estimated arrival ${format(new Date(row.arrival_at), "dd MMM yyyy")}` : null,
+                  row.ends_at ? `Expected until ${format(new Date(row.ends_at), "dd MMM yyyy")}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
             <div className="flex flex-wrap gap-3 text-xs">
               {row.watch && (
                 <Link className="underline" href={projectContractorPath(row.watch_contractor_id!)}>

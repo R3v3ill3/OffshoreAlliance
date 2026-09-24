@@ -399,14 +399,14 @@ function TeamForm({ initial }: { initial: SettingsShape }) {
       </label>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={satellite} onChange={(e) => setSatellite(e.target.checked)} />
-        Satellite AIS tier — poll vessels that are still far from the coast. Terrestrial AIS only sees them a few days out.
+        Satellite AIS tier — ignored by AISStream. It only changes how far a REST provider keeps polling.
       </label>
       <label className="block text-sm">
         Cross-layer window (days)
         <Input className="mt-1 max-w-[120px]" type="number" min={7} max={180} value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))} />
       </label>
       <p className="text-xs text-muted-foreground">
-        The AIS vendor key stays in DATALASTIC_API_KEY. This flag only changes how far out we keep polling. Positions are not published outside the app.
+        Positions come from AISStream (AISSTREAM_API_KEY) while a hull is in terrestrial range of the North-West. The listen runs on the existing AIS cron. Positions are not published outside the app.
       </p>
       <Button type="submit">Save team settings</Button>
     </form>

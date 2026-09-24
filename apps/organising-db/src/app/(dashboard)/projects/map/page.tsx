@@ -48,7 +48,7 @@ export default function ProjectsMapPage() {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        Geofences, last vessel positions, and approved activities that have coordinates. Positions stay inside the app.
+        Geofences, the last AISStream position for each watchlisted vessel, and approved activities that have coordinates. A hull appears after it has been heard inside terrestrial range of the North-West. Positions stay inside the app.
       </p>
       {(geofences.error || vessels.error || projects.error) && (
         <p className="text-sm text-destructive">

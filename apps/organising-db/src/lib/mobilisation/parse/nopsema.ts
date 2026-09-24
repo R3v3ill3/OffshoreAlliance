@@ -9,6 +9,7 @@ import {
   primaryVesselId,
   primaryWatchContractor,
 } from "../match";
+import { parseStayWindow } from "../schedule";
 import type { SignalDraft, SignalType, Watchlist } from "../types";
 import { classifyRegion } from "../text";
 
@@ -245,6 +246,7 @@ export function draftFromNopsema(input: {
   const worksite = matchWorksite(text, input.watch.worksites);
   const watchContractor = primaryWatchContractor(match, input.watch);
   const title = input.row.title || input.detail?.fields["activity name"] || `NOPSEMA ${input.row.externalId}`;
+  const stay = parseStayWindow(text);
   const status = input.row.status || input.detail?.fields["outcome"] || "";
   const updated =
     input.row.resubmissionDate ||
@@ -277,6 +279,8 @@ export function draftFromNopsema(input: {
     external_id: input.row.externalId,
     matched_terms: matchedTerms(match),
     region_label: input.row.location || scored.regionLabel,
+    arrival_at: stay.arrivalAt,
+    ends_at: stay.endsAt,
   };
 }
 

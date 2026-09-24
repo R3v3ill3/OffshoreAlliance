@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { corroborationBump } from "../dedup";
+import { scheduleColumnMissing } from "../schedule";
 import { planAlerts } from "../rules";
 import type {
   AlertDraft,
@@ -176,8 +177,16 @@ export async function saveSignal(db: Db, draft: SignalDraft, now: string): Promi
     external_id: draft.external_id,
     matched_terms: draft.matched_terms,
     also_seen: draft.also_seen ?? [],
+    arrival_at: draft.arrival_at ?? null,
+    ends_at: draft.ends_at ?? null,
   };
-  const inserted = await db.from("mobilisation_signals").insert(row).select("*").maybeSingle();
+  let inserted = await db.from("mobilisation_signals").insert(row).select("*").maybeSingle();
+  if (inserted.error && scheduleColumnMissing(inserted.error.message)) {
+    const { arrival_at: _arrival, ends_at: _ends, ...withoutSchedule } = row;
+    void _arrival;
+    void _ends;
+    inserted = await db.from("mobilisation_signals").insert(withoutSchedule).select("*").maybeSingle();
+  }
   if (!inserted.error && inserted.data) {
     return { signal: toSignal(inserted.data), created: true, confidenceRaised: false };
   }
@@ -196,21 +205,42 @@ export async function saveSignal(db: Db, draft: SignalDraft, now: string): Promi
     confidenceRaised = confidence > Number(existing.confidence);
   }
   const terms = [...new Set([...(existing.matched_terms ?? []), ...draft.matched_terms])];
-  const updated = await db
+  const patch: Record<string, unknown> = { also_seen: seen, confidence, matched_terms: terms };
+  if (draft.arrival_at && !existing.arrival_at) patch.arrival_at = draft.arrival_at;
+  if (draft.ends_at && !existing.ends_at) patch.ends_at = draft.ends_at;
+  let updated = await db
     .from("mobilisation_signals")
-    .update({ also_seen: seen, confidence, matched_terms: terms })
+    .update(patch)
     .eq("signal_id", existing.signal_id)
     .select("*")
     .single();
+  if (updated.error && scheduleColumnMissing(updated.error.message)) {
+    delete patch.arrival_at;
+    delete patch.ends_at;
+    updated = await db
+      .from("mobilisation_signals")
+      .update(patch)
+      .eq("signal_id", existing.signal_id)
+      .select("*")
+      .single();
+  }
   if (updated.error) throw new Error(updated.error.message);
   return { signal: toSignal(updated.data), created: false, confidenceRaised };
 }
 
 async function findExisting(db: Db, dedup: string, fingerprint: string) {
+  type Existing = Record<string, unknown> & {
+    also_seen?: { source: string; url: string | null; at?: string }[];
+    matched_terms?: string[];
+    confidence: number;
+    signal_id: number;
+    arrival_at?: string | null;
+    ends_at?: string | null;
+  };
   const byDedup = await db.from("mobilisation_signals").select("*").eq("dedup_key", dedup).maybeSingle();
-  if (byDedup.data) return byDedup.data as Record<string, unknown> & { also_seen?: { source: string; url: string | null; at?: string }[]; matched_terms?: string[]; confidence: number; signal_id: number };
+  if (byDedup.data) return byDedup.data as Existing;
   const byPrint = await db.from("mobilisation_signals").select("*").eq("fingerprint", fingerprint).maybeSingle();
-  return (byPrint.data as Record<string, unknown> & { also_seen?: { source: string; url: string | null; at?: string }[]; matched_terms?: string[]; confidence: number; signal_id: number }) ?? null;
+  return (byPrint.data as Existing) ?? null;
 }
 
 export async function openAlertsForSignal(

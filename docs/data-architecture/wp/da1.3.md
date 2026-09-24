@@ -720,3 +720,20 @@ _Each step, pasted output, date, who ran it._
 | Reviewer | Fable | the migration and the run sheets (never downgraded) |
 | Verifier | Sonnet | commands, dev application, fresh-clone rehearsal forward → back → forward, pack before/after, A1–A10 |
 | Summariser | Haiku | pack delta table |
+
+## 12. Operator decisions received (session, 2026-09-24)
+
+| # | Decision |
+|---|---|
+| Q1 | (a) accepted: a fifteenth top-level scope `production_operations` ("Production operations"); D7 amended |
+| Q2 | **Changed:** `Service` (8) goes under Maintenance / brownfield |
+| Q3 | **Changed:** `Logistics` (10) goes under Other (chemist / emergency / medical) |
+| Q4, Q5, Q6, Q7, Q8, Q9, Q11 | as drafted |
+| Q10 | **Widened:** `role_type` Transport maps to BOTH Marine supply / vessels and Helicopters (transport in the NOPSEMA sense includes helicopters), confidence L |
+| Q12 | Yes, roles are not scopes and get no crosswalk row; the role itself stays in `upcoming_project_employers.role_type` (nothing is lost) — record in the plan's §3 that the role column is kept as-is |
+| Q13 | Confidence: one vocabulary everywhere, reconciled by the orchestrator with DA2.1: the STORED values are `High | Medium | Low` (the existing `mapping_confidence` vocabulary, plan §3.7); H/M/L are the same three values as shorthand in documents and the map. `scope_crosswalk.confidence` uses the same CHECK as DA2.1's columns |
+| Q14, Q15, Q16, Q17 | as drafted |
+
+## 13. Approval
+
+**Approved by the orchestrator, 2026-09-24** with the decisions above. Implementation (Opus) starts after DA2.1's migration is on the working tree, so the two do not edit `packages/db-types/generated.ts` at once; Fable review; rehearsal on the fresh clone `plbldfctqhnbyrsypuri` (`OA_clone_2`) by the verifier; production by the operator's run sheet.

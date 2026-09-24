@@ -741,3 +741,17 @@ _Pending._
 ## 11. Run sheet record
 
 _Pending._
+
+## 12. Approval and operator decisions (2026-09-24)
+
+**Approved by the orchestrator** with:
+
+- O-1: reuse `worksites.operator_id` as the facility operator; no `facility_operator_id` column (operator agreed 2026-09-24; plan §3.2 wording amended by this note).
+- O-2: rename `agreement_worksites.mapping_confidence` → `confidence` (operator agreed).
+- O-3: `decided_by` NULL with the operator's role and date in `decision_ref` for the 69 worksheet decisions; the 2026-09-24 session decisions (116 employer rows, `employers_adjudication_2026-09-24.csv`) are loaded from that file in preference to the 22 Sep one.
+- O-4: catch normal dev up first: apply the five migrations it lacks (`20260914090000`, `20260914090100`, `20260918120000`, `20260921030000`, `20260922040000` — and `20260923220000`, `20260924010000` if absent) each as one `BEGIN; … COMMIT;` submission plus its ledger row, in version order, through the connector; record each in §11. WP2.2a/b's cleanup scripts are not run on dev (its data is thin; the UX ledger's caveat is noted).
+- O-5: the fresh clone is `plbldfctqhnbyrsypuri` (`OA_clone_2`), marked `clone`.
+- O-9: leave the alias-source and provenance-source vocabularies distinct; flagged to DA1.4.
+- S28 (employer round): add `abr` to `employer_name_aliases_source_check` and `worksite_name_aliases_source_check` in this migration.
+- Confidence stored values `High | Medium | Low` everywhere (DA1.3 Q13 reconciled the same way).
+- Commits: the implementer does not commit; one commit per package by the orchestrator.

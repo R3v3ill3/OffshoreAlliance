@@ -31,6 +31,13 @@ Status key: **not started** · **blocked (D-n)** · **planning** · **approved**
   **The 12 September clone `yqjkuobcawvigsfpgrcm` is retired** once the pack comparison in `wp/da0.1.md` §7 is
   recorded: pause it, delete after the UX programme confirms nothing is in flight there.
 - **Normal dev `dpnnmkhabysfdogllsyh`**: read freely; mutate with the operator's approval per file.
+- **Permission prompts (operator decision 2026-09-24, "option 1"):** `.claude/settings.json` allows
+  `mcp__Supabase__execute_sql` and the read-only listing tools without a per-call prompt, and denies
+  `apply_migration`, `pause_project`, `restore_project`, `create_project`, branch and edge-function tools. The
+  per-call prompt was the only technical barrier against an agent writing to production; from this date the
+  protection is D0 (agents run SELECT-only, PII-free statements on `gteygwfgjvczanmrwgbr`), the run-sheet
+  `_oux_env_marker` guard, and the rule that every mutating statement targets the clone or dev by explicit project
+  ref. Remove the allow list to restore the prompts.
 - **Branch (deviation from the prompt's `feat/da-<wp-id>-<slug>` rule):** this session is bound to
   `claude/determined-hypatia-y2cqau` by the harness and may not push elsewhere, so every Phase 0 package is
   committed there, one commit per completed package, and the operator opens pull requests from it (none is opened

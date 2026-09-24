@@ -4,22 +4,6 @@ exports[`buildNavModel > 1. full mode / admin 1`] = `
 {
   "admin": [
     {
-      "href": "/email-imports",
-      "icon": "mail-open",
-      "id": "email_imports",
-      "label": "Email Imports",
-      "module": "administration",
-      "state": "on",
-    },
-    {
-      "href": "/email/wrappers",
-      "icon": "layout-template",
-      "id": "email_wrappers",
-      "label": "Email Wrappers",
-      "module": "administration",
-      "state": "on",
-    },
-    {
       "href": "/administration",
       "icon": "settings",
       "id": "administration",
@@ -88,10 +72,13 @@ exports[`buildNavModel > 1. full mode / admin 1`] = `
       "state": "on",
     },
     {
+      "activeHrefs": [
+        "/sms/inbox",
+      ],
       "href": "/email/inbox",
       "icon": "inbox",
-      "id": "email_inbox",
-      "label": "Email Inbox",
+      "id": "inbox",
+      "label": "Inbox",
       "module": "inbox",
       "state": "on",
     },
@@ -104,14 +91,6 @@ exports[`buildNavModel > 1. full mode / admin 1`] = `
       "id": "actions",
       "label": "Actions",
       "module": "actions",
-      "state": "on",
-    },
-    {
-      "href": "/sms/inbox",
-      "icon": "message-square",
-      "id": "sms_inbox",
-      "label": "SMS Inbox",
-      "module": "inbox",
       "state": "on",
     },
     {
@@ -205,10 +184,13 @@ exports[`buildNavModel > 2. full mode / user 1`] = `
       "state": "on",
     },
     {
+      "activeHrefs": [
+        "/sms/inbox",
+      ],
       "href": "/email/inbox",
       "icon": "inbox",
-      "id": "email_inbox",
-      "label": "Email Inbox",
+      "id": "inbox",
+      "label": "Inbox",
       "module": "inbox",
       "state": "on",
     },
@@ -221,14 +203,6 @@ exports[`buildNavModel > 2. full mode / user 1`] = `
       "id": "actions",
       "label": "Actions",
       "module": "actions",
-      "state": "on",
-    },
-    {
-      "href": "/sms/inbox",
-      "icon": "message-square",
-      "id": "sms_inbox",
-      "label": "SMS Inbox",
-      "module": "inbox",
       "state": "on",
     },
     {
@@ -355,6 +329,9 @@ exports[`buildNavModel > 3. organiser mode / user 1`] = `
       "state": "on",
     },
     {
+      "activeHrefs": [
+        "/sms/inbox",
+      ],
       "href": "/email/inbox",
       "icon": "inbox",
       "id": "inbox",
@@ -470,6 +447,9 @@ exports[`buildNavModel > 4. organiser mode / viewer (via the role default and th
       "state": "on",
     },
     {
+      "activeHrefs": [
+        "/sms/inbox",
+      ],
       "href": "/email/inbox",
       "icon": "inbox",
       "id": "inbox",
@@ -583,6 +563,9 @@ exports[`buildNavModel > 5. organiser mode with \`insights\` on — Dashboard an
       "state": "on",
     },
     {
+      "activeHrefs": [
+        "/sms/inbox",
+      ],
       "href": "/email/inbox",
       "icon": "inbox",
       "id": "inbox",
@@ -695,6 +678,9 @@ exports[`buildNavModel > 6. organiser mode with \`organisation_databases\` on �
       "state": "on",
     },
     {
+      "activeHrefs": [
+        "/sms/inbox",
+      ],
       "href": "/email/inbox",
       "icon": "inbox",
       "id": "inbox",
@@ -777,10 +763,13 @@ exports[`buildNavModel > 7. organiser mode, Show everything on — full rows plu
       "state": "on",
     },
     {
+      "activeHrefs": [
+        "/sms/inbox",
+      ],
       "href": "/email/inbox",
       "icon": "inbox",
-      "id": "email_inbox",
-      "label": "Email Inbox",
+      "id": "inbox",
+      "label": "Inbox",
       "module": "inbox",
       "state": "on",
     },
@@ -793,14 +782,6 @@ exports[`buildNavModel > 7. organiser mode, Show everything on — full rows plu
       "id": "actions",
       "label": "Actions",
       "module": "actions",
-      "state": "on",
-    },
-    {
-      "href": "/sms/inbox",
-      "icon": "message-square",
-      "id": "sms_inbox",
-      "label": "SMS Inbox",
-      "module": "inbox",
       "state": "on",
     },
     {
@@ -927,6 +908,9 @@ exports[`buildNavModel > 8. organiser mode with allowShowEverything: false — n
       "state": "on",
     },
     {
+      "activeHrefs": [
+        "/sms/inbox",
+      ],
       "href": "/email/inbox",
       "icon": "inbox",
       "id": "inbox",
@@ -949,22 +933,6 @@ exports[`buildNavModel > 8. organiser mode with allowShowEverything: false — n
 exports[`buildNavModel > 9. organiser mode + isAdmin (unreachable today; the defensive branch) 1`] = `
 {
   "admin": [
-    {
-      "href": "/email-imports",
-      "icon": "mail-open",
-      "id": "email_imports",
-      "label": "Email Imports",
-      "module": "administration",
-      "state": "on",
-    },
-    {
-      "href": "/email/wrappers",
-      "icon": "layout-template",
-      "id": "email_wrappers",
-      "label": "Email Wrappers",
-      "module": "administration",
-      "state": "on",
-    },
     {
       "href": "/administration",
       "icon": "settings",
@@ -1067,6 +1035,9 @@ exports[`buildNavModel > 9. organiser mode + isAdmin (unreachable today; the def
       "state": "on",
     },
     {
+      "activeHrefs": [
+        "/sms/inbox",
+      ],
       "href": "/email/inbox",
       "icon": "inbox",
       "id": "inbox",

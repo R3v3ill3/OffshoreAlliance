@@ -34,7 +34,7 @@ describe('isNavItemActive', () => {
 
 describe('isNavRowActive', () => {
   const actions = { href: '/actions', activeHrefs: ['/sms'] }
-  const smsInbox = { href: '/sms/inbox' }
+  const inbox = { href: '/email/inbox', activeHrefs: ['/sms/inbox'] }
 
   it('lights the Actions row on its own route', () => {
     expect(isNavRowActive('/actions', actions, hrefs)).toBe(true)
@@ -46,8 +46,9 @@ describe('isNavRowActive', () => {
     expect(isNavRowActive('/sms', actions, hrefs)).toBe(true)
   })
 
-  it('still gives /sms/inbox to the SMS Inbox row alone', () => {
-    expect(isNavRowActive('/sms/inbox', smsInbox, hrefs)).toBe(true)
+  it('gives /sms/inbox to the Inbox row, not Actions', () => {
+    expect(isNavRowActive('/sms/inbox', inbox, hrefs)).toBe(true)
+    expect(isNavRowActive('/email/inbox', inbox, hrefs)).toBe(true)
     expect(isNavRowActive('/sms/inbox', actions, hrefs)).toBe(false)
   })
 

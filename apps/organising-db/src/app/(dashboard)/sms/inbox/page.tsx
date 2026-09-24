@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { SmsInboxPanel } from '@/components/sms/inbox/SmsInboxPanel'
 import { SmsHubHeader } from '@/components/sms/hub/SmsHubNav'
+import { InboxChannelSwitch } from '@/components/inbox/InboxChannelSwitch'
 
 function parsePositiveInt(raw: string | null): number | undefined {
   if (!raw) return undefined
@@ -34,6 +35,7 @@ function SmsInboxPageInner() {
 
   return (
     <div className="space-y-4">
+      <InboxChannelSwitch current="sms" />
       <SmsHubHeader
         current="inbox"
         title="SMS inbox"

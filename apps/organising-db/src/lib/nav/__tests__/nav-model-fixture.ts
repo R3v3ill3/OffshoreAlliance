@@ -38,12 +38,10 @@ export const TODAY_SIDEBAR_ROWS: readonly FixtureRow[] = [
 ];
 
 /**
- * What full mode must be after this package: identical to
- * `TODAY_SIDEBAR_ROWS` except row 7, which WP1.5 renamed to Actions and
- * moved to `/actions` (it explicitly handed this one sidebar line to WP1.2),
- * plus the Surveys & Forms row inserted after Reports by the Action Network
- * survey importer. Upcoming Projects and Mobilisation are one Projects row.
- * `/sms`, `/upcoming-projects` and `/mobilisation` keep working as redirects.
+ * Full mode after the inbox consolidation: one Inbox row (email and SMS),
+ * Actions kept as the outbound hub, Surveys & Forms after Reports, Projects
+ * in place of Upcoming Projects, and a single Administration admin row.
+ * Email imports and email wrappers are reached in-page, not from the sidebar.
  */
 export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
   { id: "campaigns", label: "Campaigns", href: "/campaigns", icon: "megaphone", module: "wall_chart_people", state: "on" },
@@ -51,33 +49,26 @@ export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
   { id: "overview", label: "Overview", href: "/overview", icon: "layout-grid", module: "organisation_databases", state: "on" },
   { id: "worksites", label: "Worksites", href: "/worksites", icon: "map-pin", module: "organisation_databases", state: "on" },
   { id: "upcoming_projects", label: "Projects", href: "/projects", icon: "radar", module: "organisation_databases", state: "on" },
-  { id: "email_inbox", label: "Email Inbox", href: "/email/inbox", icon: "inbox", module: "inbox", state: "on" },
-  // WP1.5 rename — the one deliberate deviation from today's sidebar.
+  { id: "inbox", label: "Inbox", href: "/email/inbox", icon: "inbox", module: "inbox", state: "on" },
   { id: "actions", label: "Actions", href: "/actions", icon: "layout-list", module: "actions", state: "on" },
-  { id: "sms_inbox", label: "SMS Inbox", href: "/sms/inbox", icon: "message-square", module: "inbox", state: "on" },
   { id: "reports", label: "Reports", href: "/reports", icon: "bar-chart-3", module: "insights", state: "on" },
-  // Surveys & Forms — the Action Network survey/form importer, added after
-  // WP1.2. The one row with no counterpart in TODAY_SIDEBAR_ROWS.
   { id: "surveys_forms", label: "Surveys & Forms", href: "/surveys-forms", icon: "clipboard-list", module: "surveys_forms", state: "on" },
   { id: "guides", label: "Guides", href: "/help", icon: "graduation-cap", state: "on" },
-  { id: "email_imports", label: "Email Imports", href: "/email-imports", icon: "mail-open", module: "administration", state: "on" },
-  { id: "email_wrappers", label: "Email Wrappers", href: "/email/wrappers", icon: "layout-template", module: "administration", state: "on" },
   { id: "administration", label: "Administration", href: "/administration", icon: "settings", module: "administration", state: "on" },
 ];
 
 /** The number of primary (non-admin) rows in full mode. */
-export const FULL_MODE_PRIMARY_COUNT = 11;
+export const FULL_MODE_PRIMARY_COUNT = 10;
 
-/** The 11 labels a full-mode sidebar renders, in order (mirrored by the e2e spec). */
+/** The labels a full-mode sidebar renders, in order (mirrored by the e2e spec). */
 export const FULL_MODE_LABELS: readonly string[] = [
   "Campaigns",
   "Dashboard",
   "Overview",
   "Worksites",
   "Projects",
-  "Email Inbox",
+  "Inbox",
   "Actions",
-  "SMS Inbox",
   "Reports",
   "Surveys & Forms",
   "Guides",

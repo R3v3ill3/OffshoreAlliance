@@ -142,7 +142,7 @@ describe("buildNavModel", () => {
   it("carries the email unread count on the Inbox row only, and only when > 0", () => {
     const full = modelFor({ role: "user" }, { unreadEmail: 7 });
     expect(full.primary.filter((i) => i.badge != null).map((i) => [i.id, i.badge])).toEqual(
-      [["email_inbox", 7]]
+      [["inbox", 7]]
     );
 
     const organiser = modelFor(

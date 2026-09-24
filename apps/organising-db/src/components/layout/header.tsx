@@ -27,7 +27,7 @@ const pageTitles: Record<string, string> = {
   "/mobilisation": "Projects",
   "/help": "Guides",
   "/templates": "Templates",
-  "/email": "Email Inbox",
+  "/email": "Inbox",
   "/email-imports": "Email Imports",
   "/actions": "Actions",
   // `/sms` still resolves (it redirects to `/actions`) and `/sms/inbox`

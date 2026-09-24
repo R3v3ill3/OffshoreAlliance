@@ -46,9 +46,8 @@ const FULL_MODE_LABELS = [
   "Overview",
   "Worksites",
   "Projects",
-  "Email Inbox",
+  "Inbox",
   "Actions",
-  "SMS Inbox",
   "Reports",
   "Surveys & Forms",
   "Guides",
@@ -61,7 +60,7 @@ test.describe("Sidebar — full mode is today's sidebar", () => {
   // work role, which an admin can change in the app at any time. Pin it.
   withUserMode("full");
 
-  test("the eleven rows, in order, with no organiser-mode furniture", async ({ page }) => {
+  test("the ten rows, in order, with no organiser-mode furniture", async ({ page }) => {
     await page.goto("/campaigns");
     await expect(page.locator(LABELS).first()).toBeVisible();
 
@@ -110,9 +109,7 @@ test.describe("Sidebar — the organiser-mode round trip", () => {
         await expect(nav.getByRole("link", { name: "Actions" })).toBeVisible();
         // The unread badge is inside the link and carries its own aria-label,
         // so the link's accessible name is "Inbox <n> unread email
-        // conversations" whenever the account has unread mail. Anchor on the
-        // start of the name instead, which also keeps it distinct from
-        // "SMS Inbox".
+        // conversations" whenever the account has unread mail.
         await expect(nav.getByRole("link", { name: /^Inbox/ })).toBeVisible();
         await expect(nav.getByRole("link", { name: "Guides" })).toBeVisible();
         expect(await page.locator(LABELS).allTextContents()).toEqual([
@@ -137,7 +134,8 @@ test.describe("Sidebar — the organiser-mode round trip", () => {
         await expect(showEverything).toHaveAttribute("aria-pressed", "false");
         await showEverything.click();
         await expect(showEverything).toHaveAttribute("aria-pressed", "true");
-        await expect(nav.getByRole("link", { name: "SMS Inbox" })).toBeVisible();
+        await expect(nav.getByRole("link", { name: /^Inbox/ })).toBeVisible();
+        await expect(nav.getByRole("link", { name: "SMS Inbox" })).toHaveCount(0);
         expect(await page.locator(LABELS).allTextContents()).toEqual(FULL_MODE_LABELS);
       } finally {
         // Put back exactly what was recorded above — not `{}`, which would

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Plus,
   Search,
@@ -9,6 +10,7 @@ import {
   XCircle,
   Loader2,
   Mail,
+  MailOpen,
   MessageSquare,
   Phone,
 } from "lucide-react";
@@ -715,7 +717,15 @@ export function TemplatesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {canWrite && (
+          <Button variant="outline" asChild>
+            <Link href="/email-imports">
+              <MailOpen className="h-4 w-4" />
+              Import forwarded emails
+            </Link>
+          </Button>
+        )}
         {canWrite && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>

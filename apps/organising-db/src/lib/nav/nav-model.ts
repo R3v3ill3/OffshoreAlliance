@@ -152,14 +152,8 @@ const DEFS = {
     activeHrefs: ["/upcoming-projects", "/mobilisation"],
     badged: "projects",
   },
-  email_inbox: {
-    id: "email_inbox",
-    label: "Email Inbox",
-    href: "/email/inbox",
-    icon: "inbox",
-    module: "inbox",
-    badged: "email",
-  },
+  // One reply queue. Opens on email; `/sms/inbox` is the SMS channel of the
+  // same row (longest-prefix beats Actions' `/sms` alias).
   inbox: {
     id: "inbox",
     label: "Inbox",
@@ -167,11 +161,13 @@ const DEFS = {
     icon: "inbox",
     module: "inbox",
     badged: "email",
+    activeHrefs: ["/sms/inbox"],
   },
   // WP1.5 renamed the hub to "Actions" and turned `/sms` into a redirect, then
   // handed this one row to WP1.2. `activeHrefs` keeps `/sms/new` and
   // `/sms/numbers` — separate route segments WP1.5 left alone — highlighting
-  // this row through the longest-prefix rule.
+  // this row through the longest-prefix rule. `/sms/inbox` is not in this
+  // alias: it belongs to the Inbox row.
   actions: {
     id: "actions",
     label: "Actions",
@@ -179,13 +175,6 @@ const DEFS = {
     icon: "layout-list",
     module: "actions",
     activeHrefs: ["/sms"],
-  },
-  sms_inbox: {
-    id: "sms_inbox",
-    label: "SMS Inbox",
-    href: "/sms/inbox",
-    icon: "message-square",
-    module: "inbox",
   },
   reports: {
     id: "reports",
@@ -212,20 +201,6 @@ const DEFS = {
     href: "/help",
     icon: "graduation-cap",
   },
-  email_imports: {
-    id: "email_imports",
-    label: "Email Imports",
-    href: "/email-imports",
-    icon: "mail-open",
-    module: "administration",
-  },
-  email_wrappers: {
-    id: "email_wrappers",
-    label: "Email Wrappers",
-    href: "/email/wrappers",
-    icon: "layout-template",
-    module: "administration",
-  },
   administration: {
     id: "administration",
     label: "Administration",
@@ -236,8 +211,9 @@ const DEFS = {
 } satisfies Record<string, NavItemDef>;
 
 /**
- * Today's sidebar, in today's order. Row 7 carries the WP1.5 rename; row 10
- * (Surveys & Forms) is the one addition since WP1.2.
+ * Full-mode sidebar. Email and SMS replies share the Inbox row. Email
+ * imports live on the Campaigns Templates tab; email wrappers live under
+ * Administration → Settings. Neither is a sidebar row.
  */
 export const FULL_NAV_ITEMS: readonly NavItemDef[] = [
   DEFS.campaigns,
@@ -245,20 +221,15 @@ export const FULL_NAV_ITEMS: readonly NavItemDef[] = [
   DEFS.overview,
   DEFS.worksites,
   DEFS.upcoming_projects,
-  DEFS.email_inbox,
+  DEFS.inbox,
   DEFS.actions,
-  DEFS.sms_inbox,
   DEFS.reports,
   DEFS.surveys_forms,
   DEFS.guides,
 ];
 
-/** Today's admin block, in today's order. */
-export const FULL_ADMIN_ITEMS: readonly NavItemDef[] = [
-  DEFS.email_imports,
-  DEFS.email_wrappers,
-  DEFS.administration,
-];
+/** Admin block: settings only. Wrappers are linked from the email provider card. */
+export const FULL_ADMIN_ITEMS: readonly NavItemDef[] = [DEFS.administration];
 
 /**
  * Organiser mode, primary. Never module-gated: these *are* organiser mode,
@@ -286,8 +257,9 @@ const ORGANISATION_ITEMS: readonly NavItemDef[] = [
  * Every href the active-state rule needs in scope — the full-mode set, in
  * BOTH modes. `isNavItemActive` resolves ties by longest prefix, so feeding
  * it only the visible subset would make `/sms/inbox` light up the
- * `/sms`-rooted Actions row. `activeHrefs` keeps `/sms` in the list after
- * row 7 moved to `/actions`.
+ * `/sms`-rooted Actions row. The Inbox row's `/sms/inbox` alias is the
+ * longer prefix and wins; Actions keeps `/sms` for `/sms/new` and
+ * `/sms/numbers`.
  */
 const HREF_SOURCES: readonly NavItemDef[] = [
   ...FULL_NAV_ITEMS,
@@ -385,7 +357,7 @@ export function buildNavModel(input: BuildNavModelInput): NavModel {
     // Always `[]` in practice — `resolveWorkspace` returns `full` for every
     // admin, so organiser + isAdmin is unreachable. Computed defensively so a
     // future decision to let an admin preview organiser mode does not
-    // silently drop the three admin links.
+    // silently drop the admin link.
     admin,
     footer: FOOTER,
     showEverythingControl,

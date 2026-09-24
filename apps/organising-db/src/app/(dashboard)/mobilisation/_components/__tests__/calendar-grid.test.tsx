@@ -41,4 +41,23 @@ describe("MobilisationCalendar", () => {
     expect(html).toContain('href="/projects/alerts#signal-43"');
     expect(html).toContain("Castorone · 10d");
   });
+
+  it("draws an approved activity once for the week it covers", () => {
+    const html = renderToStaticMarkup(
+      createElement(MobilisationCalendar, {
+        items: [],
+        initialMonth: new Date("2026-09-01T00:00:00.000Z"),
+        activities: [
+          {
+            id: 7,
+            label: "Scarborough drilling",
+            start: new Date("2026-09-02T00:00:00.000Z"),
+            end: new Date("2026-09-04T00:00:00.000Z"),
+          },
+        ],
+      })
+    );
+    expect(html.match(/>Scarborough drilling</g)).toHaveLength(1);
+    expect(html).toContain("Approved activity");
+  });
 });

@@ -107,6 +107,7 @@ function AdminUpdate() {
       toast.success(notes.join(" · ") || "Poll finished");
       queryClient.invalidateQueries({ queryKey: ["mobilisation-signals"] });
       queryClient.invalidateQueries({ queryKey: ["mobilisation-alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["mobilisation-calendar"] });
       queryClient.invalidateQueries({ queryKey: ["project-regulatory-signals"] });
       queryClient.invalidateQueries({ queryKey: ["projects-open-alert-count"] });
     },

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { PROJECTS_CALENDAR_PATH } from "@/lib/projects/routes";
+import { PROJECTS_MONTH_PATH } from "@/lib/projects/routes";
 
 export default function MobilisationCalendarRedirect() {
-  redirect(PROJECTS_CALENDAR_PATH);
+  redirect(PROJECTS_MONTH_PATH);
 }

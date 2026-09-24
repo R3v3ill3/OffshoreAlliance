@@ -1,8 +1,8 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { format } from "date-fns";
+import { useRouter, useSearchParams } from "next/navigation";
+import { addDays, format } from "date-fns";
 import { ExternalLink } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
@@ -12,7 +12,9 @@ import {
   useUpcomingProjects,
   type MatchStatus,
 } from "@/lib/hooks/useUpcomingProjects";
-import { useRegulatorySignals, useRelatedLayerSignals } from "@/lib/hooks/useProjectRadar";
+import { useRegulatorySignals, useRelatedLayerSignals, useScheduleSignals } from "@/lib/hooks/useProjectRadar";
+import { buildCalendarItems } from "@/lib/mobilisation/schedule";
+import { MobilisationCalendar } from "../mobilisation/_components/calendar-grid";
 import { mergeWorkProgramme, type WorkProgrammeRow } from "@/lib/projects/merge-work-programme";
 import { MatchReviewPanel } from "../upcoming-projects/_components/match-review-panel";
 import {
@@ -77,6 +79,14 @@ function formatDate(d: string | null) {
   }
 }
 
+type ProgrammeView = "table" | "timeline" | "month";
+
+function viewFromParam(value: string | null): ProgrammeView {
+  if (value === "month") return "month";
+  if (value === "timeline" || value === "calendar") return "timeline";
+  return "table";
+}
+
 function sourceLabel(row: WorkProgrammeRow): string {
   if (row.radarOnly) return row.radar?.source ?? row.source;
   if (row.source === "nopsema") return "NOPSEMA";
@@ -93,10 +103,13 @@ export default function ProjectsWorkPage() {
 
 function WorkProgramme() {
   const { isAdmin } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const view = viewFromParam(searchParams.get("view"));
   const initialStatus = searchParams.get("status");
   const { data, isLoading, error } = useUpcomingProjects();
   const radar = useRegulatorySignals();
+  const schedule = useScheduleSignals();
 
   const [jurisdictionFilter, setJurisdictionFilter] = useState<JurisdictionFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
@@ -105,7 +118,13 @@ function WorkProgramme() {
   const [lifecycleFilter, setLifecycleFilter] = useState<Set<string>>(new Set());
   const [selectedRow, setSelectedRow] = useState<WorkProgrammeRow | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [view, setView] = useState<"table" | "calendar">("table");
+  function selectView(next: ProgrammeView) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "table") params.delete("view");
+    else params.set("view", next);
+    const query = params.toString();
+    router.replace(query ? `/projects?${query}` : "/projects");
+  }
 
   const rows = useMemo(
     () => mergeWorkProgramme(data ?? [], radar.data ?? []),
@@ -170,6 +189,29 @@ function WorkProgramme() {
     }
     return next;
   }, [rows, jurisdictionFilter, statusFilter, lifecycleFilter]);
+
+  const scheduleItems = useMemo(() => buildCalendarItems(schedule.data ?? [], new Date()), [schedule.data]);
+  const visibleSchedule = useMemo(() => {
+    const shown = new Set(filtered.map((row) => row.radar?.signal_id).filter((id): id is number => id != null));
+    const hidden = new Set<number>();
+    for (const row of rows) {
+      const id = row.radar?.signal_id;
+      if (id != null && !shown.has(id)) hidden.add(id);
+    }
+    return scheduleItems.filter((item) => !hidden.has(item.signalId));
+  }, [filtered, rows, scheduleItems]);
+  const monthActivities = useMemo(
+    () =>
+      filtered
+        .filter((row) => row.start_date)
+        .map((row) => ({
+          id: row.id,
+          label: row.title ?? "Untitled",
+          start: new Date(row.start_date!),
+          end: row.end_date ? new Date(row.end_date) : addDays(new Date(row.start_date!), 30),
+        })),
+    [filtered]
+  );
 
   const columns: Column<WorkProgrammeRow>[] = [
     {
@@ -246,6 +288,7 @@ function WorkProgramme() {
     <div className="space-y-4">
       {error && <p className="text-sm text-destructive">Failed to load: {(error as Error).message}</p>}
       {radar.error && <p className="text-sm text-destructive">Radar links failed: {(radar.error as Error).message}</p>}
+      {schedule.error && <p className="text-sm text-destructive">Schedule failed: {(schedule.error as Error).message}</p>}
       <UpcomingProjectsFilterBar
         jurisdiction={jurisdictionFilter}
         onJurisdictionChange={setJurisdictionFilter}
@@ -265,10 +308,11 @@ function WorkProgramme() {
         needsReviewCount={counts.needs_review}
         unmatchedCount={counts.unmatched}
       />
-      <Tabs value={view} onValueChange={(v) => setView(v as "table" | "calendar")}>
+      <Tabs value={view} onValueChange={(value) => selectView(value as ProgrammeView)}>
         <TabsList>
           <TabsTrigger value="table">Table</TabsTrigger>
-          <TabsTrigger value="calendar">Calendar</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <TabsTrigger value="month">Month</TabsTrigger>
         </TabsList>
         <TabsContent value="table" className="mt-3">
           <DataTable
@@ -291,14 +335,38 @@ function WorkProgramme() {
             }}
           />
         </TabsContent>
-        <TabsContent value="calendar" className="mt-3">
-          {isLoading ? (
+        <TabsContent value="timeline" className="mt-3">
+          <p className="mb-3 text-xs text-muted-foreground">
+            Approved activities use the filters above. Estimated arrivals, stated stays, and vessels on site stay visible unless they belong to an activity the filter hides.
+          </p>
+          {isLoading || schedule.isLoading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
           ) : (
             <UpcomingProjectsCalendar
               rows={filtered}
+              schedule={visibleSchedule}
+              onScheduleClick={(signalId) => router.push(`/projects/alerts#signal-${signalId}`)}
               onRowClick={(row) => {
                 setSelectedRow(row as WorkProgrammeRow);
+                setPanelOpen(true);
+              }}
+            />
+          )}
+        </TabsContent>
+        <TabsContent value="month" className="mt-3">
+          <p className="mb-3 text-xs text-muted-foreground">
+            Violet chips are approved activities. Amber, blue, and green chips are estimated arrivals, stated stays, and vessels on site. A schedule chip opens that item in Alerts.
+          </p>
+          {isLoading || schedule.isLoading ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
+          ) : (
+            <MobilisationCalendar
+              items={visibleSchedule}
+              activities={monthActivities}
+              onActivityClick={(id) => {
+                const row = filtered.find((item) => item.id === id);
+                if (!row) return;
+                setSelectedRow(row);
                 setPanelOpen(true);
               }}
             />

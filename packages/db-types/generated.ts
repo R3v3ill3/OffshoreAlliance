@@ -13441,6 +13441,27 @@ export type Database = {
         }
         Relationships: []
       }
+      mobilisation_recipients: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       mobilisation_rules: {
         Row: {
           code: string
@@ -13513,11 +13534,13 @@ export type Database = {
       mobilisation_signals: {
         Row: {
           also_seen: Json
+          arrival_at: string | null
           confidence: number
           contractor_id: number | null
           created_at: string
           dedup_key: string
           detected_at: string
+          ends_at: string | null
           external_id: string | null
           extract: string | null
           fingerprint: string
@@ -13541,11 +13564,13 @@ export type Database = {
         }
         Insert: {
           also_seen?: Json
+          arrival_at?: string | null
           confidence: number
           contractor_id?: number | null
           created_at?: string
           dedup_key: string
           detected_at?: string
+          ends_at?: string | null
           external_id?: string | null
           extract?: string | null
           fingerprint: string
@@ -13569,11 +13594,13 @@ export type Database = {
         }
         Update: {
           also_seen?: Json
+          arrival_at?: string | null
           confidence?: number
           contractor_id?: number | null
           created_at?: string
           dedup_key?: string
           detected_at?: string
+          ends_at?: string | null
           external_id?: string | null
           extract?: string | null
           fingerprint?: string

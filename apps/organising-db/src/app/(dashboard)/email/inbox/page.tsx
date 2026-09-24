@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Inbox, Loader2 } from 'lucide-react'
 import { EmailInboxPanel } from '@/components/email/inbox/EmailInboxPanel'
+import { InboxChannelSwitch } from '@/components/inbox/InboxChannelSwitch'
 
 function parsePositiveInt(raw: string | null): number | undefined {
   if (!raw) return undefined
@@ -39,17 +40,18 @@ function EmailInboxPageInner() {
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold">
           <Inbox className="h-6 w-6" />
-          Email inbox
+          Inbox
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Campaign replies, organisation-wide email, triage and team assignments
-          in one work queue.
+          Campaign replies, organisation-wide email, triage and team assignments.
+          Switch to SMS for text replies.
         </p>
       </div>
+      <InboxChannelSwitch current="email" />
       <EmailInboxPanel
               campaignId={campaignId ?? null}
         initialConversationId={conversationId ?? null}
-        className="h-[calc(100dvh-12rem)]"
+        className="h-[calc(100dvh-15rem)]"
         onCampaignIdChange={(next) => replaceParams(next, null)}
         onConversationIdChange={(next) => replaceParams(undefined, next)}
       />

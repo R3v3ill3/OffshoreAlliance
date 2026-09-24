@@ -53,7 +53,7 @@ export function NavRow({
       {item.badge != null && (
         <span
           className={badgeClassName}
-          aria-label={`${item.badge} unread email conversations`}
+          aria-label={`${item.badge} ${item.badgeLabel ?? "items"}`}
         >
           {item.badge > 99 ? "99+" : item.badge}
         </span>

@@ -1,0 +1,6 @@
+import { redirect } from "next/navigation";
+import { PROJECTS_MONTH_PATH } from "@/lib/projects/routes";
+
+export default function ProjectsCalendarRedirect() {
+  redirect(PROJECTS_MONTH_PATH);
+}

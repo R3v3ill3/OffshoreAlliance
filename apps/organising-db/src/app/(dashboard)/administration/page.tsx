@@ -2099,8 +2099,9 @@ function SettingsTab() {
                 <NextLink href="/email/wrappers">Manage email wrappers</NextLink>
               </Button>
               <p className="mt-1 text-xs text-muted-foreground">
-                Wrappers are the reusable header/footer applied around every
-                platform email (the default is &ldquo;OA Standard&rdquo;).
+                Header and footer shells for every platform email, including
+                the unsubscribe link. This is the place to create or edit them
+                (the default is &ldquo;OA Standard&rdquo;).
               </p>
             </div>
           </CardContent>

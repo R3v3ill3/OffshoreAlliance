@@ -9,6 +9,7 @@ import {
   primaryVesselId,
   primaryWatchContractor,
 } from "../match";
+import { parseStayWindow } from "../schedule";
 import type { SignalDraft, Watchlist } from "../types";
 import { looksLikeAward } from "../text";
 import type { AsxAnnouncement } from "./asx";
@@ -30,6 +31,7 @@ export function draftFromArticle(input: {
     ? `watch:${watchContractor.watch_id}`
     : `vessel:${primaryVesselId(match) ?? "x"}`;
   const occurred = input.item.publishedAt ?? input.now;
+  const stay = parseStayWindow(text);
   const worksite = matchWorksite(text, input.watch.worksites);
   const externalId = input.item.id.slice(0, 300);
   return {
@@ -55,6 +57,8 @@ export function draftFromArticle(input: {
     external_id: externalId,
     matched_terms: matchedTerms(match),
     region_label: scored.regionLabel,
+    arrival_at: stay.arrivalAt,
+    ends_at: stay.endsAt,
   };
 }
 
@@ -92,6 +96,7 @@ export function draftFromAsx(input: {
     (k) => k.kind === "operator" && k.asx_ticker?.toUpperCase() === input.item.ticker.toUpperCase()
   );
   const occurred = input.item.publishedAt ?? input.now;
+  const stay = parseStayWindow(`${input.item.headline} ${input.subjectName}`);
   const contractorKey = watchContractor
     ? `watch:${watchContractor.watch_id}`
     : `ticker:${input.item.ticker}`;
@@ -122,5 +127,7 @@ export function draftFromAsx(input: {
       ...(operatorKeyword ? [operatorKeyword.keyword] : []),
     ].filter((v, i, a) => a.indexOf(v) === i),
     region_label: scored.regionLabel,
+    arrival_at: stay.arrivalAt,
+    ends_at: stay.endsAt,
   };
 }

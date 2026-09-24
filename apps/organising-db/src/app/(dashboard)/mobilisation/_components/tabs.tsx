@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils/cn";
 
 const LINKS = [
   { href: "/mobilisation", label: "Feed" },
+  { href: "/mobilisation/calendar", label: "Calendar" },
   { href: "/mobilisation/map", label: "Map" },
   { href: "/mobilisation/watchlist", label: "Watchlist" },
   { href: "/mobilisation/settings", label: "Notifications" },

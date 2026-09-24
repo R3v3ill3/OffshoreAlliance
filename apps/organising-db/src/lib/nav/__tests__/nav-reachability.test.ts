@@ -59,6 +59,7 @@ function modelFor(input: Partial<ResolveWorkspaceInput>, isAdmin: boolean): NavM
     canShowEverything: resolved.canShowEverything,
     showEverything: resolveInput.sessionShowEverything,
     unreadEmail: 0,
+    projectsAttention: 0,
   });
 }
 
@@ -75,65 +76,48 @@ function everyItem(model: NavModel): NavItem[] {
 }
 
 describe("full mode is byte-identical to the pinned fixture", () => {
-  it("an admin sees today's 12 + 4 rows, in today's order, with today's labels", () => {
+  it("an admin sees the 10 primary rows plus Name Reviews and Administration, in order", () => {
     expect([...fullAdmin.primary, ...fullAdmin.admin].map(toFixtureRow)).toEqual(
       FULL_MODE_FIXTURE
     );
   });
 
-  it("a non-admin sees the same 12 and no admin block", () => {
+  it("a non-admin sees the same 10 and no admin block", () => {
     expect(fullUser.primary.map(toFixtureRow)).toEqual(
       FULL_MODE_FIXTURE.slice(0, FULL_MODE_PRIMARY_COUNT)
     );
     expect(fullUser.admin).toEqual([]);
   });
 
-  it("the only differences from the pre-WP1.5 sidebar are row 7's three fields and the added Surveys & Forms, Mobilisation and Name Reviews rows", () => {
-    // Surveys & Forms, Mobilisation and (DA0.3) Name Reviews are additions,
-    // not edits: take them out and the remaining rows must line up with the
-    // pre-WP1.2 sidebar.
-    const added = FULL_MODE_FIXTURE.filter((row) => !TODAY_SIDEBAR_ROWS.some((t) => t.id === row.id));
-    expect(added.map((row) => row.id)).toEqual(["mobilisation", "surveys_forms", "name_reviews"]);
-    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "mobilisation")).toBe(
-      FULL_MODE_FIXTURE.findIndex((row) => row.id === "upcoming_projects") + 1
-    );
-    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "surveys_forms")).toBe(
-      FULL_MODE_FIXTURE.findIndex((row) => row.id === "reports") + 1
-    );
-    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "name_reviews")).toBe(
-      FULL_MODE_FIXTURE.findIndex((row) => row.id === "email_imports") + 1
-    );
-    const withoutAdded = FULL_MODE_FIXTURE.filter(
-      (row) => row.id !== "surveys_forms" && row.id !== "mobilisation" && row.id !== "name_reviews"
-    );
-    expect(withoutAdded).toHaveLength(TODAY_SIDEBAR_ROWS.length);
-
-    const diffs = TODAY_SIDEBAR_ROWS.map((before, i) => ({ before, after: withoutAdded[i] }))
-      .filter(({ before, after }) => JSON.stringify(before) !== JSON.stringify(after))
-      .map(({ before, after }) => ({ id: before.id, before, after }));
-
-    expect(diffs).toEqual([
-      {
-        id: "actions",
-        before: TODAY_SIDEBAR_ROWS[6],
-        after: withoutAdded[6],
-      },
+  it("the differences from the pre-WP1.5 sidebar are the known consolidations and the DA0.3 Name Reviews row", () => {
+    const todayIds = TODAY_SIDEBAR_ROWS.map((row) => row.id);
+    const fullIds = FULL_MODE_FIXTURE.map((row) => row.id);
+    expect(fullIds.filter((id) => !todayIds.includes(id)).sort()).toEqual(["inbox", "name_reviews", "surveys_forms"]);
+    // DA0.3: Name Reviews opens the admin block, ahead of Administration.
+    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "name_reviews")).toBe(FULL_MODE_PRIMARY_COUNT);
+    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "administration")).toBe(FULL_MODE_PRIMARY_COUNT + 1);
+    expect(todayIds.filter((id) => !fullIds.includes(id)).sort()).toEqual([
+      "email_imports",
+      "email_inbox",
+      "email_wrappers",
+      "sms_inbox",
     ]);
-    // Mobilisation sits ahead of Actions in the full fixture, so compare the
-    // Actions row by id. Within that row, only label / href / icon moved.
+
+    const projects = FULL_MODE_FIXTURE.find((row) => row.id === "upcoming_projects");
+    expect([projects?.label, projects?.href, projects?.icon]).toEqual(["Projects", "/projects", "radar"]);
+
+    const inbox = FULL_MODE_FIXTURE.find((row) => row.id === "inbox");
+    expect([inbox?.label, inbox?.href]).toEqual(["Inbox", "/email/inbox"]);
+
     const fullActions = FULL_MODE_FIXTURE.find((row) => row.id === "actions");
-    expect(fullActions).toBeDefined();
-    expect(TODAY_SIDEBAR_ROWS[6].module).toBe(fullActions?.module);
-    expect(TODAY_SIDEBAR_ROWS[6].state).toBe(fullActions?.state);
-    expect([
-      TODAY_SIDEBAR_ROWS[6].label,
-      TODAY_SIDEBAR_ROWS[6].href,
-      TODAY_SIDEBAR_ROWS[6].icon,
-    ]).toEqual(["SMS Tools", "/sms", "message-square-more"]);
     expect([fullActions?.label, fullActions?.href, fullActions?.icon]).toEqual([
       "Actions",
       "/actions",
       "layout-list",
+    ]);
+    expect(FULL_MODE_FIXTURE.filter((row) => row.module === "administration").map((row) => row.id)).toEqual([
+      "name_reviews",
+      "administration",
     ]);
   });
 });
@@ -152,8 +136,7 @@ describe("reachability — decision 7", () => {
     ],
     organisation: [
       { label: "Worksites", href: "/worksites", state: "muted" },
-      { label: "Upcoming Projects", href: "/upcoming-projects", state: "muted" },
-      { label: "Mobilisation", href: "/mobilisation", state: "muted" },
+      { label: "Projects", href: "/projects", state: "muted" },
       { label: "Overview", href: "/overview", state: "muted" },
       { label: "Dashboard", href: "/dashboard", state: "muted" },
       { label: "Reports", href: "/reports", state: "muted" },
@@ -184,7 +167,7 @@ describe("reachability — decision 7", () => {
     expect(hidden).toEqual([]);
   });
 
-  it("only /campaigns and /sms/inbox need Show everything or an in-page link", () => {
+  it("only /campaigns needs Show everything or an in-page link", () => {
     // Reachable *without leaving organiser mode*: the rows the sidebar
     // actually renders — `on` (a live link) or `muted` (visible, explained,
     // and one admin flag from being live). "Show everything" is deliberately
@@ -200,33 +183,22 @@ describe("reachability — decision 7", () => {
 
     const unreachable = [...fullHrefs].filter((h) => !reachableInOrganiserMode.has(h));
 
-    // The two documented exceptions.
-    //  * `/campaigns` (WP1.3): the My campaigns row pointed here until the
-    //    `/my-campaigns` route existed. The portfolio list is now one click
-    //    from that row — the page's "See all campaigns" link renders in its
-    //    header row on every render — and one "Show everything" click.
-    //  * `/sms/inbox`: not a nav row in organiser mode because the one Inbox
-    //    entry carries the email unread badge (there is no SMS count
-    //    endpoint). Reachable by "Show everything" and the Actions hub's own
-    //    Inbox pill.
-    // Both are asserted below, so neither can become "and nothing gets you
-    // there".
-    expect(unreachable).toEqual(["/campaigns", "/sms/inbox"]);
+    // `/campaigns` (WP1.3): the My campaigns row points at `/my-campaigns`.
+    // The portfolio list is one click from that row — "See all campaigns" —
+    // and one "Show everything" click. `/sms/inbox` is not a separate row:
+    // the Inbox page and the Actions hub both link to it.
+    expect(unreachable).toEqual(["/campaigns"]);
 
     const afterShowEverything = new Set(
       [...expanded.primary, ...expanded.admin].map((i) => i.href)
     );
     expect(afterShowEverything.has("/campaigns")).toBe(true);
-    expect(afterShowEverything.has("/sms/inbox")).toBe(true);
-    // The in-page links: My campaigns (`app/(dashboard)/my-campaigns/page.tsx`)
-    // links "See all campaigns" → /campaigns; `SmsHubNav.tsx` renders
-    // Actions / Inbox (/sms/inbox) / Numbers on every hub page. Both parent
-    // rows are primary in organiser mode.
+    expect(reachableInOrganiserMode.has("/email/inbox")).toBe(true);
     expect(reachableInOrganiserMode.has(MY_CAMPAIGNS_HREF)).toBe(true);
     expect(reachableInOrganiserMode.has(ACTIONS_HUB_PATH)).toBe(true);
   });
 
-  it("with allowShowEverything: false the same two routes have only their in-page links", () => {
+  it("with allowShowEverything: false the same route has only its in-page link", () => {
     // The "no out" configuration. Show everything renders no button at all,
     // so the escape hatches are the My campaigns "See all campaigns" link,
     // the Actions hub's Inbox pill and the URL — named here rather than left
@@ -248,10 +220,9 @@ describe("reachability — decision 7", () => {
     );
     const onlyByUrlOrInPageLink = [...fullHrefs].filter((h) => !reachable.has(h));
 
-    expect(onlyByUrlOrInPageLink).toEqual(["/campaigns", "/sms/inbox"]);
-    // …and the pages carrying those links (My campaigns, `SmsHubNav.tsx`)
-    // are still primary rows, so each exception keeps a two-click path even
-    // with no "Show everything" button at all.
+    expect(onlyByUrlOrInPageLink).toEqual(["/campaigns"]);
+    // My campaigns still links "See all campaigns", so the exception keeps
+    // a two-click path even with no "Show everything" button at all.
     expect(reachable.has(MY_CAMPAIGNS_HREF)).toBe(true);
     expect(reachable.has(ACTIONS_HUB_PATH)).toBe(true);
     // The four primary items survive the no-out configuration: the worst case
@@ -310,14 +281,13 @@ describe("allNavHrefs", () => {
         "/administration",
         "/campaigns",
         "/dashboard",
-        "/email-imports",
         "/email/inbox",
-        "/email/wrappers",
         "/help",
         "/mobilisation",
         "/my-campaigns",
         "/name-reviews",
         "/overview",
+        "/projects",
         "/reports",
         "/sms",
         "/sms/inbox",

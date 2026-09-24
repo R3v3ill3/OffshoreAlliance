@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { format } from "date-fns";
 import {
   Mail,
@@ -120,6 +121,11 @@ export default function EmailImportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Email Imports</h1>
+          <p className="text-sm mt-1">
+            <Link href="/campaigns?tab=templates" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+              Back to templates
+            </Link>
+          </p>
           <p className="text-muted-foreground mt-1">
             Forward emails to{" "}
             <code className="bg-muted px-1.5 py-0.5 rounded text-sm">

@@ -143,6 +143,10 @@ export interface SignalDraft {
   external_id: string | null;
   matched_terms: string[];
   region_label: string | null;
+  /** Estimated or observed arrival. Null when the source does not give one. */
+  arrival_at?: string | null;
+  /** End of the stay when a source states a date or a duration. */
+  ends_at?: string | null;
   also_seen?: { source: string; url: string | null; at: string }[];
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
@@ -104,7 +104,16 @@ const tabBarActionClassName =
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground ring-offset-background transition-all hover:bg-background/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export default function CampaignsPage() {
+  return (
+    <Suspense fallback={null}>
+      <CampaignsPageInner />
+    </Suspense>
+  );
+}
+
+function CampaignsPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, profile, canWrite } = useAuth();
   const supabase = createClient();
   const queryClient = useQueryClient();
@@ -303,7 +312,17 @@ export default function CampaignsPage() {
         <h1 className="text-3xl font-bold">Campaigns</h1>
       </div>
 
-      <Tabs defaultValue="campaigns" className="space-y-4">
+      <Tabs
+        value={searchParams.get("tab") === "templates" ? "templates" : "campaigns"}
+        onValueChange={(value) => {
+          const params = new URLSearchParams(searchParams.toString());
+          if (value === "templates") params.set("tab", "templates");
+          else params.delete("tab");
+          const query = params.toString();
+          router.replace(query ? `/campaigns?${query}` : "/campaigns", { scroll: false });
+        }}
+        className="space-y-4"
+      >
         <div className="flex flex-wrap items-center gap-1">
           <TabsList className="h-9">
             <TabsTrigger value="campaigns" className="gap-2">

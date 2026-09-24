@@ -43,6 +43,8 @@ export interface NavItem {
   mutedReason?: string;
   /** Set only when the count is > 0. */
   badge?: number;
+  /** Screen-reader label for `badge`. Set only when `badge` is set. */
+  badgeLabel?: string;
   /** Extra prefixes that also light this row (see `isNavRowActive`). */
   activeHrefs?: string[];
 }
@@ -73,6 +75,8 @@ export interface BuildNavModelInput {
   canShowEverything: boolean;
   showEverything: boolean;
   unreadEmail: number;
+  /** Open mobilisation alerts plus employer matches that need review or are unmatched. */
+  projectsAttention: number;
 }
 
 /** Plan 5.2, verbatim. One copy, on every muted row. */
@@ -94,8 +98,8 @@ export const ALL_CAMPAIGNS_HREF = "/campaigns";
 
 /** A row before its state is known. `badged` is internal; it never reaches a NavItem. */
 type NavItemDef = Omit<NavItem, "state" | "mutedReason" | "badge"> & {
-  /** Carries the email unread count. Only `/email/inbox` has a count to carry. */
-  badged?: true;
+  /** Which count this row carries. Omitted rows never show a badge. */
+  badged?: "email" | "projects";
 };
 
 /**
@@ -141,38 +145,30 @@ const DEFS = {
   },
   upcoming_projects: {
     id: "upcoming_projects",
-    label: "Upcoming Projects",
-    href: "/upcoming-projects",
-    icon: "compass",
-    module: "organisation_databases",
-  },
-  mobilisation: {
-    id: "mobilisation",
-    label: "Mobilisation",
-    href: "/mobilisation",
+    label: "Projects",
+    href: "/projects",
     icon: "radar",
     module: "organisation_databases",
+    // Old bookmarks still light this row until the redirect completes.
+    activeHrefs: ["/upcoming-projects", "/mobilisation"],
+    badged: "projects",
   },
-  email_inbox: {
-    id: "email_inbox",
-    label: "Email Inbox",
-    href: "/email/inbox",
-    icon: "inbox",
-    module: "inbox",
-    badged: true,
-  },
+  // One reply queue. Opens on email; `/sms/inbox` is the SMS channel of the
+  // same row (longest-prefix beats Actions' `/sms` alias).
   inbox: {
     id: "inbox",
     label: "Inbox",
     href: "/email/inbox",
     icon: "inbox",
     module: "inbox",
-    badged: true,
+    badged: "email",
+    activeHrefs: ["/sms/inbox"],
   },
   // WP1.5 renamed the hub to "Actions" and turned `/sms` into a redirect, then
   // handed this one row to WP1.2. `activeHrefs` keeps `/sms/new` and
   // `/sms/numbers` — separate route segments WP1.5 left alone — highlighting
-  // this row through the longest-prefix rule.
+  // this row through the longest-prefix rule. `/sms/inbox` is not in this
+  // alias: it belongs to the Inbox row.
   actions: {
     id: "actions",
     label: "Actions",
@@ -180,13 +176,6 @@ const DEFS = {
     icon: "layout-list",
     module: "actions",
     activeHrefs: ["/sms"],
-  },
-  sms_inbox: {
-    id: "sms_inbox",
-    label: "SMS Inbox",
-    href: "/sms/inbox",
-    icon: "message-square",
-    module: "inbox",
   },
   reports: {
     id: "reports",
@@ -213,13 +202,6 @@ const DEFS = {
     href: "/help",
     icon: "graduation-cap",
   },
-  email_imports: {
-    id: "email_imports",
-    label: "Email Imports",
-    href: "/email-imports",
-    icon: "mail-open",
-    module: "administration",
-  },
   // DA0.3: the queue of import names that matched no employer / worksite.
   // Admin block only; `user`-role organisers reach it read-only through the
   // import wizards' link (da0.3.md §7 input 2).
@@ -228,13 +210,6 @@ const DEFS = {
     label: "Name Reviews",
     href: NAME_REVIEWS_PATH,
     icon: "clipboard-list",
-    module: "administration",
-  },
-  email_wrappers: {
-    id: "email_wrappers",
-    label: "Email Wrappers",
-    href: "/email/wrappers",
-    icon: "layout-template",
     module: "administration",
   },
   administration: {
@@ -247,8 +222,9 @@ const DEFS = {
 } satisfies Record<string, NavItemDef>;
 
 /**
- * Today's sidebar, in today's order. Row 7 carries the WP1.5 rename; row 10
- * (Surveys & Forms) is the one addition since WP1.2.
+ * Full-mode sidebar. Email and SMS replies share the Inbox row. Email
+ * imports live on the Campaigns Templates tab; email wrappers live under
+ * Administration → Settings. Neither is a sidebar row.
  */
 export const FULL_NAV_ITEMS: readonly NavItemDef[] = [
   DEFS.campaigns,
@@ -256,22 +232,18 @@ export const FULL_NAV_ITEMS: readonly NavItemDef[] = [
   DEFS.overview,
   DEFS.worksites,
   DEFS.upcoming_projects,
-  DEFS.mobilisation,
-  DEFS.email_inbox,
+  DEFS.inbox,
   DEFS.actions,
-  DEFS.sms_inbox,
   DEFS.reports,
   DEFS.surveys_forms,
   DEFS.guides,
 ];
 
-/** Today's admin block, in today's order. */
-export const FULL_ADMIN_ITEMS: readonly NavItemDef[] = [
-  DEFS.email_imports,
-  DEFS.name_reviews,
-  DEFS.email_wrappers,
-  DEFS.administration,
-];
+/**
+ * Admin block: the DA0.3 Name Reviews queue, then settings. Wrappers are
+ * linked from the email provider card.
+ */
+export const FULL_ADMIN_ITEMS: readonly NavItemDef[] = [DEFS.name_reviews, DEFS.administration];
 
 /**
  * Organiser mode, primary. Never module-gated: these *are* organiser mode,
@@ -288,7 +260,6 @@ const ORGANISER_PRIMARY: readonly NavItemDef[] = [
 const ORGANISATION_ITEMS: readonly NavItemDef[] = [
   DEFS.worksites,
   DEFS.upcoming_projects,
-  DEFS.mobilisation,
   DEFS.overview,
   DEFS.dashboard,
   DEFS.reports,
@@ -300,8 +271,9 @@ const ORGANISATION_ITEMS: readonly NavItemDef[] = [
  * Every href the active-state rule needs in scope — the full-mode set, in
  * BOTH modes. `isNavItemActive` resolves ties by longest prefix, so feeding
  * it only the visible subset would make `/sms/inbox` light up the
- * `/sms`-rooted Actions row. `activeHrefs` keeps `/sms` in the list after
- * row 7 moved to `/actions`.
+ * `/sms`-rooted Actions row. The Inbox row's `/sms/inbox` alias is the
+ * longer prefix and wins; Actions keeps `/sms` for `/sms/new` and
+ * `/sms/numbers`.
  */
 const HREF_SOURCES: readonly NavItemDef[] = [
   ...FULL_NAV_ITEMS,
@@ -327,7 +299,12 @@ export function isNavRowActive(
   return (item.activeHrefs ?? []).some((h) => isNavItemActive(pathname, h, allHrefs));
 }
 
-function toItem(def: NavItemDef, state: NavItemState, unreadEmail: number): NavItem {
+function toItem(
+  def: NavItemDef,
+  state: NavItemState,
+  unreadEmail: number,
+  projectsAttention: number
+): NavItem {
   const item: NavItem = {
     id: def.id,
     label: def.label,
@@ -339,7 +316,14 @@ function toItem(def: NavItemDef, state: NavItemState, unreadEmail: number): NavI
   if (def.activeHrefs) item.activeHrefs = [...def.activeHrefs];
   if (state === "muted") item.mutedReason = MUTED_REASON;
   // The clamp (`>99 → "99+"`) and the aria-label stay in the renderers.
-  if (def.badged && state !== "hidden" && unreadEmail > 0) item.badge = unreadEmail;
+  if (def.badged === "email" && state !== "hidden" && unreadEmail > 0) {
+    item.badge = unreadEmail;
+    item.badgeLabel = "unread email conversations";
+  }
+  if (def.badged === "projects" && state !== "hidden" && projectsAttention > 0) {
+    item.badge = projectsAttention;
+    item.badgeLabel = "open alerts and employer matches needing attention";
+  }
   return item;
 }
 
@@ -349,7 +333,7 @@ const FOOTER: NavModel["footer"] = {
 };
 
 export function buildNavModel(input: BuildNavModelInput): NavModel {
-  const { mode, moduleState, isAdmin, canShowEverything, showEverything, unreadEmail } =
+  const { mode, moduleState, isAdmin, canShowEverything, showEverything, unreadEmail, projectsAttention } =
     input;
 
   // "active" is reachable only from an expanded organiser: `resolveWorkspace`
@@ -363,11 +347,11 @@ export function buildNavModel(input: BuildNavModelInput): NavModel {
       ? "active"
       : "offer";
 
-  const admin = isAdmin ? FULL_ADMIN_ITEMS.map((d) => toItem(d, "on", unreadEmail)) : [];
+  const admin = isAdmin ? FULL_ADMIN_ITEMS.map((d) => toItem(d, "on", unreadEmail, projectsAttention)) : [];
 
   if (mode === "full") {
     return {
-      primary: FULL_NAV_ITEMS.map((d) => toItem(d, "on", unreadEmail)),
+      primary: FULL_NAV_ITEMS.map((d) => toItem(d, "on", unreadEmail, projectsAttention)),
       organisation: { collapsed: false, items: [] },
       admin,
       footer: FOOTER,
@@ -376,18 +360,18 @@ export function buildNavModel(input: BuildNavModelInput): NavModel {
   }
 
   return {
-    primary: ORGANISER_PRIMARY.map((d) => toItem(d, "on", unreadEmail)),
+    primary: ORGANISER_PRIMARY.map((d) => toItem(d, "on", unreadEmail, projectsAttention)),
     organisation: {
       // Plan 5.2: collapsed by default, every render.
       collapsed: true,
       items: ORGANISATION_ITEMS.map((d) =>
-        toItem(d, d.module ? moduleState(d.module) : "on", unreadEmail)
+        toItem(d, d.module ? moduleState(d.module) : "on", unreadEmail, projectsAttention)
       ),
     },
     // Always `[]` in practice — `resolveWorkspace` returns `full` for every
     // admin, so organiser + isAdmin is unreachable. Computed defensively so a
     // future decision to let an admin preview organiser mode does not
-    // silently drop the three admin links.
+    // silently drop the admin link.
     admin,
     footer: FOOTER,
     showEverythingControl,

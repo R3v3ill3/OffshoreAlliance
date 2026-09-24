@@ -22,11 +22,12 @@ const pageTitles: Record<string, string> = {
   // WP1.3's route. Harmless before it exists; `basePath` only ever looks up
   // a segment the router already resolved.
   "/my-campaigns": "My campaigns",
-  "/upcoming-projects": "Upcoming Projects",
-  "/mobilisation": "Mobilisation",
+  "/projects": "Projects",
+  "/upcoming-projects": "Projects",
+  "/mobilisation": "Projects",
   "/help": "Guides",
   "/templates": "Templates",
-  "/email": "Email Inbox",
+  "/email": "Inbox",
   "/email-imports": "Email Imports",
   // DA0.3: the import-name review queue (path owned by lib/name-reviews/path.ts).
   "/name-reviews": "Name Reviews",

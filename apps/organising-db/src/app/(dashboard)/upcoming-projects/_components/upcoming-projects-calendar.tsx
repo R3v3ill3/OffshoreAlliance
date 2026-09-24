@@ -18,10 +18,27 @@ import type {
   UpcomingProjectRow,
 } from "@/lib/hooks/useUpcomingProjects";
 
+export interface TimelineScheduleItem {
+  signalId: number;
+  label: string;
+  kind: "eta" | "stay" | "on_site";
+  start: Date;
+  end: Date;
+  openEnded: boolean;
+}
+
 interface Props {
   rows: UpcomingProjectRow[];
   onRowClick: (row: UpcomingProjectRow) => void;
+  schedule?: TimelineScheduleItem[];
+  onScheduleClick?: (signalId: number) => void;
 }
+
+const SCHEDULE_BAR: Record<TimelineScheduleItem["kind"], { bg: string; border: string; caption: string }> = {
+  eta: { bg: "bg-amber-500", border: "border-amber-700", caption: "ETA" },
+  stay: { bg: "bg-sky-600", border: "border-sky-800", caption: "Stated stay" },
+  on_site: { bg: "bg-emerald-600", border: "border-emerald-800", caption: "On site" },
+};
 
 const VISIBLE_MONTHS = 3;
 const DEFAULT_BAR_DAYS = 30; // when end_date is missing
@@ -58,7 +75,7 @@ function truncate(s: string, max = 60) {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
-export function UpcomingProjectsCalendar({ rows, onRowClick }: Props) {
+export function UpcomingProjectsCalendar({ rows, onRowClick, schedule = [], onScheduleClick }: Props) {
   const [windowStart, setWindowStart] = useState(() =>
     startOfMonth(subMonths(new Date(), 1))
   );
@@ -90,6 +107,10 @@ export function UpcomingProjectsCalendar({ rows, onRowClick }: Props) {
       return start <= windowEnd && end >= windowStart;
     });
   }, [withStart, windowStart, windowEnd]);
+
+  const visibleSchedule = useMemo(() => {
+    return schedule.filter((item) => item.start <= windowEnd && item.end >= windowStart);
+  }, [schedule, windowStart, windowEnd]);
 
   const monthSegments = useMemo(() => {
     const segments: { label: string; startDay: number; days: number }[] = [];
@@ -227,12 +248,39 @@ export function UpcomingProjectsCalendar({ rows, onRowClick }: Props) {
         </div>
 
         {/* Project rows */}
-        {visible.length === 0 ? (
+        {visible.length === 0 && visibleSchedule.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
-            No projects with start dates fall within this period.
+            No activities or estimated arrivals fall within this period.
           </div>
         ) : (
           <div className="divide-y">
+            {visibleSchedule.map((item) => {
+              const colors = SCHEDULE_BAR[item.kind];
+              const bar = barFromDates(item.start, item.end, item.openEnded, windowStart, windowEnd, totalDays);
+              return (
+                <div key={`signal-${item.signalId}`} className="flex h-10 items-center">
+                  <div
+                    className="flex-shrink-0 border-r bg-card px-3 py-1 text-xs font-medium"
+                    style={{ width: `${LABEL_COLUMN_PX}px` }}
+                    title={item.label}
+                  >
+                    <div className="truncate">{truncate(item.label, 36)}</div>
+                    <div className="truncate text-[10px] text-muted-foreground">{colors.caption}</div>
+                  </div>
+                  <div className="relative h-full flex-1 bg-muted/5">
+                    <button
+                      type="button"
+                      className={`absolute top-1/2 flex h-7 -translate-y-1/2 items-center overflow-hidden rounded border px-2 text-[11px] font-semibold text-white ${colors.bg} ${colors.border} ${item.openEnded ? "[mask-image:linear-gradient(to_right,black_85%,transparent)]" : ""}`}
+                      style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}
+                      onClick={() => onScheduleClick?.(item.signalId)}
+                      title={item.label}
+                    >
+                      <span className="truncate">{truncate(item.label, 60)}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
             {visible.map((row) => {
               const bar = getBarStyle(row);
               const colors = lifecycleClasses(row.lifecycle_classification);
@@ -312,7 +360,11 @@ export function UpcomingProjectsCalendar({ rows, onRowClick }: Props) {
 
         {/* Legend */}
         <div className="flex flex-wrap items-center gap-4 px-4 py-2 border-t bg-muted/10 text-xs text-muted-foreground">
-          <span className="font-semibold">Lifecycle:</span>
+          <span className="font-semibold">Schedule:</span>
+          <LegendSwatch label="ETA" classes="bg-amber-500" />
+          <LegendSwatch label="Stated stay" classes="bg-sky-600" />
+          <LegendSwatch label="On site" classes="bg-emerald-600" />
+          <span className="font-semibold ml-2">Lifecycle:</span>
           <LegendSwatch label="Exploration" classes="bg-slate-400" />
           <LegendSwatch label="Production / operation" classes="bg-emerald-500" />
           <LegendSwatch label="Development" classes="bg-sky-500" />
@@ -329,6 +381,25 @@ export function UpcomingProjectsCalendar({ rows, onRowClick }: Props) {
       </div>
     </div>
   );
+}
+
+function barFromDates(
+  start: Date,
+  end: Date,
+  openEnded: boolean,
+  windowStart: Date,
+  windowEnd: Date,
+  totalDays: number
+) {
+  const clampedStart = start < windowStart ? windowStart : start;
+  const clampedEnd = end > windowEnd ? windowEnd : end;
+  const leftOffset = differenceInDays(clampedStart, windowStart);
+  const width = Math.max(1, differenceInDays(clampedEnd, clampedStart) + 1);
+  return {
+    leftPct: ((leftOffset / totalDays) * 100).toFixed(4),
+    widthPct: ((width / totalDays) * 100).toFixed(4),
+    isOpenEnded: openEnded,
+  };
 }
 
 function LegendSwatch({ label, classes }: { label: string; classes: string }) {

@@ -27,7 +27,7 @@ Status key: **not started** · **blocked (D-n)** · **planning** · **approved**
   after every Phase 0 run sheet had landed (ledger 20 rows ending `20260924010000`; 5,900 workers / 5,085 active; 179
   employers; 190 worksites; 22 campaigns; `_oux_hygiene_log` 3,878 rows; `name_match_reviews` and `vessels` present).
   Marked `clone` by the orchestrator on creation day. The Phase 1 rehearsal target; not wired to Vercel, cron,
-  webhooks or messaging. Its display name was left at the dashboard's default and is to be renamed by the operator.
+  webhooks or messaging. Display name `OA_clone_2` (renamed by the operator 2026-09-24).
   **The 12 September clone `yqjkuobcawvigsfpgrcm` is retired** once the pack comparison in `wp/da0.1.md` §7 is
   recorded: pause it, delete after the UX programme confirms nothing is in flight there.
 - **Normal dev `dpnnmkhabysfdogllsyh`**: read freely; mutate with the operator's approval per file.

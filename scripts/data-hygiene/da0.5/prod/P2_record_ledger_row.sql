@@ -3,7 +3,7 @@
 -- whole file → Run. One submission = this whole file. Prepared by the agent from the committed scripts
 -- in the parent folder; the agent never runs anything on production.
 -- What it does: inserts the row ('20260922040000','mobilisation_radar') into supabase_migrations.schema_migrations and one audit row into public._oux_hygiene_log. Changes no table, policy, trigger, function or data row. Refuses to run twice.
--- Expect: ledger_row_present t, ledger_name mobilisation_radar, ledger_max_version 20260922040000, ledger_rows 17, tables_present 16, policies 27, triggers 8, audit_function_present t, log_rows_written 1.
+-- Expect: ledger_row_present t, ledger_name mobilisation_radar, ledger_max_version 20260922040000, ledger_rows 17, tables_present 16, policies 29 (27 radar + 2 recipients), triggers 8, audit_function_present t, log_rows_written 1.
 -- Paste back: the one result row (or the error).
 -- If anything raises, the transaction (where there is one) has rolled back and nothing changed: paste the error and stop.
 
@@ -207,7 +207,7 @@ COMMIT;
 
 -- ============ VERIFICATION (read-only; paste this output into da0.5.md §11) ============
 -- Expected on production: ledger_row_present = t, ledger_name = 'mobilisation_radar',
--- ledger_rows = 17, tables_present = 16, policies = 27, triggers = 8,
+-- ledger_rows = 17, tables_present = 16, policies = 29 (27 radar policies + the 2 recipients policies of 20260923220000; the LIKE 'mobilisation %' count), triggers = 8,
 -- audit_function_present = t, log_rows_written = 1.
 -- Expected on the 12 September clone after the migration submission + this file: the same, with
 -- ledger_rows = 13.

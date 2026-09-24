@@ -197,7 +197,7 @@ COMMIT;
 
 -- ============ VERIFICATION (read-only; paste this output into da0.5.md §11) ============
 -- Expected on production: ledger_row_present = t, ledger_name = 'mobilisation_radar',
--- ledger_rows = 17, tables_present = 16, policies = 27, triggers = 8,
+-- ledger_rows = 17, tables_present = 16, policies = 29 (27 radar policies + the 2 recipients policies of 20260923220000; the LIKE 'mobilisation %' count), triggers = 8,
 -- audit_function_present = t, log_rows_written = 1.
 -- Expected on the 12 September clone after the migration submission + this file: the same, with
 -- ledger_rows = 13.

@@ -1812,3 +1812,9 @@ Advisories A–C of round 2 applied by the orchestrator, 2026-09-23 (plan §3.2 
 **Fix round 4a (orchestrator, 2026-09-24):** `90_rollback.sql:291` — the two bare `NULL`s in the `INSERT INTO _da02_torder … SELECT DISTINCT` resolved to `text` under DISTINCT and could not be assigned to `ord int`; cast to `NULL::int, NULL::text[]`. No other change.
 
 **Fix round 4b (orchestrator, 2026-09-24):** `90_rollback.sql` step 7 — `SET CONSTRAINTS ALL IMMEDIATE;` before the `ENABLE TRIGGER USER` loop, because the reinserted `campaign_organising_units` rows leave pending deferred-constraint events on the two DEFERRABLE keys into `campaign_groups`, and `ALTER TABLE` refuses a table with pending trigger events (55006). Same mechanism as `oux-wp2.1/03a_rollback.sql`. No other change.
+
+### 11.1 Production run (operator, SQL Editor, 2026-09-24)
+
+| Step | File | Outcome | Key values pasted |
+|---|---|---|---|
+| P1 | `prod/P1_preflight_before.sql` | matched §3.1.2 | ids_present 8/4/2/1/4; scope 664/664, md5 `f6589df6e2507a35542632026c3d0c34`; reference_id_not_null 0; member_number_not_null 304 (shape alpha1digits 7=160 / 8=144); employer-less 681, 1537; cwm/cwo outside 15/37 none; 1536 emp=791 ws=197 cwm 37/50/64 cwo 37:25; roles 82,83,84,85,87,89,91,93,95,97; set_null 3,4,5 / 4,5,6 / 1; E Σ 3119/72; F Σ 16; G Σ 2; G2 20/2351; H clean (program 6; worksites 196–199); J workers_active 5749, cwm 3460, cwo 2510; K hygiene_log 736, pending 0/0, env_marker absent, bypassrls t, session_replication_role f. (First attempt errored at `LINE 1: WHERE fk.del …`: a truncated copy from the session's file panel; the full file ran clean.) |

@@ -16,6 +16,7 @@ import {
   type CampaignProtectedWorkerField,
 } from "@/lib/workers/campaign-protected-fields";
 import { buildWorkerImportUpdatePatch } from "@/lib/workers/worker-import-update-patch";
+import { accumulateImportLog, rawNameColumns } from "@/lib/import/import-log";
 
 /**
  * Rows are written one at a time with several follow-up writes each; the
@@ -60,6 +61,13 @@ export interface WorkerImportRow {
   rejoinDate: string | null;
   worksiteId: number | null;
   employerId: number | null;
+  /**
+   * DA0.3: the employer / worksite strings as they appear in the file,
+   * persisted on the worker as provenance (`employer_name_raw`,
+   * `worksite_name_raw`) and the back-fill key when a queued name is decided.
+   */
+  employerNameRaw?: string | null;
+  worksiteNameRaw?: string | null;
   rawMembershipStatus: string;
   notes: string | null;
   /** Resolved FK into occupations table */
@@ -97,6 +105,12 @@ export interface WorkerImportApplyRequest {
    * fields. Pass false to let the file overwrite them.
    */
   protectCampaignWorkers?: boolean;
+  /**
+   * DA0.3: the file's `import_logs` row, created by POST /api/import/resolve-names
+   * (persist: true) before the first batch. Every batch accumulates its counts
+   * into it (one row per file). When absent the route logs a row of its own.
+   */
+  importId?: number | null;
 }
 
 export interface WorkerImportRowResult {
@@ -117,6 +131,8 @@ export interface WorkerImportApplyResponse {
   /** Updated rows where at least one field was kept from the campaign. */
   protectedUpdates: number;
   errors: string[];
+  /** Non-fatal notes: the rows were written but something around them (e.g. the import log) was not. */
+  warnings?: string[];
   rowResults: WorkerImportRowResult[];
 }
 
@@ -348,6 +364,7 @@ export async function POST(request: NextRequest) {
     campaignId,
     assessmentColumns = [],
     protectCampaignWorkers = true,
+    importId = null,
   } = body;
   if (!rows || !Array.isArray(rows)) {
     return NextResponse.json({ success: false, error: "rows array is required" }, { status: 400 });
@@ -358,6 +375,7 @@ export async function POST(request: NextRequest) {
   let skipped = 0;
   let protectedUpdates = 0;
   const errors: string[] = [];
+  const warnings: string[] = [];
   const rowResults: WorkerImportRowResult[] = [];
 
   let protectedWorkerIds = new Set<number>();
@@ -581,7 +599,15 @@ export async function POST(request: NextRequest) {
         membershipResolved: unionMembershipTypeId != null,
       });
       const stripped = stripCampaignProtectedFields(selectivePatch, isProtectedUpdate);
-      const updatePatch: Record<string, unknown> = stripped.patch;
+      // The raw strings are provenance, not a protected field: written
+      // alongside — not inside — the campaign-protected strip.
+      const updatePatch: Record<string, unknown> = {
+        ...stripped.patch,
+        ...rawNameColumns(
+          { employerRaw: row.employerNameRaw, worksiteRaw: row.worksiteNameRaw, importId },
+          "update"
+        ),
+      };
       protectedFields = stripped.protectedFields;
 
       // Apply rejoin_date recency guard: only advance if incoming date is more recent
@@ -621,6 +647,10 @@ export async function POST(request: NextRequest) {
         .from("workers")
         .insert({
           ...workerData,
+          ...rawNameColumns(
+            { employerRaw: row.employerNameRaw, worksiteRaw: row.worksiteNameRaw, importId },
+            "create"
+          ),
           phone_e164: toE164(row.phone),
           sms_consent_source: row.phone ? "import" : null,
         })
@@ -724,18 +754,30 @@ export async function POST(request: NextRequest) {
         ])}`
       : null;
 
-  // Log to import_logs
-  await supabase.from("import_logs").insert({
-    file_name: fileName,
-    import_type: "workers_wizard",
-    records_created: created,
-    records_updated: updated,
-    errors:
-      errors.length > 0 || protectedNote
-        ? [...(protectedNote ? [protectedNote] : []), ...errors].join("\n")
-        : null,
-    imported_by: user.id,
-  });
+  const logErrors =
+    errors.length > 0 || protectedNote
+      ? [...(protectedNote ? [protectedNote] : []), ...errors].join("\n")
+      : null;
+  if (importId != null) {
+    // One import_logs row per file (DA0.3): accumulate this batch into the
+    // row the resolve-names call created.
+    const logError = await accumulateImportLog(supabase, importId, {
+      created,
+      updated,
+      errorsText: logErrors,
+    });
+    // The rows landed; a log that did not accumulate is a warning, not a failure.
+    if (logError) warnings.push(`${logError} — the rows of this batch were written; Import History may undercount.`);
+  } else {
+    await supabase.from("import_logs").insert({
+      file_name: fileName,
+      import_type: "workers_wizard",
+      records_created: created,
+      records_updated: updated,
+      errors: logErrors,
+      imported_by: user.id,
+    });
+  }
 
   return NextResponse.json({
     success: errors.length === 0,
@@ -744,6 +786,7 @@ export async function POST(request: NextRequest) {
     skipped,
     protectedUpdates,
     errors,
+    ...(warnings.length > 0 ? { warnings } : {}),
     rowResults,
   } satisfies WorkerImportApplyResponse);
 }

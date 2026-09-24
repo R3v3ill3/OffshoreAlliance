@@ -13896,6 +13896,136 @@ export type Database = {
           },
         ]
       }
+      name_match_reviews: {
+        Row: {
+          candidate_proposals: Json
+          created_at: string
+          created_by: string | null
+          decided_at: string | null
+          decided_by: string | null
+          entity: string
+          id: number
+          import_id: number | null
+          match_method: string | null
+          match_score: number | null
+          normalised_name: string
+          notes: string | null
+          occurrences: number
+          raw_name: string
+          resolved_employer_id: number | null
+          resolved_worksite_id: number | null
+          source_context: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          candidate_proposals?: Json
+          created_at?: string
+          created_by?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          entity: string
+          id?: number
+          import_id?: number | null
+          match_method?: string | null
+          match_score?: number | null
+          normalised_name: string
+          notes?: string | null
+          occurrences?: number
+          raw_name: string
+          resolved_employer_id?: number | null
+          resolved_worksite_id?: number | null
+          source_context?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          candidate_proposals?: Json
+          created_at?: string
+          created_by?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          entity?: string
+          id?: number
+          import_id?: number | null
+          match_method?: string | null
+          match_score?: number | null
+          normalised_name?: string
+          notes?: string | null
+          occurrences?: number
+          raw_name?: string
+          resolved_employer_id?: number | null
+          resolved_worksite_id?: number | null
+          source_context?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "name_match_reviews_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "import_logs"
+            referencedColumns: ["import_id"]
+          },
+          {
+            foreignKeyName: "name_match_reviews_resolved_employer_id_fkey"
+            columns: ["resolved_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "name_match_reviews_resolved_employer_id_fkey"
+            columns: ["resolved_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "name_match_reviews_resolved_employer_id_fkey"
+            columns: ["resolved_employer_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+          {
+            foreignKeyName: "name_match_reviews_resolved_worksite_id_fkey"
+            columns: ["resolved_worksite_id"]
+            isOneToOne: false
+            referencedRelation: "organising_universe_view"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "name_match_reviews_resolved_worksite_id_fkey"
+            columns: ["resolved_worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksite_hierarchy_report_rows"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "name_match_reviews_resolved_worksite_id_fkey"
+            columns: ["resolved_worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksite_hierarchy_report_rows_mv"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "name_match_reviews_resolved_worksite_id_fkey"
+            columns: ["resolved_worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "name_match_reviews_resolved_worksite_id_fkey"
+            columns: ["resolved_worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites_view"
+            referencedColumns: ["worksite_id"]
+          },
+        ]
+      }
       non_oa_union_options: {
         Row: {
           badge_initials: string
@@ -22350,6 +22480,7 @@ export type Database = {
           email_status: string | null
           email_status_updated_at: string | null
           employer_id: number | null
+          employer_name_raw: string | null
           first_name: string
           gender: string | null
           is_active: boolean
@@ -22359,6 +22490,7 @@ export type Database = {
           last_name: string
           member_number: string | null
           member_role_type_id: number | null
+          names_import_id: number | null
           non_oa_union_option_id: number | null
           notes: string | null
           occupation: string | null
@@ -22385,6 +22517,7 @@ export type Database = {
           work_area_id: number | null
           worker_id: number
           worksite_id: number | null
+          worksite_name_raw: string | null
         }
         Insert: {
           action_network_id?: string | null
@@ -22401,6 +22534,7 @@ export type Database = {
           email_status?: string | null
           email_status_updated_at?: string | null
           employer_id?: number | null
+          employer_name_raw?: string | null
           first_name: string
           gender?: string | null
           is_active?: boolean
@@ -22410,6 +22544,7 @@ export type Database = {
           last_name: string
           member_number?: string | null
           member_role_type_id?: number | null
+          names_import_id?: number | null
           non_oa_union_option_id?: number | null
           notes?: string | null
           occupation?: string | null
@@ -22436,6 +22571,7 @@ export type Database = {
           work_area_id?: number | null
           worker_id?: number
           worksite_id?: number | null
+          worksite_name_raw?: string | null
         }
         Update: {
           action_network_id?: string | null
@@ -22452,6 +22588,7 @@ export type Database = {
           email_status?: string | null
           email_status_updated_at?: string | null
           employer_id?: number | null
+          employer_name_raw?: string | null
           first_name?: string
           gender?: string | null
           is_active?: boolean
@@ -22461,6 +22598,7 @@ export type Database = {
           last_name?: string
           member_number?: string | null
           member_role_type_id?: number | null
+          names_import_id?: number | null
           non_oa_union_option_id?: number | null
           notes?: string | null
           occupation?: string | null
@@ -22487,6 +22625,7 @@ export type Database = {
           work_area_id?: number | null
           worker_id?: number
           worksite_id?: number | null
+          worksite_name_raw?: string | null
         }
         Relationships: [
           {
@@ -22523,6 +22662,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "member_role_types"
             referencedColumns: ["role_type_id"]
+          },
+          {
+            foreignKeyName: "workers_names_import_id_fkey"
+            columns: ["names_import_id"]
+            isOneToOne: false
+            referencedRelation: "import_logs"
+            referencedColumns: ["import_id"]
           },
           {
             foreignKeyName: "workers_non_oa_union_option_id_fkey"
@@ -28869,6 +29015,7 @@ export type Database = {
         Args: { p_activity_id: number }
         Returns: number
       }
+      decide_name_match: { Args: { payload: Json }; Returns: Json }
       delete_campaign: { Args: { p_campaign_id: number }; Returns: undefined }
       delete_old_import_logs: { Args: never; Returns: Json }
       deny_campaign_edit_permission: {
@@ -28884,6 +29031,7 @@ export type Database = {
         Args: { p_role_type_id: number }
         Returns: boolean
       }
+      fold_name: { Args: { p: string }; Returns: string }
       force_release_claims_for_token: {
         Args: { p_token_id: number }
         Returns: Json

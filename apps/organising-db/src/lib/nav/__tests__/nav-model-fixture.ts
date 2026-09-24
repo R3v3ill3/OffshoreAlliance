@@ -40,7 +40,8 @@ export const TODAY_SIDEBAR_ROWS: readonly FixtureRow[] = [
 /**
  * Full mode after the inbox consolidation: one Inbox row (email and SMS),
  * Actions kept as the outbound hub, Surveys & Forms after Reports, Projects
- * in place of Upcoming Projects, and a single Administration admin row.
+ * in place of Upcoming Projects, and an admin block of the DA0.3 Name
+ * Reviews row followed by Administration.
  * Email imports and email wrappers are reached in-page, not from the sidebar.
  */
 export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
@@ -54,6 +55,8 @@ export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
   { id: "reports", label: "Reports", href: "/reports", icon: "bar-chart-3", module: "insights", state: "on" },
   { id: "surveys_forms", label: "Surveys & Forms", href: "/surveys-forms", icon: "clipboard-list", module: "surveys_forms", state: "on" },
   { id: "guides", label: "Guides", href: "/help", icon: "graduation-cap", state: "on" },
+  // DA0.3 — the Name Reviews queue (admin block only).
+  { id: "name_reviews", label: "Name Reviews", href: "/name-reviews", icon: "clipboard-list", module: "administration", state: "on" },
   { id: "administration", label: "Administration", href: "/administration", icon: "settings", module: "administration", state: "on" },
 ];
 

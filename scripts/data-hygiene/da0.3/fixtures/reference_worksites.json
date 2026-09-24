@@ -1,0 +1,1212 @@
+{
+  "exported_at": "2026-09-22T06:16:39Z",
+  "source": "production worksites + worksite_name_aliases",
+  "rows": [
+    {
+      "worksite_id": 1,
+      "worksite_name": "Gorgon LNG",
+      "worksite_type": "Onshore_LNG",
+      "is_active": true
+    },
+    {
+      "worksite_id": 2,
+      "worksite_name": "Wheatstone LNG (Downstream)",
+      "worksite_type": "Onshore_LNG",
+      "is_active": true
+    },
+    {
+      "worksite_id": 3,
+      "worksite_name": "Wheatstone Platform",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 4,
+      "worksite_name": "Chevron Facilities (General)",
+      "worksite_type": "Onshore_Facilities",
+      "is_active": false
+    },
+    {
+      "worksite_id": 5,
+      "worksite_name": "Prelude FLNG",
+      "worksite_type": "FLNG",
+      "is_active": true
+    },
+    {
+      "worksite_id": 6,
+      "worksite_name": "Crux Gas Field",
+      "worksite_type": "Gas_Field",
+      "is_active": true
+    },
+    {
+      "worksite_id": 7,
+      "worksite_name": "Ichthys LNG",
+      "worksite_type": "FPSO",
+      "is_active": false
+    },
+    {
+      "worksite_id": 8,
+      "worksite_name": "Brewster Drill Centre",
+      "worksite_type": "Drill_Centre",
+      "is_active": true
+    },
+    {
+      "worksite_id": 9,
+      "worksite_name": "North West Shelf (NWS) Platforms",
+      "worksite_type": "Platform",
+      "is_active": false
+    },
+    {
+      "worksite_id": 10,
+      "worksite_name": "Macedon Gas Plant",
+      "worksite_type": "Gas_Plant",
+      "is_active": true
+    },
+    {
+      "worksite_id": 11,
+      "worksite_name": "Ngujima-Yin FPSO",
+      "worksite_type": "FPSO",
+      "is_active": true
+    },
+    {
+      "worksite_id": 12,
+      "worksite_name": "Okha FPSO",
+      "worksite_type": "FPSO",
+      "is_active": true
+    },
+    {
+      "worksite_id": 13,
+      "worksite_name": "Woodside Onshore Facilities",
+      "worksite_type": "Onshore_Facilities",
+      "is_active": false
+    },
+    {
+      "worksite_id": 14,
+      "worksite_name": "Varanus Island",
+      "worksite_type": "Gas_Plant",
+      "is_active": true
+    },
+    {
+      "worksite_id": 15,
+      "worksite_name": "Montara Venture FPSO",
+      "worksite_type": "FPSO",
+      "is_active": true
+    },
+    {
+      "worksite_id": 16,
+      "worksite_name": "Stag CPF",
+      "worksite_type": "CPF",
+      "is_active": true
+    },
+    {
+      "worksite_id": 17,
+      "worksite_name": "Ningaloo Vision FPSO",
+      "worksite_type": "FPSO",
+      "is_active": true
+    },
+    {
+      "worksite_id": 18,
+      "worksite_name": "Pyrenees Venture FPSO",
+      "worksite_type": "FPSO",
+      "is_active": true
+    },
+    {
+      "worksite_id": 19,
+      "worksite_name": "Northern Endeavour FPSO",
+      "worksite_type": "FPSO",
+      "is_active": false
+    },
+    {
+      "worksite_id": 20,
+      "worksite_name": "Karratha (Town/Industrial)",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 21,
+      "worksite_name": "Karratha MPT Heliport",
+      "worksite_type": "Heliport",
+      "is_active": true
+    },
+    {
+      "worksite_id": 22,
+      "worksite_name": "Gascoyne Airfield",
+      "worksite_type": "Airfield",
+      "is_active": true
+    },
+    {
+      "worksite_id": 23,
+      "worksite_name": "Kimberley Airfield",
+      "worksite_type": "Airfield",
+      "is_active": true
+    },
+    {
+      "worksite_id": 24,
+      "worksite_name": "DBNGP Pipeline",
+      "worksite_type": "Pipeline",
+      "is_active": true
+    },
+    {
+      "worksite_id": 25,
+      "worksite_name": "BW Offshore FPSO",
+      "worksite_type": "FPSO",
+      "is_active": true
+    },
+    {
+      "worksite_id": 26,
+      "worksite_name": "WA/NT Offshore (General)",
+      "worksite_type": "Region",
+      "is_active": true
+    },
+    {
+      "worksite_id": 136,
+      "worksite_name": "Karratha Gas Plant",
+      "worksite_type": "Gas_Plant",
+      "is_active": true
+    },
+    {
+      "worksite_id": 137,
+      "worksite_name": "Pluto LNG",
+      "worksite_type": "Onshore_LNG",
+      "is_active": true
+    },
+    {
+      "worksite_id": 138,
+      "worksite_name": "Pluto 2",
+      "worksite_type": "Onshore_LNG",
+      "is_active": true
+    },
+    {
+      "worksite_id": 139,
+      "worksite_name": "Wheatstone LNG",
+      "worksite_type": "Onshore_LNG",
+      "is_active": true
+    },
+    {
+      "worksite_id": 140,
+      "worksite_name": "Darwin ILNG",
+      "worksite_type": "Onshore_LNG",
+      "is_active": true
+    },
+    {
+      "worksite_id": 141,
+      "worksite_name": "Wandoo B",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 142,
+      "worksite_name": "Wandoo A",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 143,
+      "worksite_name": "Goodwyn",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 144,
+      "worksite_name": "Rankin North",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 145,
+      "worksite_name": "Scarborough FPU",
+      "worksite_type": "FPU",
+      "is_active": true
+    },
+    {
+      "worksite_id": 146,
+      "worksite_name": "Explorer CPF",
+      "worksite_type": "CPF",
+      "is_active": true
+    },
+    {
+      "worksite_id": 147,
+      "worksite_name": "Ichthys FPSO",
+      "worksite_type": "FPSO",
+      "is_active": true
+    },
+    {
+      "worksite_id": 148,
+      "worksite_name": "Ichthys",
+      "worksite_type": "Other",
+      "is_active": false
+    },
+    {
+      "worksite_id": 150,
+      "worksite_name": "DLV2000",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 151,
+      "worksite_name": "Deep Orient",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 152,
+      "worksite_name": "Valaris 107",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 153,
+      "worksite_name": "Audacia",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 154,
+      "worksite_name": "Ocean Apex",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 155,
+      "worksite_name": "Transocean Endurance",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 156,
+      "worksite_name": "DPS1",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 157,
+      "worksite_name": "Angel Platform",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 158,
+      "worksite_name": "Maersk Deliverer",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 159,
+      "worksite_name": "Karratha Airport",
+      "worksite_type": "Airfield",
+      "is_active": true
+    },
+    {
+      "worksite_id": 160,
+      "worksite_name": "Inpex Venturer FPSO",
+      "worksite_type": "FPSO",
+      "is_active": true
+    },
+    {
+      "worksite_id": 161,
+      "worksite_name": "Sandpiper",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 162,
+      "worksite_name": "Bayu Undan",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 163,
+      "worksite_name": "Broome Airport",
+      "worksite_type": "Airfield",
+      "is_active": true
+    },
+    {
+      "worksite_id": 164,
+      "worksite_name": "Perth Office",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 165,
+      "worksite_name": "Kwinana",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 166,
+      "worksite_name": "MMA Pinnacle",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 167,
+      "worksite_name": "MMA Plover",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 168,
+      "worksite_name": "Ocean Monarch",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 169,
+      "worksite_name": "MV Pride",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 170,
+      "worksite_name": "Alkimos",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 171,
+      "worksite_name": "Felicity PSV",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 172,
+      "worksite_name": "MMA Vigilant",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 173,
+      "worksite_name": "MMA Brewster",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 174,
+      "worksite_name": "Mma coral",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 175,
+      "worksite_name": "MMA Inscription",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 176,
+      "worksite_name": "Seven Oceanic Subsea 7",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 177,
+      "worksite_name": "Subsea 7 Pegasus",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 178,
+      "worksite_name": "Acciona Jackup barge",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 179,
+      "worksite_name": "ASWA Beverly",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 180,
+      "worksite_name": "Alkimos seawater alliance",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 181,
+      "worksite_name": "Alkimos marine works",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 182,
+      "worksite_name": "Beverley jub alkimos",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 183,
+      "worksite_name": "perdaman",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 184,
+      "worksite_name": "AGIG Control Roo",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 185,
+      "worksite_name": "AWU Head Office",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 186,
+      "worksite_name": "Watsia gas plant Dongara onshore",
+      "worksite_type": "Gas_Plant",
+      "is_active": true
+    },
+    {
+      "worksite_id": 187,
+      "worksite_name": "Darwin Airport",
+      "worksite_type": "Airfield",
+      "is_active": true
+    },
+    {
+      "worksite_id": 188,
+      "worksite_name": "Pacific Dilgence",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 189,
+      "worksite_name": "Pacific Liberty",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 190,
+      "worksite_name": "Seeker Tide",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 191,
+      "worksite_name": "Transocean",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 192,
+      "worksite_name": "Waitisa Gas Plant",
+      "worksite_type": "Gas_Plant",
+      "is_active": true
+    },
+    {
+      "worksite_id": 193,
+      "worksite_name": "Valaris 247",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 194,
+      "worksite_name": "Valaris DPS-1",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 195,
+      "worksite_name": "Not Currently Deployed",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 196,
+      "worksite_name": "Test Onshore Gas Plant",
+      "worksite_type": "Gas_Plant",
+      "is_active": true
+    },
+    {
+      "worksite_id": 197,
+      "worksite_name": "TEST · TestCo 2 — Alpha FPSO",
+      "worksite_type": "FPSO",
+      "is_active": true
+    },
+    {
+      "worksite_id": 198,
+      "worksite_name": "TEST · TestCo 2 — Bravo Platform",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 199,
+      "worksite_name": "TEST · TestCo 2 — Charlie FPU",
+      "worksite_type": "FPU",
+      "is_active": true
+    },
+    {
+      "worksite_id": 200,
+      "worksite_name": "KBSB",
+      "worksite_type": "Onshore_Facilities",
+      "is_active": true
+    },
+    {
+      "worksite_id": 201,
+      "worksite_name": "Sapura Constructor",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 202,
+      "worksite_name": "CASUAL EMPLOYEES",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 203,
+      "worksite_name": "Siem Thiima",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 204,
+      "worksite_name": "Sea1 Emerald",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 205,
+      "worksite_name": "Siem Aquamarine",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 206,
+      "worksite_name": "Pacific Guillemot",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 207,
+      "worksite_name": "Sea1 Sapphire",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 208,
+      "worksite_name": "Pacifica Gannet",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 209,
+      "worksite_name": "Siem Pilot",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 210,
+      "worksite_name": "Siem AHTS",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 211,
+      "worksite_name": "Tortuga Tide",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 212,
+      "worksite_name": "Siem symphony",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 213,
+      "worksite_name": "WB400",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 214,
+      "worksite_name": "Pacific Valor",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 215,
+      "worksite_name": "DOF Vessels",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 216,
+      "worksite_name": "Pacific Grackle",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 217,
+      "worksite_name": "Manticore",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 218,
+      "worksite_name": "Siem Amethyst",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 219,
+      "worksite_name": "SEA1 Anchor Handlers",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 220,
+      "worksite_name": "Pacific Vulcan",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 221,
+      "worksite_name": "Fugro Etive",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 222,
+      "worksite_name": "Boka Centre",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 223,
+      "worksite_name": "Castorone",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 224,
+      "worksite_name": "Bridge",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 225,
+      "worksite_name": "LV108",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 226,
+      "worksite_name": "Gateway",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 227,
+      "worksite_name": "Fugro Etive, Furgo Maali, Fugro Kwilena",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 228,
+      "worksite_name": "Skandi Hercules",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 229,
+      "worksite_name": "Fortitude",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 230,
+      "worksite_name": "SAIPEM CONSTELLATION",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 231,
+      "worksite_name": "Scandi Emerald",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 232,
+      "worksite_name": "Reach Subsea",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 233,
+      "worksite_name": "MMA Harmony",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 234,
+      "worksite_name": "MMA Monarch",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 235,
+      "worksite_name": "Mermaid Sound",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 236,
+      "worksite_name": "Mermaid Cove",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 237,
+      "worksite_name": "Andreas Viking",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 238,
+      "worksite_name": "MMA LEEUWIN",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 239,
+      "worksite_name": "Safe Boreas",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 240,
+      "worksite_name": "Floatel triumph",
+      "worksite_type": "Accommodation_Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 241,
+      "worksite_name": "Bigroll Bering",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 242,
+      "worksite_name": "Noble Deliverer",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 243,
+      "worksite_name": "Posh Teal",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 244,
+      "worksite_name": "Jetwave Jasmin",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 245,
+      "worksite_name": "Go Provider",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 246,
+      "worksite_name": "Go Aurelia",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 247,
+      "worksite_name": "Go Sirius",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 249,
+      "worksite_name": "Go Spica",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 250,
+      "worksite_name": "Go Offshore",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 252,
+      "worksite_name": "Skandi Darwin",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 253,
+      "worksite_name": "Dof Subsea",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 254,
+      "worksite_name": "Skandi Vessels",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 255,
+      "worksite_name": "skandi peregrino",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 256,
+      "worksite_name": "Skandi Singapore",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 257,
+      "worksite_name": "CMV Athos",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 258,
+      "worksite_name": "DP2 Seamaster",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 259,
+      "worksite_name": "Dryden",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 260,
+      "worksite_name": "Pacific Rapier",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 261,
+      "worksite_name": "Floatel Triumph",
+      "worksite_type": "Accommodation_Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 262,
+      "worksite_name": "Jasmin",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 263,
+      "worksite_name": "Normand Saracen",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 264,
+      "worksite_name": "Anchor Handlers",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 265,
+      "worksite_name": "Normand Ranger",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 266,
+      "worksite_name": "Jetwave Lightning",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 268,
+      "worksite_name": "Swan Tide",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 269,
+      "worksite_name": "JF J De Nul",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 270,
+      "worksite_name": "MMA vessel",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 413,
+      "worksite_name": "Unspecified",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 414,
+      "worksite_name": "VE Constructor",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 415,
+      "worksite_name": "Seven Sisters",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 416,
+      "worksite_name": "Mariner (field)",
+      "worksite_type": "Gas_Field",
+      "is_active": true
+    },
+    {
+      "worksite_id": 418,
+      "worksite_name": "Normand Scorpion",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 419,
+      "worksite_name": "Shell",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 420,
+      "worksite_name": "Barge catering",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 421,
+      "worksite_name": "Barrow Island CO2",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 422,
+      "worksite_name": "Fugro Workshop",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 423,
+      "worksite_name": "Fugro unmanned remote",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 424,
+      "worksite_name": "Valaris MS-1",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 425,
+      "worksite_name": "MEEF decommissioning",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 426,
+      "worksite_name": "skandi inventor",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 427,
+      "worksite_name": "Q7000",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 428,
+      "worksite_name": "Remote operation centre",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 429,
+      "worksite_name": "Seven Arctic",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 430,
+      "worksite_name": "Australian Submarine Corporation",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 431,
+      "worksite_name": "Tubridgi Gas Storage",
+      "worksite_type": "Gas_Plant",
+      "is_active": true
+    },
+    {
+      "worksite_id": 432,
+      "worksite_name": "Tubridigi Gas Storage",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 433,
+      "worksite_name": "Jsd6000",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 434,
+      "worksite_name": "Waitsia",
+      "worksite_type": "Gas_Plant",
+      "is_active": true
+    },
+    {
+      "worksite_id": 435,
+      "worksite_name": "Harriett",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 436,
+      "worksite_name": "Jansz FCS",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 437,
+      "worksite_name": "JIC/Gorgon",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 438,
+      "worksite_name": "Barossa Field",
+      "worksite_type": "Gas_Field",
+      "is_active": true
+    },
+    {
+      "worksite_id": 439,
+      "worksite_name": "All Seas",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 440,
+      "worksite_name": "Juan Sebastian de Elcano",
+      "worksite_type": "Vessel_Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 441,
+      "worksite_name": "Bw Opal HUC",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 442,
+      "worksite_name": "Pluto Alpha Platform",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 443,
+      "worksite_name": "Inpex Endeavour CPF",
+      "worksite_type": "Platform",
+      "is_active": true
+    },
+    {
+      "worksite_id": 444,
+      "worksite_name": "King Bay - Dampier port",
+      "worksite_type": "Other",
+      "is_active": true
+    },
+    {
+      "worksite_id": 445,
+      "worksite_name": "Transocean Equinox",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 446,
+      "worksite_name": "Noble Tom Prosser",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 447,
+      "worksite_name": "Pacific Dove",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 448,
+      "worksite_name": "Tidewater",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 449,
+      "worksite_name": "Equinox",
+      "worksite_type": "Vessel",
+      "is_active": true
+    },
+    {
+      "worksite_id": 450,
+      "worksite_name": "Workshop",
+      "worksite_type": "Onshore_Facilities",
+      "is_active": true
+    }
+  ],
+  "aliases": [
+    {
+      "worksite_id": 203,
+      "alias_name": "MV Siem Thiima",
+      "source": "import"
+    },
+    {
+      "worksite_id": 204,
+      "alias_name": "Sea 1 Emerald",
+      "source": "import"
+    },
+    {
+      "worksite_id": 205,
+      "alias_name": "Sea1 Aquamarine",
+      "source": "import"
+    },
+    {
+      "worksite_id": 207,
+      "alias_name": "Siem Sapphire",
+      "source": "import"
+    },
+    {
+      "worksite_id": 212,
+      "alias_name": "Siwm symphony",
+      "source": "import"
+    },
+    {
+      "worksite_id": 231,
+      "alias_name": "Scandi Emerald; DLV2000",
+      "source": "import"
+    },
+    {
+      "worksite_id": 241,
+      "alias_name": "Big Roll Bering",
+      "source": "import"
+    },
+    {
+      "worksite_id": 245,
+      "alias_name": "MV Go Provider",
+      "source": "import"
+    }
+  ]
+}

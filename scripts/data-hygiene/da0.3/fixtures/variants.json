@@ -1,0 +1,43 @@
+{
+  "note": "DA0.3 replay fixture inputs (plan §3.4 item 2). Organisation and worksite strings only. `lineage` lists the known lineage-C and duplicate variants from OA_UNIVERSE_ALIGNMENT_PLAN §1.2 lineage C and §1.3, each with the row the reviewer would map it to on production (ids from fixtures/reference_*.json, exported 2026-09-22). Several of these strings already exist as their own rows on production (`ugl`, `ATC`, `ATC Offshore`, `Siem Offshore`, `APA Group`, `MER Solutions: Port Hedland`, `IAS Group`, `Rigforce Pty Ltd`, `Floatel triumph`, `Wheatstone LNG (Downstream)`, `DPS1`, `Equinox`, `Inpex Endeavour CPF`, `Jasmin`), so against today's reference they resolve `exact` to that row (risk R5: unchanged behaviour; DA1.1 retires the duplicates). `synthetic` describes the case / spacing / suffix variants the builder generates from 20 canonical names per entity; the expected outcome of every string is computed by the harness, never typed in.",
+  "lineage": {
+    "employers": [
+      { "raw": "ugl", "canonical_id": 33, "canonical_name": "UGL RESOURCES (CONTRACTING) PTY LTD" },
+      { "raw": "ATC", "canonical_id": 816, "canonical_name": "ATC" },
+      { "raw": "ATC Offshore", "canonical_id": 816, "canonical_name": "ATC" },
+      { "raw": "Siem Offshore", "canonical_id": 831, "canonical_name": "Siem Offshore" },
+      { "raw": "APA Group", "canonical_id": 17, "canonical_name": "(the employer that alias DBP/APA points at)" },
+      { "raw": "MER Solutions: Port Hedland", "canonical_id": 829, "canonical_name": "MER Solutions: Port Hedland" },
+      { "raw": "IAS Group", "canonical_id": 33, "canonical_name": "UGL RESOURCES (CONTRACTING) PTY LTD" },
+      { "raw": "Rigforce Pty Ltd", "canonical_id": 28, "canonical_name": "(the employer that alias RIGFORCE points at)" }
+    ],
+    "worksites": [
+      { "raw": "Floatel triumph", "canonical_id": 261, "canonical_name": "Floatel Triumph" },
+      { "raw": "Wheatstone LNG (Downstream)", "canonical_id": 139, "canonical_name": "Wheatstone LNG" },
+      { "raw": "Waitisa Gas Plant", "canonical_id": 434, "canonical_name": "Waitsia" },
+      { "raw": "Watsia gas plant Dongara onshore", "canonical_id": 434, "canonical_name": "Waitsia" },
+      { "raw": "Tubridigi", "canonical_id": 431, "canonical_name": "Tubridgi Gas Storage" },
+      { "raw": "Jasmin", "canonical_id": 244, "canonical_name": "Jetwave Jasmin" },
+      { "raw": "DPS1", "canonical_id": 194, "canonical_name": "Valaris DPS-1" },
+      { "raw": "Equinox", "canonical_id": 445, "canonical_name": "Transocean Equinox" },
+      { "raw": "Inpex Endeavour CPF", "canonical_id": 443, "canonical_name": "Inpex Endeavour CPF" }
+    ]
+  },
+  "synthetic": {
+    "canonicals_per_entity": 20,
+    "selection": "every 9th active row of the reference list, by id order",
+    "transforms": [
+      "upper-cased",
+      "lower-cased",
+      "double-spaced",
+      "trailing tab",
+      "' Pty Ltd' appended",
+      "'Pty Ltd' removed (when present)",
+      "employers only: the membership system's 'Employer : Employer: Site' shape as the row builder collapses it, 'Employer: Site'"
+    ]
+  },
+  "rows": {
+    "target": 2400,
+    "person_columns": "Reference ID = DA03-000001…, First Name = Fixture, Last Name = Person <n>, Member Account Status cycling over Active / Unfinancial / Resigned / Active / Stopped Payment, Job Title = Fixture Trade, Phone empty, Email = da03-<n>@example.invalid"
+  }
+}

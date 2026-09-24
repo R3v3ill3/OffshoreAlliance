@@ -4,6 +4,14 @@ exports[`buildNavModel > 1. full mode / admin 1`] = `
 {
   "admin": [
     {
+      "href": "/name-reviews",
+      "icon": "clipboard-list",
+      "id": "name_reviews",
+      "label": "Name Reviews",
+      "module": "administration",
+      "state": "on",
+    },
+    {
       "href": "/administration",
       "icon": "settings",
       "id": "administration",
@@ -933,6 +941,14 @@ exports[`buildNavModel > 8. organiser mode with allowShowEverything: false — n
 exports[`buildNavModel > 9. organiser mode + isAdmin (unreachable today; the defensive branch) 1`] = `
 {
   "admin": [
+    {
+      "href": "/name-reviews",
+      "icon": "clipboard-list",
+      "id": "name_reviews",
+      "label": "Name Reviews",
+      "module": "administration",
+      "state": "on",
+    },
     {
       "href": "/administration",
       "icon": "settings",

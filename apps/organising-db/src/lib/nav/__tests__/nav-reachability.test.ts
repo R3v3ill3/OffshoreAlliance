@@ -76,7 +76,7 @@ function everyItem(model: NavModel): NavItem[] {
 }
 
 describe("full mode is byte-identical to the pinned fixture", () => {
-  it("an admin sees the 10 primary rows plus Administration, in order", () => {
+  it("an admin sees the 10 primary rows plus Name Reviews and Administration, in order", () => {
     expect([...fullAdmin.primary, ...fullAdmin.admin].map(toFixtureRow)).toEqual(
       FULL_MODE_FIXTURE
     );
@@ -89,10 +89,13 @@ describe("full mode is byte-identical to the pinned fixture", () => {
     expect(fullUser.admin).toEqual([]);
   });
 
-  it("the differences from the pre-WP1.5 sidebar are the known consolidations", () => {
+  it("the differences from the pre-WP1.5 sidebar are the known consolidations and the DA0.3 Name Reviews row", () => {
     const todayIds = TODAY_SIDEBAR_ROWS.map((row) => row.id);
     const fullIds = FULL_MODE_FIXTURE.map((row) => row.id);
-    expect(fullIds.filter((id) => !todayIds.includes(id)).sort()).toEqual(["inbox", "surveys_forms"]);
+    expect(fullIds.filter((id) => !todayIds.includes(id)).sort()).toEqual(["inbox", "name_reviews", "surveys_forms"]);
+    // DA0.3: Name Reviews opens the admin block, ahead of Administration.
+    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "name_reviews")).toBe(FULL_MODE_PRIMARY_COUNT);
+    expect(FULL_MODE_FIXTURE.findIndex((row) => row.id === "administration")).toBe(FULL_MODE_PRIMARY_COUNT + 1);
     expect(todayIds.filter((id) => !fullIds.includes(id)).sort()).toEqual([
       "email_imports",
       "email_inbox",
@@ -113,6 +116,7 @@ describe("full mode is byte-identical to the pinned fixture", () => {
       "layout-list",
     ]);
     expect(FULL_MODE_FIXTURE.filter((row) => row.module === "administration").map((row) => row.id)).toEqual([
+      "name_reviews",
       "administration",
     ]);
   });
@@ -281,6 +285,7 @@ describe("allNavHrefs", () => {
         "/help",
         "/mobilisation",
         "/my-campaigns",
+        "/name-reviews",
         "/overview",
         "/projects",
         "/reports",

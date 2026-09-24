@@ -29,6 +29,8 @@ const pageTitles: Record<string, string> = {
   "/templates": "Templates",
   "/email": "Inbox",
   "/email-imports": "Email Imports",
+  // DA0.3: the import-name review queue (path owned by lib/name-reviews/path.ts).
+  "/name-reviews": "Name Reviews",
   "/actions": "Actions",
   // `/sms` still resolves (it redirects to `/actions`) and `/sms/inbox`
   // and `/sms/numbers` are pages in their own right, so it keeps a title.

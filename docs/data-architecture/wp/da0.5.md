@@ -779,7 +779,62 @@ there is no timestamp difference to note either; the two results are byte-identi
 divergence, no mismatch found anywhere in blocks A–N across the before/after-forward-1 comparison, or
 in the forward → rollback → forward cycle.**
 
-### 9.5 Production run
+### 9.5 Clone rehearsal of 12 (verifier), 2026-09-24
+
+_Pasted by the verifier (Sonnet), via the connector, project `yqjkuobcawvigsfpgrcm`, 2026-09-24. Same
+rules: `execute_sql` only, never `apply_migration`, nothing run against production or dev._
+
+**Step 1 — `supabase/migrations/20260923220000_mobilisation_recipients.sql`, one `BEGIN; … COMMIT;`.**
+Result: `[]`, no error. Matches ("Expect no error").
+
+**Step 2 — `supabase/migrations/20260924010000_mobilisation_signal_schedule.sql`, one `BEGIN; …
+COMMIT;`.** Result: `[]`, no error. Matches.
+
+**Step 3 — `12_record_later_ledger_rows.sql`.** Appended `SELECT`:
+```
+[{"rows_20260923220000":1,"rows_20260924010000":1,"ledger_rows":16,
+  "ledger_max_version":"20260924010000","recipients_table":true,"recipients_policies":2,
+  "signals_new_columns":2,"arrival_index":true,"log_rows_written":2}]
+```
+Every field matches the stated expectation except the absolute `ledger_rows` value: the coordinator's
+message did not give a number, only "previous + 2". A raw dump of the ledger (below) shows 14 rows
+existed immediately before this step, not the 13 the clone held at the end of the prior rehearsal
+(2026-09-22) — the extra row is `20260922120000 da0_3_name_match_reviews`, added to this shared clone
+between the two rehearsals by other work (visible in the repository's untracked `da0.3` files), not by
+anything this script ran. `14 + 2 = 16` — the formula holds. Raw dump:
+```
+[{"version":"20260908050000","name":"baseline_schema"}, {"version":"20260908050100","name":"baseline_reference_data"},
+ {"version":"20260908050200","name":"baseline_platform_config"}, {"version":"20260909100000","name":"workspace_mode"},
+ {"version":"20260909120000","name":"wp1_6_campaign_write_policies"}, {"version":"20260909130000","name":"wp1_6_delete_campaign_standing_guard"},
+ {"version":"20260910090000","name":"campaign_last_activity"}, {"version":"20260911090000","name":"user_hint_dismissals"},
+ {"version":"20260911100000","name":"user_hint_dismissals_check"}, {"version":"20260912035329","name":"wp2_1_campaign_groups"},
+ {"version":"20260913000000","name":"an_survey_reports"}, {"version":"20260917100000","name":"wp3_8_campaign_families"},
+ {"version":"20260922040000","name":"mobilisation_radar"}, {"version":"20260922120000","name":"da0_3_name_match_reviews"},
+ {"version":"20260923220000","name":"mobilisation_recipients"}, {"version":"20260924010000","name":"mobilisation_signal_schedule"}]
+```
+Not a mismatch of this script's own behaviour; flagged and not diagnosed away.
+
+**Step 4 — `91_remove_later_ledger_rows.sql`.** Result:
+```
+[{"rows_present_after":0,"ledger_rows":14,"rollback_log_rows":2,"log_rows_stamped":2}]
+```
+Matches exactly (`rows_present_after = 0`, `rollback_log_rows = 2`, `log_rows_stamped = 2`).
+
+**Step 5 — `12_record_later_ledger_rows.sql` again.** Result:
+```
+[{"rows_20260923220000":1,"rows_20260924010000":1,"ledger_rows":16,
+  "ledger_max_version":"20260924010000","recipients_table":true,"recipients_policies":2,
+  "signals_new_columns":2,"arrival_index":true,"log_rows_written":2}]
+```
+Identical to step 3, field for field, as expected (`log_rows_written = 2` again since step 4 stamped
+the earlier rows `rolled_back_at`, so only the freshly-written pair is unstamped).
+
+**Step 6 — clone left forward.** No further action: step 5 leaves the ledger carrying both
+`20260923220000` and `20260924010000`, and both migration files are applied. No rollback follows.
+
+**Outcome: all five mutating/verification steps matched their stated expectation.** No STOP.
+
+### 9.6 Production run
 
 _To be pasted by the operator, see §11._
 
@@ -884,6 +939,11 @@ met: no blocking finding remains, so the clone rehearsal may proceed.
 | clone 4 | `00_catalog_check.sql` A–J, K–N (after-forward-1) | clone | A–I identical to §9.1 production; J: event tables 0 (vs 19/18/18 on production), seed counts match; K–N: 3 vessels linked / 2 contractors linked / 0 mismatched / 0 synthetic / 4 alias strings missing — matches §4.3 exactly | 2026-09-22 | verifier (Sonnet), via the connector under the orchestrator's approval |
 | clone 5 | `90_remove_ledger_row.sql` | clone | matches: `ledger_row_present=f`, `tables_present=16`, `log_rows_stamped=1`, `rollback_log_rows=1` | 2026-09-22 | verifier (Sonnet), via the connector under the orchestrator's approval |
 | clone 6 | `10_record_ledger_row.sql` (after-forward-2) | clone | matches; identical to clone 3's result field for field | 2026-09-22 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| clone 7 | `supabase/migrations/20260923220000_mobilisation_recipients.sql` | clone | applied cleanly, no error | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| clone 8 | `supabase/migrations/20260924010000_mobilisation_signal_schedule.sql` | clone | applied cleanly, no error | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| clone 9 | `12_record_later_ledger_rows.sql` | clone | matches: `rows_20260923220000=1`, `rows_20260924010000=1`, `ledger_rows=16` (14 before + 2; shared-clone drift from a concurrent DA0.3 row, not a script fault), `ledger_max_version=20260924010000`, `recipients_table=t`, `recipients_policies=2`, `signals_new_columns=2`, `arrival_index=t`, `log_rows_written=2` | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| clone 10 | `91_remove_later_ledger_rows.sql` | clone | matches: `rows_present_after=0`, `ledger_rows=14`, `rollback_log_rows=2`, `log_rows_stamped=2` | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| clone 11 | `12_record_later_ledger_rows.sql` (again, clone left forward) | clone | matches; identical to clone 9's result field for field | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
 | prod 1 | `00_catalog_check.sql` O (before) | production | | | operator |
 | prod 2 | `10_record_ledger_row.sql` with `SET LOCAL oux.env = 'production';` | production | | | operator |
 | prod 3 | `00_catalog_check.sql` A–J, K–N (after) | production | | | operator |

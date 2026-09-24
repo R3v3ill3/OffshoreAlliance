@@ -16,7 +16,8 @@ Status key: **not started** · **blocked (D-n)** · **planning** · **approved**
   never commit `supabase/.temp/*`, never edit an applied migration, types only with an explicit safe ref.
 - **Production `gteygwfgjvczanmrwgbr` is read-only for agents** (decision D0: the profiling pack and equivalent
   SELECT-only, PII-free queries). Every production change is an operator run sheet in the oux-wp3.8 style.
-- **Clone `yqjkuobcawvigsfpgrcm`** (`offshore-alliance-wp21-rehearsal`, 12 September): the Phase 0 rehearsal
+- **Clone `yqjkuobcawvigsfpgrcm`** (`offshore-alliance-wp21-rehearsal`, 12 September) — **deleted by the operator
+  2026-09-24; the ref no longer exists.** Historical note: it was the Phase 0 rehearsal
   target. Read-only check 2026-09-22: `_oux_env_marker` and `_oux_hygiene_log` present; 2,407 workers (2,293
   active), 171 employers, 174 worksites, 22 campaigns; no `vessels` or `mobilisation_*` tables. Its migration ledger
   ends at `20260917100000_wp3_8_campaign_families` and lacks `20260914090000` / `20260914090100` (WP2.2a/b: apply
@@ -28,8 +29,8 @@ Status key: **not started** · **blocked (D-n)** · **planning** · **approved**
   employers; 190 worksites; 22 campaigns; `_oux_hygiene_log` 3,878 rows; `name_match_reviews` and `vessels` present).
   Marked `clone` by the orchestrator on creation day. The Phase 1 rehearsal target; not wired to Vercel, cron,
   webhooks or messaging. Display name `OA_clone_2` (renamed by the operator 2026-09-24).
-  **The 12 September clone `yqjkuobcawvigsfpgrcm` is retired** once the pack comparison in `wp/da0.1.md` §7 is
-  recorded: pause it, delete after the UX programme confirms nothing is in flight there.
+  **The 12 September clone `yqjkuobcawvigsfpgrcm` was deleted by the operator on 2026-09-24** after the pack
+  comparison in `wp/da0.1.md` §7 was recorded. Three Supabase projects remain: production, normal dev, `OA_clone_2`.
 - **Normal dev `dpnnmkhabysfdogllsyh`**: read freely; mutate with the operator's approval per file.
 - **Permission prompts (operator decision 2026-09-24, "option 1"):** `.claude/settings.json` allows
   `mcp__Supabase__execute_sql` and the read-only listing tools without a per-call prompt, and denies
@@ -112,7 +113,7 @@ that no other checkout applied a different version of the DDL.
 | Supply `OUX_CONTRACT_*` accounts (dev) so the two DA0.3 contract suites (`src/lib/import/__contract__/`, `src/lib/hooks/__contract__/`) can run, and `E2E_USER_*` for the preview replay of `scripts/data-hygiene/da0.3/fixtures/replay_status_sync.xlsx` through the membership wizard (plan §3.4) | DA0.3 | pending — both precede the DA0.3 production run sheet |
 | **DA0.2 P7** and **P1, P2, P6** (`wp/da0.2.md` §5) before the production run sheet | DA0.2 | **Done 2026-09-24**: P7 authorised, rollback rehearsed and proven after fix rounds 3–4b; P1 and P2 confirmed; P6 acknowledged (ten roles). Production run sheet: `scripts/data-hygiene/da0.2/prod/` |
 | Confirm the D15 finding above (the mobilisation radar in this repository owns the sixteen tables; no other checkout applied a different DDL) | DA0.4 | **Confirmed by the operator 2026-09-24 (O-1)**; O-4 and DA0.3 §5 items 1–9 confirmed the same day |
-| Create a fresh production-shaped clone after Phase 0's run sheets have landed on production (D17); then run the pack on it and on production, confirm the counts match, record the new ref here and in the UX ledger, retire the 12 September clone | D17 | **Done 2026-09-24: `plbldfctqhnbyrsypuri` = `OA_clone_2`**, marker set, pack comparison recorded (`wp/da0.1.md` §7: identical apart from the post-backup import). **Operator: pause `yqjkuobcawvigsfpgrcm` now; delete later.** |
+| Create a fresh production-shaped clone after Phase 0's run sheets have landed on production (D17); then run the pack on it and on production, confirm the counts match, record the new ref here and in the UX ledger, retire the 12 September clone | D17 | **Done 2026-09-24: `plbldfctqhnbyrsypuri` = `OA_clone_2`**, marker set, pack comparison recorded (`wp/da0.1.md` §7: identical apart from the post-backup import). **`yqjkuobcawvigsfpgrcm` deleted by the operator 2026-09-24.** |
 | Run the Phase 0 production run sheets in the order DA0.2 → DA0.5 → DA0.3 | Phase 0 | **Done 2026-09-24** (every step matched; records in each `wp/*.md` §11.1) |
 | Open the pull request from `claude/determined-hypatia-y2cqau` into `main` and merge it; check the gen-types workflow's regeneration produces no diff | DA0.3 | **Merged 2026-09-24** ([#67](https://github.com/R3v3ill3/OffshoreAlliance/pull/67), operator instruction in the session). Validate-migrations run 77 and gen-types run 203 both succeeded on `a6a3d2d9`; the regeneration from production committed nothing, so the hand-added DA0.3 and mobilisation types were exact (DA0.3 deviation and DA0.5 deviation 2 closed) |
 | Import the next weekly membership batch as usual, then check: queue rows present, employers/worksites unchanged (Phase 0 exit criterion); work the queue at `/name-reviews` | Phase 0 exit | **Met 2026-09-24 07:04 UTC** (see Phase exits); the operator to confirm who ran the batch. **Queue worked by the operator 2026-09-24, verified on production**: 0 open rows; employers 9 confirmed / 1 overridden, worksites 5 confirmed / 1 overridden / 4 rejected; 34 `auto` rows untouched; employers still 179 (0 created), worksites 191 (1 created by the operator, id 451, in scope for DA1.2); aliases written today 29 employer / 20 worksite; 0 workers with a raw employer name and no employer, 2 with a raw worksite name and no worksite (the rejected rows) |

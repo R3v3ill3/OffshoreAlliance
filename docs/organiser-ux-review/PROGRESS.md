@@ -20,8 +20,9 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 - **Realistic data set, from 2026-09-24 (OA Universe alignment D17):** the OA Universe workstream's fresh
   production-shaped clone is `plbldfctqhnbyrsypuri` (`OA_clone_2`; restored from a production backup after Phase 0 landed; marked
   `clone`; owner: the data-architecture workstream, see `docs/data-architecture/PROGRESS.md`). The 12 September set
-  `yqjkuobcawvigsfpgrcm` is retired once that workstream records the pack comparison; WP2.5's realistic-data
-  measurement should use the new ref and coordinate through the data-architecture ledger before mutating it.
+  `yqjkuobcawvigsfpgrcm` **was deleted by the operator on 2026-09-24** (the ref no longer exists; the description of it in
+  the previous note is historical); WP2.5's realistic-data
+  measurement must use the new ref and coordinate through the data-architecture ledger before mutating it.
 - **PostgREST strings are proven against PostgREST (from 2026-09-22, WP3.8 hotfix #56):** a package that adds or changes a PostgREST embed, hint or `.or()` filter merges only after that string has run against a real PostgREST — the contract suite on dev, or a read-only REST probe on dev with the anon key (`curl …/rest/v1/<table>?select=<string>`; a parse error such as PGRST200 comes back even when RLS returns no rows). The jsdom harness's fake backend accepts any select string and proves nothing about it.
 - **Lint baseline moved to 298 (146 errors / 152 warnings), measured on `main` at `e2cf34a2` on 2026-09-17.** It sat at
   294 through WP2.1–WP2.2 and 295 from the WP2.4 branch base. The last three problems arrived with the membership-refresh

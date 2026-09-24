@@ -36,7 +36,26 @@ export function MembershipUpdateBanner() {
   const ready = (data?.notifications ?? []).filter(
     (n) => !n.dismissed_at && n.batch?.status === "ready"
   );
-  if (ready.length === 0) return null;
+  const reviewCount = data?.reviewCount ?? 0;
+  const reviewText =
+    reviewCount > 0
+      ? `${reviewCount} weekly membership file${reviewCount === 1 ? "" : "s"} could not be matched automatically and ${reviewCount === 1 ? "needs" : "need"} checking.`
+      : null;
+
+  if (ready.length === 0) {
+    if (!reviewText) return null;
+    return (
+      <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 md:px-6">
+        <div className="flex items-start gap-3 text-sm text-amber-900">
+          <Mail className="h-4 w-4 mt-0.5 shrink-0 text-amber-700" />
+          <p className="flex-1 min-w-0">{reviewText}</p>
+          <Button size="sm" asChild className="bg-amber-800 hover:bg-amber-900 text-white shrink-0">
+            <a href={weeklyUpdatesHref()}>Check files</a>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const first = ready[0];
   const weekEnding = first.batch?.week_ending;
@@ -78,6 +97,7 @@ export function MembershipUpdateBanner() {
                 {extras} more week{extras === 1 ? "" : "s"} waiting.
               </>
             )}
+            {reviewText && <> {reviewText}</>}
           </p>
           {files.length > 0 && (
             <p className="text-xs text-amber-800">

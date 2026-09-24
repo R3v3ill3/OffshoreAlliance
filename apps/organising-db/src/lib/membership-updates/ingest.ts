@@ -2,26 +2,37 @@
  * Filing a received weekly membership spreadsheet, and closing out a batch
  * once all four have arrived. Server-only: takes the service-role client.
  *
- * Flow per attachment: parse the file name → upsert the week's batch →
- * store the bytes in the membership-updates bucket → upsert the file row
- * with its row count. Then `finaliseBatchIfComplete`: when all four kinds
+ * Flow per set of files (one email or upload, `fileMembershipUpdateGroup`):
+ * classify each file (classify.ts) → files it cannot settle are held in
+ * membership_update_review_files for an admin → the rest upsert the week's
+ * batch, store the bytes in the membership-updates bucket and upsert the
+ * file row with its row count. Then `finaliseBatchIfComplete`: when all four kinds
  * are present the batch becomes "ready", the dated movement snapshot is
  * written and the chosen admins get a notification row each.
  */
 
+import { randomUUID } from "node:crypto";
 import {
   MEMBERSHIP_UPDATE_KINDS,
   computeNetMovement,
   membershipUpdateStoragePath,
-  parseMembershipUpdateFilename,
   type MembershipUpdateKind,
 } from "./kinds";
+import {
+  classifyWeeklyFile,
+  resolveWeeklyFileGroup,
+  type WeeklyFileClassification,
+} from "./classify";
 import { countWeeklyUpdateRows } from "./parse-files";
+import type { MembershipUpdateReviewFile } from "./types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supa = any;
 
 export const MEMBERSHIP_UPDATES_BUCKET = "membership-updates";
+/** Storage prefix for files held for review (batch paths start with a date). */
+const REVIEW_STORAGE_PREFIX = "review";
+const XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 export const NOTIFY_USER_IDS_SETTING = "membership_update_notify_user_ids";
 
 export interface IngestSource {
@@ -41,16 +52,22 @@ export interface IngestResult {
 }
 
 /**
- * File one spreadsheet. Returns null (and does nothing) when the file name is
- * not one of the four weekly files, so callers can pass every attachment.
+ * File one spreadsheet into its week's batch as the given kind. The caller
+ * has already worked out the kind and week (classify.ts, or an admin's
+ * review); `classification` records how.
  */
 export async function ingestMembershipUpdateFile(
   admin: Supa,
-  input: { filename: string; buffer: Buffer; source: IngestSource }
-): Promise<IngestResult | null> {
-  const parsed = parseMembershipUpdateFilename(input.filename);
-  if (!parsed) return null;
-  const { kind, weekEnding } = parsed;
+  input: {
+    filename: string;
+    buffer: Buffer;
+    source: IngestSource;
+    kind: MembershipUpdateKind;
+    weekEnding: string;
+    classification?: Record<string, unknown> | null;
+  }
+): Promise<IngestResult> {
+  const { kind, weekEnding } = input;
 
   const rowCount = countWeeklyUpdateRows(kind, input.buffer);
 
@@ -99,7 +116,7 @@ export async function ingestMembershipUpdateFile(
     .from(MEMBERSHIP_UPDATES_BUCKET)
     .upload(storagePath, input.buffer, {
       upsert: true,
-      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      contentType: XLSX_CONTENT_TYPE,
     });
   if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
@@ -120,6 +137,7 @@ export async function ingestMembershipUpdateFile(
       byte_size: input.buffer.byteLength,
       row_count: rowCount,
       resend_attachment_id: input.source.resendAttachmentId ?? null,
+      classification: input.classification ?? null,
       received_at: new Date().toISOString(),
     },
     { onConflict: "batch_id,kind" }
@@ -127,6 +145,243 @@ export async function ingestMembershipUpdateFile(
   if (fileError) throw new Error(fileError.message);
 
   return { batchId, kind, weekEnding, rowCount, replaced: Boolean(existingFile) };
+}
+
+function classificationRecord(c: WeeklyFileClassification): Record<string, unknown> {
+  return { notes: c.notes, issues: c.issues, signals: c.signals };
+}
+
+/**
+ * Keep a file whose kind or week could not be settled, for an admin to
+ * confirm on the Weekly Updates tab. A re-delivered email attachment that is
+ * already queued (or was already resolved) is not queued again.
+ */
+export async function holdMembershipUpdateFileForReview(
+  admin: Supa,
+  input: { filename: string; buffer: Buffer; source: IngestSource; classification: WeeklyFileClassification }
+): Promise<{ reviewId: number; duplicate: boolean }> {
+  const attachmentId = input.source.resendAttachmentId ?? null;
+  if (attachmentId) {
+    const { data: existing } = await admin
+      .from("membership_update_review_files")
+      .select("review_id")
+      .eq("resend_attachment_id", attachmentId)
+      .maybeSingle();
+    if (existing) return { reviewId: existing.review_id, duplicate: true };
+  }
+
+  const storagePath = `${REVIEW_STORAGE_PREFIX}/${randomUUID()}.xlsx`;
+  const { error: uploadError } = await admin.storage
+    .from(MEMBERSHIP_UPDATES_BUCKET)
+    .upload(storagePath, input.buffer, { contentType: XLSX_CONTENT_TYPE });
+  if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+
+  const c = input.classification;
+  const { data, error } = await admin
+    .from("membership_update_review_files")
+    .insert({
+      filename: input.filename,
+      storage_bucket: MEMBERSHIP_UPDATES_BUCKET,
+      storage_path: storagePath,
+      byte_size: input.buffer.byteLength,
+      row_count: c.signals.rowCount,
+      source: input.source.source,
+      source_email_id: input.source.emailId ?? null,
+      source_from: input.source.from ?? null,
+      source_subject: input.source.subject ?? null,
+      resend_attachment_id: attachmentId,
+      suggested_kind: c.kind,
+      suggested_week_ending: c.weekEnding,
+      issues: c.issues,
+      classification: classificationRecord(c),
+    })
+    .select("review_id")
+    .single();
+  if (error) throw new Error(error.message);
+  return { reviewId: data.review_id, duplicate: false };
+}
+
+export interface GroupUpload {
+  filename: string;
+  buffer: Buffer;
+  resendAttachmentId?: string | null;
+}
+
+export interface GroupFilingResult {
+  filed: { filename: string; kind: MembershipUpdateKind; weekEnding: string; rowCount: number; replaced: boolean }[];
+  review: { filename: string; reviewId: number; issues: string[] }[];
+  ignored: { filename: string; reason: string }[];
+  errors: { filename: string; reason: string }[];
+  finalised: ({ batchId: number } & FinaliseResult)[];
+}
+
+/**
+ * File a set of spreadsheets that arrived together (one email, one upload).
+ * Each is classified, the set shares a week, and each file is then filed,
+ * held for review, or ignored when it is not a weekly file. Batches that
+ * received a file are finalised.
+ */
+export async function fileMembershipUpdateGroup(
+  admin: Supa,
+  uploads: GroupUpload[],
+  source: IngestSource,
+  receivedAt: Date
+): Promise<GroupFilingResult> {
+  const result: GroupFilingResult = { filed: [], review: [], ignored: [], errors: [], finalised: [] };
+  const classified = resolveWeeklyFileGroup(
+    uploads.map((u) => classifyWeeklyFile(u.filename, u.buffer, receivedAt))
+  );
+
+  const batchIds = new Set<number>();
+  for (let i = 0; i < uploads.length; i++) {
+    const upload = uploads[i];
+    const c = classified[i];
+    const fileSource = { ...source, resendAttachmentId: upload.resendAttachmentId ?? null };
+    try {
+      if (!c.isWeeklyFile) {
+        result.ignored.push({ filename: upload.filename, reason: "Not one of the weekly membership files" });
+      } else if (c.needsReview || !c.kind || !c.weekEnding) {
+        const held = await holdMembershipUpdateFileForReview(admin, {
+          filename: upload.filename,
+          buffer: upload.buffer,
+          source: fileSource,
+          classification: c,
+        });
+        result.review.push({ filename: upload.filename, reviewId: held.reviewId, issues: c.issues });
+      } else {
+        const filed = await ingestMembershipUpdateFile(admin, {
+          filename: upload.filename,
+          buffer: upload.buffer,
+          source: fileSource,
+          kind: c.kind,
+          weekEnding: c.weekEnding,
+          classification: classificationRecord(c),
+        });
+        batchIds.add(filed.batchId);
+        result.filed.push({
+          filename: upload.filename,
+          kind: filed.kind,
+          weekEnding: filed.weekEnding,
+          rowCount: filed.rowCount,
+          replaced: filed.replaced,
+        });
+      }
+    } catch (err) {
+      result.errors.push({ filename: upload.filename, reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  for (const batchId of batchIds) {
+    try {
+      result.finalised.push({ batchId, ...(await finaliseBatchIfComplete(admin, batchId)) });
+    } catch (err) {
+      result.errors.push({ filename: `batch ${batchId}`, reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return result;
+}
+
+/** Pending review files — what the Weekly Updates tab and login banner show. */
+export async function loadPendingReviewFiles(admin: Supa): Promise<MembershipUpdateReviewFile[]> {
+  const { data, error } = await admin
+    .from("membership_update_review_files")
+    .select(
+      "review_id, filename, byte_size, row_count, source, source_from, source_subject, suggested_kind, suggested_week_ending, issues, classification, received_at"
+    )
+    .eq("status", "pending")
+    .order("received_at", { ascending: false })
+    .limit(100);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as MembershipUpdateReviewFile[];
+}
+
+/**
+ * An admin's decision on a held file: file it as the chosen kind and week
+ * (then finalise that batch), or discard it. The held copy is removed from
+ * storage either way; a filed file lives on at its batch path.
+ */
+export async function resolveReviewFile(
+  admin: Supa,
+  input:
+    | { reviewId: number; userId: string; action: "file"; kind: MembershipUpdateKind; weekEnding: string }
+    | { reviewId: number; userId: string; action: "discard" }
+): Promise<{ status: "filed" | "discarded"; filed?: IngestResult; finalised?: FinaliseResult }> {
+  const { data: review, error } = await admin
+    .from("membership_update_review_files")
+    .select("*")
+    .eq("review_id", input.reviewId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!review) throw new ReviewFileError("Not found", 404);
+  if (review.status !== "pending") throw new ReviewFileError(`Already ${review.status}`, 409);
+
+  // Claim the row first so a double click cannot file it twice.
+  const resolvedAt = new Date().toISOString();
+  const status = input.action === "discard" ? "discarded" : "filed";
+  const { data: claimed, error: claimError } = await admin
+    .from("membership_update_review_files")
+    .update({ status, resolved_at: resolvedAt, resolved_by: input.userId })
+    .eq("review_id", input.reviewId)
+    .eq("status", "pending")
+    .select("review_id");
+  if (claimError) throw new Error(claimError.message);
+  if (!claimed || claimed.length === 0) throw new ReviewFileError("Already resolved", 409);
+
+  if (input.action === "discard") {
+    await admin.storage.from(review.storage_bucket).remove([review.storage_path]);
+    return { status: "discarded" };
+  }
+
+  let filed: IngestResult;
+  try {
+    const buffer = await downloadMembershipUpdateFile(admin, review.storage_path);
+    filed = await ingestMembershipUpdateFile(admin, {
+    filename: review.filename,
+    buffer,
+    source: {
+      source: review.source,
+      emailId: review.source_email_id,
+      from: review.source_from,
+      subject: review.source_subject,
+      resendAttachmentId: review.resend_attachment_id,
+    },
+    kind: input.kind,
+    weekEnding: input.weekEnding,
+    classification: {
+      ...(review.classification ?? {}),
+      reviewed: {
+        by: input.userId,
+        at: resolvedAt,
+        suggestedKind: review.suggested_kind,
+        suggestedWeekEnding: review.suggested_week_ending,
+      },
+    },
+    });
+  } catch (err) {
+    // Put it back in the queue so it can be retried.
+    await admin
+      .from("membership_update_review_files")
+      .update({ status: "pending", resolved_at: null, resolved_by: null })
+      .eq("review_id", input.reviewId);
+    throw err;
+  }
+  const { error: updError } = await admin
+    .from("membership_update_review_files")
+    .update({ filed_batch_id: filed.batchId })
+    .eq("review_id", input.reviewId);
+  if (updError) throw new Error(updError.message);
+  await admin.storage.from(review.storage_bucket).remove([review.storage_path]);
+  const finalised = await finaliseBatchIfComplete(admin, filed.batchId);
+  return { status: "filed", filed, finalised };
+}
+
+export class ReviewFileError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
 }
 
 function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {

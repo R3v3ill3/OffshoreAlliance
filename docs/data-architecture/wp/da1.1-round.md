@@ -485,6 +485,8 @@ Every ABN below passed the ABN mod-89 checksum locally; the loader re-verifies o
 
 Top-60-by-workers rows **not** resolved by lookup, for the operator: 702 Valaris (only VALARIS PTY LTD 95 696 512 740 — relation unknown), 714 Acciona (proposed out of universe), 716 Reach Subsea (foreign), 726 Saipem (Australian entity not searched), 733 Schlumberger / SLB (not searched), 723 Auriga Aviation (not searched), 737 Petrofac (foreign), 765 GR Production Services (not searched). The lineage-A workgroup rows (2–7, 10, 12, 14) take their legal employer's ABN.
 
+**Operator decision 2026-09-24: the unresolved lookups are skipped.** The ABN is not critical information; the eight rows above are recorded with `abn = NULL`, their legal name unchanged, and no ABR source line. The ABNs already found in this section stand. Nothing in DA1.1 waits on an ABN.
+
 ## 11. Questions for the session (60–90 minutes)
 
 Suggested running order: S1–S9 (plan §8 item 2, ~25 min) · S10–S16 (D3 / D12 mechanics and the rows the ABR reopens, ~25 min) · S17–S21 (~10 min) · S22–S30 batch approvals (~15 min). Each answer goes into the worksheet's decision columns for the rows named; S11, S12 and S14 amend recorded decisions and, if reopened, D3 / D12 in plan §6.

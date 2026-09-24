@@ -4,60 +4,7 @@ import {
   defaultActionForUnmatched,
   formatWeekEnding,
   membershipUpdateStoragePath,
-  parseMembershipUpdateFilename,
 } from "../kinds";
-
-describe("parseMembershipUpdateFilename", () => {
-  it("parses the four real file names", () => {
-    expect(parseMembershipUpdateFilename("OA - New Members - w-e 10-09-2026.xlsx")).toEqual({
-      kind: "new",
-      weekEnding: "2026-09-10",
-    });
-    expect(
-      parseMembershipUpdateFilename("OA - Recommenced Members - w-e 10-09-2026.xlsx")
-    ).toEqual({ kind: "recommenced", weekEnding: "2026-09-10" });
-    expect(parseMembershipUpdateFilename("OA - Resigned Members - w-e 10-09-2026.xlsx")).toEqual({
-      kind: "resigned",
-      weekEnding: "2026-09-10",
-    });
-    expect(
-      parseMembershipUpdateFilename("OA - Unfinancial Members - w-e 10-09-2026.xlsx")
-    ).toEqual({ kind: "unfinancial", weekEnding: "2026-09-10" });
-  });
-
-  it("tolerates the variations an email client or exporter introduces", () => {
-    expect(parseMembershipUpdateFilename("OA_-_New_Members_-_w-e_10-09-2026.xlsx")).toEqual({
-      kind: "new",
-      weekEnding: "2026-09-10",
-    });
-    expect(parseMembershipUpdateFilename("oa - new members - we 3-1-2026.xls")).toEqual({
-      kind: "new",
-      weekEnding: "2026-01-03",
-    });
-    expect(parseMembershipUpdateFilename("Unfinancial Members – w-e 10/09/2026.xlsx")).toEqual({
-      kind: "unfinancial",
-      weekEnding: "2026-09-10",
-    });
-    expect(parseMembershipUpdateFilename("attachments/OA - Resigned Members - w-e 10-09-2026.xlsx")).toEqual({
-      kind: "resigned",
-      weekEnding: "2026-09-10",
-    });
-  });
-
-  it("reads the date day-first", () => {
-    expect(parseMembershipUpdateFilename("OA - New Members - w-e 01-12-2026.xlsx")?.weekEnding).toBe(
-      "2026-12-01"
-    );
-  });
-
-  it("rejects anything that is not one of the four files or has a bad date", () => {
-    expect(parseMembershipUpdateFilename("Full member list 1709.xlsx")).toBeNull();
-    expect(parseMembershipUpdateFilename("OA - Active Members - w-e 10-09-2026.xlsx")).toBeNull();
-    expect(parseMembershipUpdateFilename("OA - New Members - w-e 31-02-2026.xlsx")).toBeNull();
-    expect(parseMembershipUpdateFilename("OA - New Members - w-e 10-09-2026.pdf")).toBeNull();
-    expect(parseMembershipUpdateFilename("")).toBeNull();
-  });
-});
 
 describe("computeNetMovement", () => {
   it("is (new + recommenced) - (resigned + unfinancial)", () => {

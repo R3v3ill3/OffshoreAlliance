@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMembershipUpdateAdmin } from "@/lib/membership-updates/require-admin";
 import {
-  finaliseBatchIfComplete,
-  ingestMembershipUpdateFile,
+  fileMembershipUpdateGroup,
   loadNotificationRecipients,
+  loadPendingReviewFiles,
   NOTIFY_USER_IDS_SETTING,
 } from "@/lib/membership-updates/ingest";
-import { parseMembershipUpdateFilename } from "@/lib/membership-updates/kinds";
 import { membershipUpdateInbox } from "@/lib/membership-updates/inbox";
 
 export const maxDuration = 120;
@@ -54,6 +53,7 @@ export async function GET() {
   return NextResponse.json({
     batches: batches ?? [],
     files: files ?? [],
+    reviewFiles: await loadPendingReviewFiles(admin),
     snapshots: snapshots ?? [],
     notifyUserIds,
     admins: admins ?? [],
@@ -72,47 +72,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Attach at least one .xlsx file" }, { status: 400 });
   }
 
-  const filed: { filename: string; kind: string; weekEnding: string; rowCount: number }[] = [];
   const skipped: { filename: string; reason: string }[] = [];
-  const batchIds = new Set<number>();
-
+  const excel: { filename: string; buffer: Buffer }[] = [];
   for (const file of uploads) {
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
       skipped.push({ filename: file.name, reason: "Not an Excel file" });
       continue;
     }
-    if (!parseMembershipUpdateFilename(file.name)) {
-      skipped.push({
-        filename: file.name,
-        reason: "Name does not match OA - <Kind> Members - w-e DD-MM-YYYY.xlsx",
-      });
-      continue;
-    }
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await ingestMembershipUpdateFile(admin, {
-      filename: file.name,
-      buffer,
-      source: { source: "manual" },
-    });
-    if (!result) {
-      skipped.push({ filename: file.name, reason: "Could not parse file name" });
-      continue;
-    }
-    filed.push({
-      filename: file.name,
-      kind: result.kind,
-      weekEnding: result.weekEnding,
-      rowCount: result.rowCount,
-    });
-    batchIds.add(result.batchId);
+    excel.push({ filename: file.name, buffer: Buffer.from(await file.arrayBuffer()) });
   }
 
-  const finalised = [];
-  for (const batchId of batchIds) {
-    finalised.push({ batchId, ...(await finaliseBatchIfComplete(admin, batchId)) });
-  }
+  // One upload is one week's set, like one email.
+  const result = await fileMembershipUpdateGroup(admin, excel, { source: "manual" }, new Date());
+  skipped.push(...result.ignored, ...result.errors);
+  const { filed, review, finalised } = result;
 
-  return NextResponse.json({ filed, skipped, finalised });
+  return NextResponse.json({ filed, review, skipped, finalised });
 }
 
 export async function PATCH(request: NextRequest) {

@@ -14,17 +14,30 @@ import {
 import type {
   MembershipUpdateBatch,
   MembershipUpdateFileRow,
+  MembershipUpdateReviewFile,
   MembershipUpdatesListResponse,
 } from "@/lib/membership-updates/types";
+import type { MembershipUpdateKind } from "@/lib/membership-updates/kinds";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DateInput } from "@/components/ui/date-input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertTriangle,
+  Check,
   Loader2,
   Mail,
   Upload,
   Download,
   Play,
+  Trash2,
   X,
   Save,
 } from "lucide-react";
@@ -84,6 +97,14 @@ export function WeeklyUpdatesTab() {
     }
     return map;
   }, [data?.files]);
+
+  /** "week|kind" pairs already filed, to warn when a review would replace one. */
+  const filedWeekKinds = useMemo(() => {
+    const weekByBatch = new Map((data?.batches ?? []).map((b) => [b.batch_id, b.week_ending]));
+    return new Set(
+      (data?.files ?? []).map((f) => `${weekByBatch.get(f.batch_id) ?? ""}|${f.kind}`)
+    );
+  }, [data?.batches, data?.files]);
 
   const snapshotByBatch = useMemo(() => {
     const map = new Map<number, MembershipUpdatesListResponse["snapshots"][number]>();
@@ -191,9 +212,15 @@ export function WeeklyUpdatesTab() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Upload failed");
       const filed = (json.filed as { filename: string }[] | undefined) ?? [];
+      const review = (json.review as { filename: string }[] | undefined) ?? [];
       const skipped = (json.skipped as { filename: string; reason: string }[] | undefined) ?? [];
       const parts = [];
       if (filed.length) parts.push(`Filed ${filed.length} file${filed.length === 1 ? "" : "s"}`);
+      if (review.length) {
+        parts.push(
+          `${review.length} need${review.length === 1 ? "s" : ""} checking below (${review.map((r) => r.filename).join(", ")})`
+        );
+      }
       if (skipped.length) {
         parts.push(
           `skipped ${skipped.map((s) => `${s.filename} (${s.reason})`).join("; ")}`
@@ -242,11 +269,12 @@ export function WeeklyUpdatesTab() {
         <h2 className="text-xl font-semibold">Weekly Updates</h2>
         <p className="text-sm text-muted-foreground max-w-3xl">
           The membership system emails four spreadsheets every week — New, Recommenced,
-          Resigned and Unfinancial — named{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">
-            OA - &lt;Kind&gt; Members - w-e DD-MM-YYYY.xlsx
-          </code>
-          . Forward them to{" "}
+          Resigned and Unfinancial. Each file&apos;s type is read from its columns, and the
+          week from the date in its name (for example{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">w-e 10-09-2026</code> or{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">409</code>); files sent
+          together are treated as the same week. Anything that can&apos;t be matched with
+          confidence waits below for an admin to check. Forward them to{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">{inbound}</code>
           . When all four arrive, chosen admins are told on their next visit. Importing
           the combined file uses the same campaign protection as Membership Import:
@@ -289,8 +317,8 @@ export function WeeklyUpdatesTab() {
           <div>
             <p className="text-sm font-medium">Upload the four files</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Use this if the email did not arrive. File names must still match the weekly
-              pattern so they file against the week-ending date.
+              Use this if the email did not arrive. Upload the week&apos;s files together so
+              they share a week-ending date; any that can&apos;t be matched are held for checking.
             </p>
           </div>
           <Button
@@ -318,6 +346,27 @@ export function WeeklyUpdatesTab() {
 
       {actionError && (
         <p className="text-sm text-destructive">{actionError}</p>
+      )}
+
+      {(data.reviewFiles ?? []).length > 0 && (
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-sm font-medium">Needs checking</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              These files couldn&apos;t be matched to a type and week with confidence. Check the
+              suggestion, correct it if needed, and file it — or discard it.
+            </p>
+          </div>
+          {data.reviewFiles.map((file) => (
+            <ReviewFileCard
+              key={file.review_id}
+              file={file}
+              filedWeekKinds={filedWeekKinds}
+              onResolved={refresh}
+              onError={setActionError}
+            />
+          ))}
+        </div>
       )}
 
       <div className="space-y-3">
@@ -482,9 +531,18 @@ function BatchCard({
             <div key={kind} className="rounded-md border px-3 py-2 text-xs">
               <p className="font-medium">{MEMBERSHIP_UPDATE_KIND_LABELS[kind]}</p>
               {file ? (
-                <p className="text-muted-foreground mt-0.5">
-                  {file.row_count ?? 0} row{(file.row_count ?? 0) === 1 ? "" : "s"}
-                </p>
+                <>
+                  <p className="text-muted-foreground mt-0.5">
+                    {file.row_count ?? 0} row{(file.row_count ?? 0) === 1 ? "" : "s"}
+                    {file.classification?.reviewed ? " · checked by an admin" : ""}
+                  </p>
+                  <p
+                    className="text-muted-foreground mt-0.5 truncate"
+                    title={[file.filename, ...(file.classification?.notes ?? [])].join("\n")}
+                  >
+                    {file.filename}
+                  </p>
+                </>
               ) : (
                 <p className="text-amber-700 mt-0.5">Waiting</p>
               )}
@@ -495,6 +553,117 @@ function BatchCard({
       {missing.length > 0 && batch.status === "receiving" && (
         <p className="text-xs text-muted-foreground">
           Still waiting for {missing.map((k) => MEMBERSHIP_UPDATE_KIND_LABELS[k]).join(", ")}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ReviewFileCard({
+  file,
+  filedWeekKinds,
+  onResolved,
+  onError,
+}: {
+  file: MembershipUpdateReviewFile;
+  filedWeekKinds: Set<string>;
+  onResolved: () => Promise<void>;
+  onError: (message: string | null) => void;
+}) {
+  const [kind, setKind] = useState<MembershipUpdateKind | "">(file.suggested_kind ?? "");
+  const [weekEnding, setWeekEnding] = useState(file.suggested_week_ending ?? "");
+  const [busy, setBusy] = useState<"file" | "discard" | null>(null);
+  const replacedKind =
+    kind !== "" && weekEnding !== "" && filedWeekKinds.has(`${weekEnding}|${kind}`) ? kind : null;
+
+  async function resolve(action: "file" | "discard") {
+    onError(null);
+    setBusy(action);
+    try {
+      const res = await fetchApi(`/api/membership-updates/review/${file.review_id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action === "file" ? { action, kind, weekEnding } : { action }),
+        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Could not update the file");
+      await onResolved();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not update the file");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-4 space-y-3">
+      <div className="space-y-1">
+        <p className="font-medium text-sm break-all">{file.filename}</p>
+        <p className="text-xs text-muted-foreground">
+          {file.source === "email" ? "Emailed" : "Uploaded"}{" "}
+          {new Date(file.received_at).toLocaleString("en-AU", {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}
+          {file.source_from ? ` from ${file.source_from}` : ""}
+          {file.row_count != null ? ` · ${file.row_count} row${file.row_count === 1 ? "" : "s"}` : ""}
+        </p>
+        {file.issues.length > 0 && (
+          <ul className="space-y-0.5 pt-1">
+            {file.issues.map((issue) => (
+              <li key={issue} className="flex items-start gap-1.5 text-xs text-amber-800">
+                <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                {issue}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">File type</p>
+          <Select value={kind} onValueChange={(v) => setKind(v as MembershipUpdateKind)}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Choose…" />
+            </SelectTrigger>
+            <SelectContent>
+              {MEMBERSHIP_UPDATE_KINDS.map((k) => (
+                <SelectItem key={k} value={k}>
+                  {MEMBERSHIP_UPDATE_KIND_LABELS[k]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Week ending</p>
+          <DateInput value={weekEnding} onChange={setWeekEnding} className="w-[160px]" />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => void resolve("file")}
+            disabled={busy !== null || kind === "" || weekEnding === ""}
+          >
+            {busy === "file" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
+            File it
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void resolve("discard")}
+            disabled={busy !== null}
+          >
+            {busy === "discard" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+            Discard
+          </Button>
+        </div>
+      </div>
+      {replacedKind && (
+        <p className="text-xs text-amber-800">
+          A {MEMBERSHIP_UPDATE_KIND_LABELS[replacedKind]} file is already filed for week ending{" "}
+          {formatWeekEnding(weekEnding)}; filing this replaces it.
         </p>
       )}
     </div>

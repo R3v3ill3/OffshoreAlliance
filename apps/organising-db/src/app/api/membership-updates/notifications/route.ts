@@ -51,10 +51,16 @@ export async function GET() {
       .in("notification_id", unseen);
   }
 
+  const { count: reviewCount } = await admin
+    .from("membership_update_review_files")
+    .select("review_id", { count: "exact", head: true })
+    .eq("status", "pending");
+
   return NextResponse.json({
     notifications,
     files: files ?? [],
     snapshots: snapshots ?? [],
+    reviewCount: reviewCount ?? 0,
   });
 }
 

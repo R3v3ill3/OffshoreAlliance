@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { parseMembershipUpdateFilename } from '@/lib/membership-updates/kinds'
 import {
-  finaliseBatchIfComplete,
-  ingestMembershipUpdateFile,
+  fileMembershipUpdateGroup,
+  type GroupUpload,
 } from '@/lib/membership-updates/ingest'
 import {
   hasDedicatedMembershipInbox,
@@ -23,60 +22,62 @@ interface InboundAttachment {
 }
 
 /**
- * Weekly membership spreadsheets ("OA - <Kind> Members - w-e DD-MM-YYYY.xlsx")
- * are filed as a membership update batch rather than a template import.
+ * Weekly membership spreadsheets are filed as a membership update batch
+ * rather than a template import. They are recognised by their columns and a
+ * loose reading of the file name (classify.ts), so every spreadsheet
+ * attachment is downloaded and checked; the email is one week's set.
  * Returns null when the email carries none of them.
  */
 async function fileMembershipUpdateAttachments(
   resend: Resend,
   supabase: ReturnType<typeof createAdminClient>,
-  email: { email_id: string; from: string; subject: string },
-): Promise<{ filed: number; batchIds: number[]; errors: string[] } | null> {
+  email: { email_id: string; from: string; subject: string; created_at?: string },
+): Promise<{ filed: number; review: number; batchIds: number[]; errors: string[] } | null> {
   const listed = await resend.emails.receiving.attachments.list({ emailId: email.email_id })
   const attachments = ((listed.data as unknown as { data?: InboundAttachment[] } | null)?.data ??
     (listed.data as unknown as InboundAttachment[] | null) ??
     []) as InboundAttachment[]
-  const membershipFiles = attachments.filter((a) => parseMembershipUpdateFilename(a.filename ?? ''))
-  if (membershipFiles.length === 0) return null
+  const spreadsheets = attachments.filter((a) => /\.(xlsx|xls)$/i.test(a.filename ?? ''))
+  if (spreadsheets.length === 0) return null
 
-  const batchIds = new Set<number>()
   const errors: string[] = []
-  let filed = 0
-  for (const attachment of membershipFiles) {
+  const uploads: GroupUpload[] = []
+  for (const attachment of spreadsheets) {
     try {
       const response = await fetch(attachment.download_url)
       if (!response.ok) {
         errors.push(`${attachment.filename}: download failed (HTTP ${response.status})`)
         continue
       }
-      const buffer = Buffer.from(await response.arrayBuffer())
-      const result = await ingestMembershipUpdateFile(supabase, {
+      uploads.push({
         filename: attachment.filename,
-        buffer,
-        source: {
-          source: 'email',
-          emailId: email.email_id,
-          from: email.from,
-          subject: email.subject,
-          resendAttachmentId: attachment.id,
-        },
+        buffer: Buffer.from(await response.arrayBuffer()),
+        resendAttachmentId: attachment.id,
       })
-      if (result) {
-        filed++
-        batchIds.add(result.batchId)
-      }
     } catch (err) {
       errors.push(`${attachment.filename}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
-  for (const batchId of batchIds) {
-    try {
-      await finaliseBatchIfComplete(supabase, batchId)
-    } catch (err) {
-      errors.push(`batch ${batchId}: ${err instanceof Error ? err.message : String(err)}`)
-    }
+
+  const receivedAt = email.created_at ? new Date(email.created_at) : new Date()
+  const result = await fileMembershipUpdateGroup(
+    supabase,
+    uploads,
+    { source: 'email', emailId: email.email_id, from: email.from, subject: email.subject },
+    Number.isNaN(receivedAt.getTime()) ? new Date() : receivedAt,
+  )
+  errors.push(...result.errors.map((e) => `${e.filename}: ${e.reason}`))
+  if (result.filed.length === 0 && result.review.length === 0) {
+    // Not a weekly set (or none could be read): the template import keeps it.
+    if (errors.length > 0) console.error('Membership update attachments had errors:', errors)
+    return null
   }
-  return { filed, batchIds: [...batchIds], errors }
+  return {
+    filed: result.filed.length,
+    review: result.review.length,
+    batchIds: result.finalised.map((f) => f.batchId),
+    errors,
+  }
 }
 
 function getResendClient(): Resend {
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: event.type })
     }
 
-    const { email_id, from, to, subject } = event.data
+    const { email_id, from, to, subject, created_at } = event.data
 
     const supabase = createAdminClient()
     const { data: existing } = await supabase
@@ -154,6 +155,7 @@ export async function POST(req: NextRequest) {
           email_id,
           from,
           subject,
+          created_at,
         })
         if (membership) {
           if (membership.errors.length > 0) {
@@ -164,6 +166,7 @@ export async function POST(req: NextRequest) {
             email_id,
             membership_update: {
               filed: membership.filed,
+              review: membership.review,
               batch_ids: membership.batchIds,
               errors: membership.errors,
             },
@@ -175,7 +178,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({
             ok: true,
             email_id,
-            membership_update: { filed: 0, batch_ids: [], errors: [] },
+            membership_update: { filed: 0, review: 0, batch_ids: [], errors: [] },
           })
         }
       } catch (membershipErr) {

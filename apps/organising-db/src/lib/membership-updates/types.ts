@@ -29,6 +29,23 @@ export interface MembershipUpdateFileRow {
   byte_size: number | null;
   row_count: number | null;
   received_at: string;
+  classification: { notes?: string[]; reviewed?: { by: string; at: string } } | null;
+}
+
+/** A weekly file held for an admin to confirm its kind and week ending. */
+export interface MembershipUpdateReviewFile {
+  review_id: number;
+  filename: string;
+  byte_size: number | null;
+  row_count: number | null;
+  source: "email" | "manual";
+  source_from: string | null;
+  source_subject: string | null;
+  suggested_kind: MembershipUpdateKind | null;
+  suggested_week_ending: string | null;
+  issues: string[];
+  classification: { notes?: string[] } | null;
+  received_at: string;
 }
 
 export interface MembershipMovementSnapshot {
@@ -54,6 +71,7 @@ export interface MembershipUpdateAdmin {
 export interface MembershipUpdatesListResponse {
   batches: MembershipUpdateBatch[];
   files: MembershipUpdateFileRow[];
+  reviewFiles: MembershipUpdateReviewFile[];
   snapshots: MembershipMovementSnapshot[];
   notifyUserIds: string[];
   admins: MembershipUpdateAdmin[];
@@ -79,4 +97,6 @@ export interface MembershipUpdateNotificationsResponse {
   notifications: MembershipUpdateNotification[];
   files: Pick<MembershipUpdateFileRow, "batch_id" | "kind" | "row_count" | "filename">[];
   snapshots: MembershipMovementSnapshot[];
+  /** Weekly files waiting for an admin to confirm their kind and week. */
+  reviewCount?: number;
 }

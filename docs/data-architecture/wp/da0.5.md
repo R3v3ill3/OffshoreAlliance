@@ -894,3 +894,19 @@ met: no blocking finding remains, so the clone rehearsal may proceed.
 |---|---|
 | O-1 | Confirmed: the mobilisation radar in this repository owns the sixteen tables; no other checkout applied a different DDL. The production ledger-row run sheet is unblocked |
 | O-4 | Confirmed as accepted by the orchestrator (acceptance split with Phase 1) |
+
+## 13. Later mobilisation migrations (orchestrator, 2026-09-24)
+
+After this plan was written, `main` gained `20260923220000_mobilisation_recipients.sql` (table
+`mobilisation_recipients`: two policies, one trigger, RLS, a seed of the admin/user profiles) and
+`20260924010000_mobilisation_signal_schedule.sql` (`mobilisation_signals.arrival_at`, `ends_at`, index
+`idx_mobilisation_signals_arrival`). Read-only on production the same day: every object of both files is present
+(recipients table with both policies by name, the trigger, RLS on, 11 seed rows; both columns; the index), the
+radar file is unchanged on `main`, and the ledger still ends at `20260921030000` with 16 rows — the same
+outside-the-ledger pattern as the radar file, which is why the catalog summary on production now reads 173 columns
+and 34 indexes against the radar file's 171 and 33. The package therefore gains `12_record_later_ledger_rows.sql`
+(+ rollback `91_remove_later_ledger_rows.sql`) and the production run sheet becomes P1 → P2 → P2b → P3
+(`prod/README.md`). `main` was merged into the branch the same day so the two files exist here and
+`pnpm validate:migrations` counts 20. The clone rehearsal of `12` (apply the two files as one submission each, then
+`12`, then `91`, then `12`) is recorded in §9.5 when run. Deviation 3, recorded here: the §5 row's "a fresh clone
+carries the 16 tables" is now seventeen, and the D17 fresh clone will carry all three ledger rows once P2/P2b have run.

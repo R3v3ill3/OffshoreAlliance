@@ -11,7 +11,7 @@ production change is a run sheet you execute; every script was rehearsed on the 
 | Package | State | Evidence |
 |---|---|---|
 | DA0.1 Baseline profile | complete | `wp/da0.1.md`: pack on production and clone; every plan §1.1 count reproduced or explained; production `workers_active` 5,749 |
-| DA0.2 Remove the synthetic dataset | forward script proven on the clone (2,293 → 1,629 active, every prediction matched); rollback failed on a one-line projection bug, fix prepared but **not rehearsed** (third fix round: your call, §1) | `wp/da0.2.md` §9–§11 |
+| DA0.2 Remove the synthetic dataset | forward and rollback both proven on the clone (24 Sep): forward matched every prediction, rollback restored every data row byte for byte | `wp/da0.2.md` §9–§11 |
 | DA0.3 Stop the bleed | code complete, two Fable reviews, migration on normal dev and rehearsed on the clone forward → back → forward; page at `/name-reviews` | `wp/da0.3.md` §9–§11 |
 | DA0.4 Workstream set-up | complete | `PROGRESS.md`, `wp/README.md` |
 | DA0.5 Vessel-tracking schema | ready: the committed migration equals production's catalog (377 objects, 0 differences); the production change is a ledger row only; rehearsed on the clone | `wp/da0.5.md` §9–§11 |
@@ -25,11 +25,11 @@ Answer these in the session (or by editing the plan files' §5 tables); the run 
 
 | # | Question | Where recorded | Default if you say nothing |
 |---|---|---|---|
-| DA0.2 P7 | Authorise fix round 3: the one-line `90_rollback.sql` fix (`_da02_pending` now projects `after_row`) and the resumed clone rehearsal (`90` → `00` → `10` → `00`). The clone is holding in the post-forward state until then. | `wp/da0.2.md` §5, §10 | **stop** — DA0.2 does not go to production with an unproven rollback |
-| DA0.2 P1 | 304 of the 664 synthetic workers carry a value in `workers.member_number` (a dead column; the membership system's key is `reference_id`, null on all 664 and set on 5,229 real workers). Confirm they are fixture values. | `wp/da0.2.md` §5 | **stop** |
-| DA0.2 P2 | Workers 681, 1537 and 1541 are inside the 664 but were created by hand after the batches; confirm synthetic. | same | included, as D4 counted them |
-| DA0.2 P6 | The roles in scope are 10, not the 11 the plan row says. | same | proceed on 10 |
-| DA0.5 O-1 | Confirm the mobilisation radar in this repository (commit `afc3eed8`, migration `20260922040000`) owns the sixteen vessel-tracking tables and no other checkout applied a different DDL. | `wp/da0.5.md` §5; `PROGRESS.md` D15 finding | proceed (the catalog proof makes a different DDL very unlikely) |
+| DA0.2 P7 | Authorised 24 Sep; the rollback then needed three more fix rounds (reinsert order, a cast, deferred constraints) and passed on the clone the same day. | `wp/da0.2.md` §5, §9–§10 | done |
+| DA0.2 P1 | Confirmed 24 Sep: the 304 `member_number` values are synthetic. | `wp/da0.2.md` §12 | done |
+| DA0.2 P2 | Confirmed 24 Sep: 681, 1537 and 1541 are synthetic. | `wp/da0.2.md` §12 | done |
+| DA0.2 P6 | The ten roles are every role row touching the synthetic entities (listed in `wp/da0.2.md` §12); the plan's 11 was a miscount. | `wp/da0.2.md` §12 | proceed on 10 (acknowledged 24 Sep) |
+| DA0.5 O-1 | Confirmed 24 Sep. | `wp/da0.5.md` §12 | done |
 | DA0.5 O-4 | Accept that DA0.5 measures the employer links and proves none wrong; the 22 + 12 null links are filled in Phase 1. | `wp/da0.5.md` §4.4 | accepted by the orchestrator |
 | DA0.3 §5 items 1–9 | Wizards read-only for names; admin-block nav; synthetic fixture; dev + clone applies (done); campaign-import path to DA4.2; worksite CHECK widened; back-fill fills null FKs only; sticky `rejected`; one `import_logs` row per file. | `wp/da0.3.md` §7 | as decided by the orchestrator |
 
@@ -53,16 +53,18 @@ Do them in a quiet window (DA0.2's assertions are strict; a concurrent write abo
 weekly membership batch, so the baseline of 5,749 active workers still applies. Paste each result into the session
 before the next step; the orchestrator (or you) records it in the package's `wp/*.md` §11.
 
-### 3.1 DA0.2 — remove the synthetic dataset (only after P7's rehearsal has passed and P1/P2/P6 are answered)
+### 3.1 DA0.2 — remove the synthetic dataset (P1, P2, P6, P7 answered 24 Sep; rollback proven on the clone)
 
-| Step | File | What it does | Expect |
-|---|---|---|---|
-| 1 | `scripts/data-hygiene/da0.2/00_preflight.sql` (read-only) | Identity check, child-row closure, blockers, per-campaign checksums | 250 rows. Section E Σ = 3,119 rows / 72 tables; F Σ = 16; G BLOCKER Σ = 2 (worker 1536 only); scope md5 `f6589df6e2507a35542632026c3d0c34`; `workers_active` 5,749. Any other BLOCKER row or a different md5: stop |
-| 2 | `10_remove_test_dataset.sql` (a ready-to-paste `prod/P2` file is generated once the rollback rehearsal passes) | Re-points 1536 to AWU WA Branch (741) / AWU Head Office (185), removes it from campaign 64, deletes campaigns 15 and 37, the 664 workers, projects 18–21, program 6, worksites 196–199, employers 787–794, logging every row | `workers_active 5085, workers_total 5900, campaigns_15_37 0, employers_787_794 0, worksites_196_199 0, roles 0, w1536 'emp=741 ws=185 cwm=50', test_worksite_cluster 0, log_rows_pending 3139, snapshot_rows_logged 3138`. Anything else: run `90_rollback.sql` (same `SET LOCAL` line) and report |
-| 3 | `00_preflight.sql` again | | Entities gone; every campaign checksum other than 15/37/64 identical to step 1; 64 has one membership fewer |
-| 4 | The profiling pack `scripts/data-hygiene/oa-universe/00`–`07` (read-only) | Re-measure | `workers_active 5085`; `05` shows no `test` worksite cluster. Paste into `wp/da0.2.md` §11 |
+Ready-to-paste files in `scripts/data-hygiene/da0.2/prod/`. Quiet window; before the next weekly batch.
 
-Keep the hygiene-log rows for at least 30 days (WP0.4 retention rule): `90_rollback.sql` restores everything from
+| Step | File | Expect |
+|---|---|---|
+| P1 | `P1_preflight_before.sql` (read-only, about 250 rows) | E Σ 3119 rows / 72 tables; F Σ 16; G BLOCKER Σ 2 (worker 1536 only); scope md5 `f6589df6e2507a35542632026c3d0c34`; `workers_active` 5749. Any other BLOCKER row or a different md5: stop |
+| P2 | `P2_remove_test_dataset.sql` (mutating, one transaction) | `workers_active 5085, workers_total 5900, campaigns_15_37 0, employers_787_794 0, worksites_196_199 0, roles 0, w1536 'emp=741 ws=185 cwm=50', test_worksite_cluster 0, log_rows_pending 3139, snapshot_rows_logged 3138`. Anything else: run `PX1_rollback.sql` and report |
+| P3 | `P3_preflight_after.sql` (read-only) | entities gone; every campaign checksum other than 15/37/64 identical to P1; 64 has one membership fewer |
+| P4 | the profiling pack `scripts/data-hygiene/oa-universe/00`–`07` (read-only) | `workers_active 5085`; `05` shows no `test` worksite cluster. Paste into `wp/da0.2.md` §11 |
+
+Keep the hygiene-log rows for at least 30 days (WP0.4 retention rule): `PX1_rollback.sql` restores everything from
 them until they are cleaned up.
 
 ### 3.2 DA0.5 — record the vessel-tracking migration in the ledger (O-1 confirmed 24 Sep)
@@ -72,12 +74,16 @@ file returns one row). Run in order, paste each row back before the next:
 
 | Step | File | Expect |
 |---|---|---|
-| P1 | `P1_before.sql` (read-only) | tables 16, columns 171, constraints 72, indexes 33, policies 27, triggers 8, function md5 `764235c6…`, `ledger_row_present f`, ledger max `20260921030000`, ledger rows 16, vessels 25/3/0/0, contractors 14/2/0/0, 4 alias strings missing |
+| P1 | `P1_before.sql` (read-only) | tables 16, columns 173, constraints 72, indexes 34, policies 27, triggers 8, function md5 `764235c6…`, recipients table t with 2 policies, signal columns 2, `mobilisation_ledger_rows` NULL, ledger max `20260921030000`, ledger rows 16, vessels 25/3/0/0, contractors 14/2/0/0, 4 alias strings missing |
 | P2 | `P2_record_ledger_row.sql` (mutating: one ledger row) | `ledger_row_present t, ledger_name mobilisation_radar, ledger_rows 17, tables_present 16, policies 27, triggers 8, audit_function_present t, log_rows_written 1` |
-| P3 | `P3_after.sql` (read-only) | as P1 except `ledger_row_present t`, ledger max `20260922040000`, ledger rows 17 |
+| P2b | `P2b_record_later_ledger_rows.sql` (mutating: two ledger rows) | `rows_20260923220000 1, rows_20260924010000 1, ledger_rows 19, log_rows_written 2` |
+| P3 | `P3_after.sql` (read-only) | as P1 except `mobilisation_ledger_rows` = the three versions, ledger max `20260924010000`, ledger rows 19 |
 
-The migration file `20260922040000_mobilisation_radar.sql` is **never** submitted to production (its tables already
-exist; its `CREATE POLICY` statements would fail).
+Three rows, not one: after the DA0.5 plan was written, `main` gained two further mobilisation migrations
+(`20260923220000_mobilisation_recipients.sql`, `20260924010000_mobilisation_signal_schedule.sql`) whose objects are
+already live on production without ledger rows (checked read-only 24 Sep), the same pattern as the radar file. None
+of the three migration files is ever submitted to production (their `CREATE POLICY` statements would fail and the
+recipients seed would re-add removed people).
 
 ### 3.3 DA0.3 — stop the bleed (migration, then merge, then the next weekly batch)
 

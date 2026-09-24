@@ -1358,6 +1358,37 @@ Every other row (sections A–J and the rest of K — `env_marker`, `matview...`
 
 **Orchestrator's explanation (2026-09-24), confirmed:** the fingerprint changes are caused by DA0.3's clone rehearsal, which ran on this same shared clone between this run's "00 #1" and "00 #3" and added `name_match_reviews` (with its own foreign keys and two triggers) and the `workers.names_import_id` key, leaving that migration applied. This is DA0.3's doing, not DA0.2's — confirmed independently above (no DDL in `10_remove_test_dataset.sql` or `90_rollback.sql`; every data-derived section, including every campaign checksum, is byte-identical between 00 #1 and 00 #3). **00 #3 is treated as matching 00 #1** for the purposes of this rehearsal: the only differences are the two permitted hygiene-log rows plus these two externally-caused fingerprint rows, none of which reflect anything DA0.2's scripts did. Proceeding to step 6.
 
+#### Step 6 — `10_remove_test_dataset.sql` (forward 2) — compared with the rerun's forward 1 — SUCCESS
+
+Appended read-only `SELECT`:
+
+```text
+workers_active=1629, workers_total=1743, campaigns_15_37=0, employers_787_794=0,
+worksites_196_199=0, roles=0, w1536='emp=741 ws=185 cwm=50',
+test_worksite_cluster=0, log_rows_pending=2653, snapshot_rows_logged=2652
+```
+
+**Identical counts to the rerun's forward 1** (`1629, 1743, 0, 0, 0, 0, emp=741 ws=185 cwm=50, 0, 2653, 2652`). The underlying `_oux_hygiene_log.log_id` values are higher this time (the log has grown from `90`'s reinsert/restore rows plus its own insert/update entries between the two forward runs), but `log_rows_pending`/`snapshot_rows_logged` — being counts, not ids — come out the same: 2653/2652, exactly as forward 1.
+
+#### Step 7 — `00_preflight.sql` ("00 #4") — compared with "00 #2" — matches
+
+118 rows. Identical to "00 #2" in every row **except** the same four section-K rows already accounted for in the 00 #3 comparison:
+
+| row | 00 #2 (after forward 1) | 00 #4 (after forward 2) | permitted? |
+|---|---|---|---|
+| `hygiene_log` | `rows=2999` | `rows=8394` | yes (permitted; the log has grown through `90` and forward 2) |
+| `hygiene_log_da02_pending/rolled_back` | `2653/0` | `2653/2653` | yes (permitted) |
+| `fp_fk_edges` | `2b7d6ab9…` | `4935f890…` | DA0.3 drift, already accepted at 00 #3 |
+| `fp_triggers` | `eae74d6e…` | `ac616370…` | DA0.3 drift, already accepted at 00 #3 |
+
+Every other row is identical: `all_total/active` 1743/1629, the 19 scoped entities all absent, `w1536` `emp=741 ws=185 cwm=50` (`activist_profiles`=50, `cwo`=none, `rows_in_campaign_64` all 0 except the 2/3 list/email items kept), campaign 64's checksum restored to exactly the same post-forward-1 digest (`mem_n=275 mem_md5=6d93e52abc189c730fab6e863df12f15`, `ou_n=266 ou_md5=44160600fd8b9db457e9f1d9ea2e5353`), every other campaign checksum unchanged, and every J-pack count (`employers 163, worksites 170, worksites_active 164, employer_worksite_roles 241, worksite_scopes 13, employer_scopes 10, programs 3, program_worksites 7, projects 16, campaigns 20, campaign_groups 19, campaign_organising_units 236, campaign_worker_ou 1847, campaign_worker_membership 2579, campaign_employers 44, campaign_worksites 116`, `05` worksite/employer clusters both `none`).
+
+#### Step 8 — leave the clone forward
+
+No further script run. The clone (`yqjkuobcawvigsfpgrcm`) is left in the post-forward-2 state: the 19 synthetic entities and the 664 workers removed, worker 1536 re-pointed to 741/185 and a member of campaign 50 only, `_oux_hygiene_log` holding 2653 pending (`rolled_back_at IS NULL`) rows of this second `10_remove_test_dataset` run plus the earlier rolled-back run and `90`'s reversal rows. This matches the plan's D17 disposition (§3.5, §7 condition 4): the clone stays forward until retired.
+
+**Rehearsal complete.** `00_preflight.sql`, `10_remove_test_dataset.sql` and `90_rollback.sql` have now all been exercised successfully on the clone after fix rounds 1–4b: forward → rollback → forward again, with `00` comparisons confirming reversibility (data-identical; the only non-permitted differences traced to DA0.3's concurrent, independent migration on the shared clone). The rehearsal supports handing DA0.2 to the operator for the production run, subject to the plan's P1/P2/P6 gates (§5) which are not part of the clone rehearsal.
+
 ## 10. Review
 
 **2026-09-22 — Reviewer: Fable, round 1.** Read `00_preflight.sql`, `10_remove_test_dataset.sql`, `90_rollback.sql`
@@ -1763,7 +1794,11 @@ Advisories A–C of round 2 applied by the orchestrator, 2026-09-23 (plan §3.2 
 | 5–7 (resumed after fix round 4a) | `00_preflight.sql` / `10_remove_test_dataset.sql` | **NOT RUN** — verifier stopped at step 4 per the stop rule | — | — |
 | 4 (resumed after fix round 4b) | `90_rollback.sql` (fix round 4b: `SET CONSTRAINTS ALL IMMEDIATE;` before the ENABLE TRIGGER loop) | **SUCCESS.** Appended SELECT matches §3.3 exactly: `forward_rows_pending=0, campaigns_15_37=2, employers_787_794=8, worksites_196_199=4, workers_active=2293, w1536='emp=791 ws=197 cwm=37/50/64'` | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
 | 5 (resumed after fix round 4b) | `00_preflight.sql` ("00 #3", vs "00 #1" of the 2026-09-24 rerun) | 248 rows. Every row outside section K identical, including campaign 64's checksum restored exactly (`mem_n=276 mem_md5=7136269b71a6a2e4bc17f4725f9ac5c7`). **Not fully identical:** `fp_fk_edges` (2b7d6ab9… → 4935f890…) and `fp_triggers` (eae74d6e… → ac616370…) both changed — a difference **outside** the permitted allowance (only `hygiene_log rows=` and `hygiene_log_da02_pending/rolled_back` are permitted to differ). Assessed as likely external schema drift on the shared clone (DA0.3/DA0.5 also rehearse there), not caused by DA0.2's scripts (no DDL in `10`/`90`; all other sections, including every checksum, are identical) — but per the stop rule this is reported as a mismatch, not silently passed | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
-| 6–8 (resumed after fix round 4b) | `10_remove_test_dataset.sql` (forward 2) / `00_preflight.sql` (00 #4) / leave forward | **NOT RUN** — verifier stopped at step 5's comparison per the stop rule pending confirmation the fingerprint drift is external and safe to proceed past | — | — |
+| 6–8 (resumed after fix round 4b) | `10_remove_test_dataset.sql` (forward 2) / `00_preflight.sql` (00 #4) / leave forward | **NOT RUN (initial pass)** — verifier stopped at step 5's comparison per the stop rule pending confirmation the fingerprint drift is external and safe to proceed past | — | — |
+| — | orchestrator confirmation | Confirmed: `fp_fk_edges`/`fp_triggers` changed because DA0.3's rehearsal ran on this shared clone between 00 #1 and 00 #3, adding `name_match_reviews` (FKs + 2 triggers) and `workers.names_import_id`; not DA0.2's doing. 00 #3 treated as matching 00 #1; proceed | 2026-09-24 | orchestrator |
+| 6 | `10_remove_test_dataset.sql` (forward 2, vs rerun's forward 1) | **SUCCESS.** Appended SELECT identical counts to forward 1: `1629, 1743, 0, 0, 0, 0, emp=741 ws=185 cwm=50, 0, 2653, 2652` (log_ids higher, counts the same) | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| 7 | `00_preflight.sql` ("00 #4", vs "00 #2") | 118 rows; identical to 00 #2 except the same 2 permitted hygiene-log rows and the same 2 DA0.3-drift fingerprint rows already accepted at 00 #3 (nothing else differs) — campaign 64 checksum restored to the exact post-forward-1 digest, every J-pack count unchanged | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| 8 | leave the clone forward | Done — no further script run. Clone left in the post-forward-2 state per plan D17 (§3.5, §7 condition 4). **Rehearsal complete**: `00`/`10`/`90` all exercised successfully forward → rollback → forward, reversibility confirmed | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
 
 ## 12. Operator decisions received (session, 2026-09-24)
 

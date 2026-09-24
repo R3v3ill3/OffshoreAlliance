@@ -2,8 +2,8 @@
 -- Project: production (gteygwfgjvczanmrwgbr). Supabase dashboard → SQL Editor → New query → paste this
 -- whole file → Run. One submission = this whole file. Prepared by the agent from the committed scripts
 -- in the parent folder; the agent never runs anything on production.
--- What it does: the same one-row check as P1, after P2.
--- Expect: tables_present 16, columns_n 171, constraints_n 72, indexes_n 33, policies_n 27, triggers_n 8, rls_enabled_n 16, audit_function_md5 764235c6343f9cc8189502ba271571e5, ledger_row_present t, ledger_max_version 20260922040000, ledger_rows 17, vessels 25 / 3 / 0 / 0, contractors 14 / 2 / 0 / 0, alias_strings_missing_from_register 4
+-- What it does: the same one-row check as P1, after P2 and P2b.
+-- Expect: tables_present 16, columns_n 173, constraints_n 72, indexes_n 34, policies_n 27, triggers_n 8, audit_function_md5 764235c6343f9cc8189502ba271571e5, recipients_table t, recipients_policies 2, signals_new_columns 2, mobilisation_ledger_rows 20260922040000,20260923220000,20260924010000, ledger_max_version 20260924010000, ledger_rows 19, vessels 25 / 3 / 0 / 0, contractors 14 / 2 / 0 / 0, alias_strings_missing_from_register 4
 -- Paste back: the one result row.
 -- If anything raises, the transaction (where there is one) has rolled back and nothing changed: paste the error and stop.
 
@@ -25,11 +25,15 @@ SELECT
   (SELECT count(*) FROM pg_policies p JOIN t ON t.relname = p.tablename
     WHERE p.schemaname = 'public')                                                            AS policies_n,
   (SELECT count(*) FROM pg_trigger g JOIN t ON t.oid = g.tgrelid WHERE NOT g.tgisinternal)   AS triggers_n,
-  (SELECT count(*) FROM t JOIN pg_class c ON c.oid = t.oid WHERE c.relrowsecurity)            AS rls_enabled_n,
   (SELECT md5(pg_get_functiondef(p.oid)) FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public' AND p.proname = 'mobilisation_alert_audit')                    AS audit_function_md5,
-  EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '20260922040000') AS ledger_row_present,
+  to_regclass('public.mobilisation_recipients') IS NOT NULL                                   AS recipients_table,
+  (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'mobilisation_recipients') AS recipients_policies,
+  (SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.mobilisation_signals'::regclass
+     AND attname IN ('arrival_at','ends_at') AND NOT attisdropped)                            AS signals_new_columns,
+  (SELECT string_agg(version, ',' ORDER BY version) FROM supabase_migrations.schema_migrations
+     WHERE version IN ('20260922040000','20260923220000','20260924010000'))                   AS mobilisation_ledger_rows,
   (SELECT max(version) FROM supabase_migrations.schema_migrations)                            AS ledger_max_version,
   (SELECT count(*) FROM supabase_migrations.schema_migrations)                                AS ledger_rows,
   (SELECT count(*) FROM public.vessels)                                                       AS vessels_total,

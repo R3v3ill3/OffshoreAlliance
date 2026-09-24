@@ -2856,3 +2856,127 @@ clone (yqjkuobcawvigsfpgrcm) | no — 05_1 has no key='test' row | yes — key='
 - Baseline for Phase 0 acceptance: production `workers_active = 5749`; the DA0.2 target is 5,085. Clone
   `workers_active = 2293`; the clone's own target is set by DA0.2's preflight on the clone.
 - The `test` worksite cluster (196–199) is present on both projects and is the DA0.2 acceptance marker in `05`.
+
+## 7. Fresh clone `plbldfctqhnbyrsypuri` vs production (D17, verifier, 2026-09-24)
+
+Production `gteygwfgjvczanmrwgbr` and the fresh clone `plbldfctqhnbyrsypuri` ("yarnhub", created 2026-09-24T06:48:53Z from a production backup — confirmed via `list_projects`; not to be confused with the unrelated project `tycqjkghdmizgbqgbkgg` of the same display name, which was not touched). Every statement in `00`, `00b`, `01`–`07` was run read-only, one statement per call, on both projects.
+
+### 7.1 `00_profile_counts.sql` + `00b_profile_supplementary.sql` — delta table
+
+Snapshot taken near the start of this run (both projects returned byte-identical `00` output at that instant):
+
+| entity | production | fresh clone | difference |
+|---|---:|---:|---:|
+| agreement_employers | 5 | 5 | 0 |
+| agreement_scopes | 0 | 0 | 0 |
+| agreement_worksites | 54 | 54 | 0 |
+| agreements | 136 | 136 | 0 |
+| campaign_employers | 46 | 46 | 0 |
+| campaign_groups | 24 | 24 | 0 |
+| campaign_organising_units | 250 | 250 | 0 |
+| campaign_worker_membership | 3072 | 3072 | 0 |
+| campaign_worker_ou | 2195 | 2195 | 0 |
+| campaign_worksites | 116 | 116 | 0 |
+| campaigns | 22 | 22 | 0 |
+| employer_merge_events | 23 | 23 | 0 |
+| employer_name_aliases | 39 | 39 | 0 (at snapshot time — see 7.4, this drifted to 58/39 later in the same session) |
+| employer_scopes | 10 | 10 | 0 |
+| employer_worksite_roles | 241 | 241 | 0 |
+| employers | 179 | 179 | 0 |
+| import_logs | 68 | 68 | 0 |
+| occupation_aliases | 1488 | 1488 | 0 |
+| occupation_groups | 19 | 19 | 0 |
+| occupations | 182 | 182 | 0 |
+| organiser_patch_assignments | 8 | 8 | 0 |
+| organiser_patches | 2 | 2 | 0 |
+| organisers | 11 | 11 | 0 |
+| program_worksites | 7 | 7 | 0 |
+| programs | 3 | 3 | 0 |
+| projects | 16 | 16 | 0 |
+| sectors | 16 | 16 | 0 |
+| upcoming_project_employers | 84 | 84 | 0 |
+| upcoming_projects | 84 | 84 | 0 |
+| work_scopes | 22 | 22 | 0 |
+| worker_agreements | 0 | 0 | 0 |
+| worker_assignments | 0 | 0 | 0 |
+| workers | 5900 | 5900 | 0 |
+| workers_active | 5085 | 5085 | 0 |
+| worksite_contracts | 0 | 0 | 0 |
+| worksite_name_aliases | 8 | 8 | 0 (at snapshot time — see 7.4, this drifted to 23/8 later in the same session) |
+| worksite_scopes | 13 | 13 | 0 |
+| worksites | 190 | 190 | 0 |
+| worksites_active | 184 | 184 | 0 |
+| worksites_with_parent | 1 | 1 | 0 |
+
+`00b` — `employer_worksite_roles` by `role_type` (identical both projects): Operator 179, Other 51, Subcontractor 9, Owner 1, Principal_Contractor 1.
+
+`00b` — `membership_update_batches`:
+
+| entity | production | fresh clone | difference |
+|---|---:|---:|---:|
+| membership_update_batches | 2 | 1 | +1 (production only — a batch recorded after the ~06:48 UTC backup) |
+
+Note: `campaign_worker_membership` and `campaign_worker_ou` — the two tables expected to drift under the app's sync-on-open — were identical at snapshot time (no sync had run on either project between backup and this profiling run).
+
+### 7.2 `05_candidate_clusters.sql` — both projects (expected identical, confirmed identical)
+
+All four statements returned byte-identical output on both projects.
+
+**Employer clusters (16 keys):** chevron(4): 2:CHEVRON GORGON OPERATIONS, 3:CHEVRON WHEATSTONE DOWNSTREAM OPERATIONS, 4:CHEVRON WHEATSTONE PLATFORM, 691:Chevron · jadestone(4): 6:JADESTONE ENERGY MONTARA VENTURE, 7:JADESTONE ENERGY STAG CPF, 693:Jadestone, 695:JADESTONE ENERGY · woodside(4): 12:WOODSIDE ENERGY LTD NGUJIMA-YIN AND OHKA FPSO, 13:WOODSIDE ENERGY LTD, 14:WOODSIDE ENERGY MACEDON GAS PLANT, 689:Woodside · atc(2): 815:ATC Offshore, 816:ATC · auriga(2): 52:AURIGA AVIATION HELICOPTER ENGINEERS, 723:Auriga Aviation · downer(2): 18:DOWNER EDI ENGINEERING ELECTRICAL LNG FACILITY SERVICES, 710:Downer EDI Group · inpex(2): 5:INPEX - ICHTHYS OPERATIONS, 690:Inpex · modec(2): 93:MODEC Management Services, 703:Modec · noble(2): 73:NOBLE, 736:Noble Corporation · saipem(2): 726:Saipem, 778:Saipem Leighton Consortium · santos(2): 9:SANTOS WA ENERGY LIMITED VARANUS ISLAND HUB, 692:Santos · shell(2): 10:SHELL PRELUDE, 688:Shell · solstad(2): 47:SOLSTAD AUSTRALIA PTY LTD, 717:Solstad Offshore ASA · toll(2): 713:Toll Energy, 782:Toll West · trace(2): 97:TRACE, 749:Trace JV · ugl(2): 33:UGL RESOURCES (CONTRACTING) PTY LTD, 826:ugl.
+
+**Worksite clusters (24 keys, n=24/24, md5 `98d68240a28e4710ffa5aff65a94ffcf` both):** mma(10), pacific(8), siem(6), skandi(6), fugro(4), karratha(4), valaris(4), alkimos(3), ichthys(3), normand(3), pluto(3), sea1(3), seven(3), transocean(3), wheatstone(3), darwin(2), dof(2), floatel(2), inpex(2), jetwave(2), mermaid(2), noble(2), ocean(2), wandoo(2) — full member lists byte-identical on both projects.
+
+**Exact worksite duplicates after folding (n=1/1, md5 identical):** 1 row both — `floatel triumph` (worksite_ids 261, 240).
+
+**Exact employer duplicates after folding (n=0/0):** 0 rows both (matches §5 verifier note).
+
+Employer-cluster statement itself: n=16/16, md5 `929500efc519013449ecc248811cc6b6` on both — the 16 clusters listed above are character-for-character identical.
+
+### 7.3 `01`–`04`, `06`, `07` — row counts and row-for-row identity (md5 of each result set's text)
+
+md5 computed in-database as `md5(string_agg(row::text, E'\x1e' ORDER BY row::text))` over each statement's result set, so order-independent and directly comparable.
+
+| file | stmt | production n / md5 | fresh clone n / md5 | identical? |
+|---|---|---|---|---|
+| 01 | 1 employers (main) | 179 / `0268cbc7bcae15d6ac29999ef45bf6b4` | 179 / `41b12c498b442ac3a180d495fd06c91b` | **NO** — same 179 employer_ids, 20 rows differ (active_workers/aliases counts) |
+| 01 | 2 employer aliases | 58 / `d744a522a44f5bf914076c2baf72e1ef` | 39 / `059f5bf94195576441c1ecdbba9f314a` | **NO** — 19 extra rows on production, all `source='import'`, `created_at=2026-09-24` |
+| 01 | 3 merge events | 23 / `32b5d22acc0d9875e81b32f7d7a9b7e8` | 23 / `32b5d22acc0d9875e81b32f7d7a9b7e8` | YES |
+| 01 | 4 category distribution | 7 / `8b8fd53f1b94df6980fb086333639e8f` | 7 / `8b8fd53f1b94df6980fb086333639e8f` | YES |
+| 01 | 5 naming convention × month | 9 / `6a94a1f23fcab45944a2cfa05ea09ef8` | 9 / `6a94a1f23fcab45944a2cfa05ea09ef8` | YES |
+| 02 | 1 worksites (main) | 190 / `5d03776dd191fe7e6038e5d97fc94a2c` | 190 / `247416183740ab01b6e176bc11fad2b7` | **NO** |
+| 02 | 2 worksite_type counts | 18 / `b85048122ab51d33e660c5876b8b5abd` | 18 / `b85048122ab51d33e660c5876b8b5abd` | YES |
+| 02 | 3 basin counts | 6 / `294902ef4a599ea7d9c83fd934b4802c` | 6 / `294902ef4a599ea7d9c83fd934b4802c` | YES |
+| 02 | 4 worksite aliases | 23 / `118267a262c5289d357ce64347ec68ba` | 8 / `c62adff6e436c8736d3dafbf50b34bac` | **NO** — 15 extra rows on production, all `source='import'`, `created_at=2026-09-24` |
+| 03 | 1 coverage aggregate (1 row) | active 5094 / total 5900 | active 5085 / total 5900 | **NO** — +9 active on production |
+| 03 | 2 created_month | 6 / `0d7db21fe58a29f144aa261bc896d274` | 6 / `0d7db21fe58a29f144aa261bc896d274` | YES |
+| 03 | 3 distinct_pairs (1 row) | 538/380/2211 | 533/376/2202 | **NO** |
+| 03 | 4 unrecorded pairs list | 380 / `09041f3e9a5bf31381ee12800ec005b4` | 376 / `d6e4bad464569b803183704579e0830c` | **NO** |
+| 03 | 5 occupation top-60 | 1 / `7fa9b660cf4b0653d843fdb2db8a2dcd` | 1 / `cbebdbe45d70606606aa3ac05cbb12f9` | **NO** (both collapse to a single NULL-occupation group; counts differ per row 03.1) |
+| 03 | 6 import_logs summary | 13 / `b7726ad6c606cfda6d45d58c7bc35186` | 13 / `8df706e9ffc92c82ba7147a3222d8955` | **NO** |
+| 04 | 1 status | 2 / `9ba0b658faa1982db226d3e28ad766d4` | 2 / `9ba0b658faa1982db226d3e28ad766d4` | YES |
+| 04 | 2 agreement_scope | 1 / `f37441392538ebc812d43cfc14fbef10` | 1 / `f37441392538ebc812d43cfc14fbef10` | YES |
+| 04 | 3 source_sheet | 16 / `41e4c98c9ad9944b1f1aada4d1dd37e2` | 16 / `41e4c98c9ad9944b1f1aada4d1dd37e2` | YES |
+| 04 | 4 worksite-link coverage | 2 / `8bbcc8cf899491da6c94dc1b53acedd3` | 2 / `8bbcc8cf899491da6c94dc1b53acedd3` | YES |
+| 04 | 5 per-agreement detail | 136 / `2fc570a9b0f8b3638a4f0068d5f92798` | 136 / `2fc570a9b0f8b3638a4f0068d5f92798` | YES |
+| 06 | 1 asset cross-match | 55 / `737012c92c9a420de49d35e6ff54e943` | 55 / `737012c92c9a420de49d35e6ff54e943` | YES |
+| 06 | 2 company cross-match | 88 / `c10803af976361ccea8d2fd3bb2ffa67` | 88 / `c10803af976361ccea8d2fd3bb2ffa67` | YES |
+| 07 | 1 campaign summary | 22 / `d21653473ded9320050f19e9ca681cac` | 22 / `d21653473ded9320050f19e9ca681cac` | YES |
+| 07 | 2 unit bases | 6 / `007db8e42793f81ffec2f8496ba78fd8` | 6 / `007db8e42793f81ffec2f8496ba78fd8` | YES |
+| 07 | 3 organiser patches (organiser ids, no names) | 9 / `3658e44c884379f4945eb03ebf05f631` | 9 / `3658e44c884379f4945eb03ebf05f631` | YES |
+
+**Agreements (`04`) are the one file that is 100% identical row-for-row across all 5 statements.** `06` and `07` are also 100% identical. `05` is identical (§7.2). Every difference found is confined to `01`, `02` and `03` — all traceable to the same root cause (§7.4).
+
+### 7.4 Root cause of the differences — a live import ran on production during this session, not sync-on-open
+
+None of the differences match the expected sync-on-open tables (`campaign_worker_membership`, `campaign_worker_ou` — both identical, §7.1). Instead, every differing row traces to `source='import'` rows with `created_at='2026-09-24'` that exist on production but not on the fresh clone:
+
+- **19 extra `employer_name_aliases`** on production (all `source='import'`, `created_at=2026-09-24`): `Altrad Services: Wheatstone Platform`→ALTRAD, `Applus Rtd Pl: Karratha Gas Plant`→APPLUS+ PTY LTD, `Bechtel Australia: Pluto 2`→Bechtel Australia, `Chevron Australia Pty Ltd: Barrow Island - Gorgon`→Chevron, `Downer EDI Group: Barrow Island`→Downer EDI Group, `Eris: Barossa`→ERIS, `Inpex: Ichthys Explorer CPF`→Inpex, `Kaefer Integrated Services Pty Ltd: Varanus Island`→Kaefer Integrated Services Pty Ltd, `McDermott Industries: DLV2000`→MCDERMOTT AUSTRALIA PTY LTD, `Monadelphous Group: Crux`→MONADELPHOUS…, `Monadelphous Group: North Rankin Complex`→MONADELPHOUS…, `Monadelphous Group: Pluto Train 1`→MONADELPHOUS…, `Monadelphous Group: Prelude`→MONADELPHOUS…, `OSM Maritime: Siem Symphony`→OSM Australia Pty Ltd, `PHI International Helicopters: Broome`→PHI INTERNATIONAL AUSTRALIA, `Sodexo Offshore`→GO OFFSHORE, `Toll Energy: Barrow Island`→Toll Energy, `UGL: Barrow Island`→ugl, `Valaris Ltd: Valaris 107`→Valaris Marine.
+- **15 extra `worksite_name_aliases`** on production (all `source='import'`, `created_at=2026-09-24`): `Barossa`→Barossa Field, `Barrow island`→Barrow Island CO2, `Barrow Island Co2 project DC-D and DC-E`→Barrow Island CO2, `Broome`→Broome Airport, `DLV2000 - Crux jacket and pillion installation`→DLV2000, `Inpex Explorer CPF`→Explorer CPF, `various offshore projects`→Go Offshore, `Ngujima Yin FPSO`→Ngujima-Yin FPSO, `Pluto Train 1`→Pluto 2, `Pluto train 2`→Pluto 2, `Prelude`→Prelude FLNG, `North Rankin Complex`→Rankin North, `Constellation`→SAIPEM CONSTELLATION, `Shell Prelude`→Shell, `Veranus island`→Varanus Island.
+- **20 `employers` rows** (01.1) with differing `active_workers`/`aliases`/`worksite_roles` — the same employers named above, e.g. ALTRAD (aliases 6→5), ERIS (active_workers 267→263, aliases 6→5), MCDERMOTT AUSTRALIA PTY LTD (109→108), GO OFFSHORE (35→34), MONADELPHOUS (aliases 10→6), OSM Australia Pty Ltd (aliases 2→1), etc. — production higher in every case.
+- **9 more active workers on production** (03.1: 5094 vs 5085), consistent with the same import assigning `employer_id`/`worksite_id` to a handful of previously-unlinked active workers.
+
+This is **not** the sync-on-open effect the task anticipated (which would move `campaign_worker_membership`/`campaign_worker_ou`, and did not). It is an import batch that ran on production against the `2026-09-24` alias-import pathway (`source='import'`) sometime after the 06:48 UTC backup and, from the `created_at` timestamps landing within this same session window, apparently while this profiling run was in progress. No `<redacted>` fields were encountered — every differing row above is an organisation/worksite name or a count, consistent with the pack's no-personal-data contract.
+
+### 7.5 Verdict
+
+**Identical row-for-row on `04`, `05`, `06`, `07` and the `00`/`00b` snapshot; `01`, `02` and `03` diverge only where a live production import (`source='import'`, `created_at=2026-09-24`, ~19 employer aliases / ~15 worksite aliases / ~9 active workers) wrote to production after the clone's ~06:48 UTC backup and during this profiling session — the fresh clone is a faithful production-shaped restore, and every difference found is explained, not an anomaly.**

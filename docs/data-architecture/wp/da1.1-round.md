@@ -560,3 +560,48 @@ Numbers: **30 questions**; 9 are the plan §8 item 2 survivor choices (S1–S9);
 | DA1.1 prep | `06_oa_universe_crossmatch.sql` maps Subsea7 to 716 Reach Subsea (`%subsea%`); tighten to `%subsea 7%` / `%subsea7%`. | pack maintenance |
 | DA1.1 prep | Campaign 58 Jadestone Stag: 22 of employer 7's 26 active workers have no worksite; 28 members vs 3 at Stag CPF. Campaign 48 UGL WA Oil has no worksite and 211 of UGL's workers have none. | organiser / DA1.2 |
 | DA1.1 prep | ABR shows several agreement holders renamed or deregistered (Programmed family, Rigforce, MMA → Cyan, Kuiper → Eris, Tidewater Ship Management → TSM Offshore, Siem → Sea1): the FWC read (DA6.1) should record the holder's ABN, not just its name. | DA6.1 |
+
+## 13. Decisions received (session, 2026-09-24)
+
+Recorded in the worksheet's decision columns (`decided_by = operator`, `decided_on = 2026-09-24`). The worksheet has no `decision_ref` column (the column set is fixed), so each decision text starts with its S-number. Where a row already carried a 22 Sep decision, that text is kept and marked `[22 Sep …]`, and the 24 Sep decision follows it after `||`. 116 rows updated. 48 rows are named by no item and still have no decision: proposal-only keeps, mostly roots and survivors of already-decided D2 merges (691, 690, 688, 692, 1, 15, 11, 737, …).
+
+| Item | Answer | Rows written |
+|---|---|---|
+| S1 | Accepted: survivor 13 | 13, 689, 12, 14 |
+| S2 | Accepted: survivor 693 | 693, 695, 6, 7 |
+| S3 | Accepted: survivor 93 | 93, 703 |
+| S4 | Accepted: survivor id 717 renamed Solstad Australia Pty Ltd | 717, 47 |
+| S5 | Accepted: new Transocean root, 75 its child | 75 |
+| S6 | Accepted: 728 = TechnipFMC; Technip Energies new row | 728 |
+| S7 | **Reversed:** Isologics is a service-specific brand of KAEFER; 88 becomes a child of 704, `is_agreement_entity`, holds EA 120, source organiser, confidence H; no merge | 88, 704 |
+| S8 | Accepted: one row 66 | 66 |
+| S9 | Accepted (b): 17 renamed to its legal entity as a child of 706; 814 separate; alias DBP; all three in the universe | 17, 814, 706 |
+| S10 | Accepted (a): workers stay on root 26. Operator's emphasis: each separate Monadelphous entity with its own agreements exists as a child and rolls up to the single root | 26, 27 |
+| S11 | Accepted (b): 57 merged into 28; children Programmed Offshore Pty Ltd, RFM Offshore Pty Ltd (historical), RFM OS Pty Ltd | 28, 57 |
+| S12 | Accepted (b): 798 and 827 are children (D12 amended). Operator: Rigforce is a separate brand within the same corporate entity; neither Rigforce nor non-ROV Programmed workers may enter the Programmed ROV campaign; Programmed has several distinct business units | 798, 827, 33 |
+| S13 | Accepted (b): alias now; 826 merges in R3 after WA Oil exists | 826 |
+| S14 | Accepted (b): Downer EDI is the overall entity with one or more children; 18 renamed and made a child of 710 | 18, 710 |
+| S15 | Accepted: 705 = Cyan Vessel Operations Pty Ltd; campaign 57 +1 | 705, 699, 745 |
+| S16 | Accepted: 831 into 799; campaign 57 +1 | 799, 831 |
+| S17 | Accepted: Eris Projects and McDermott Crewing children now; others deferred | 19, 68, 21, 29 |
+| S18 | Accepted: 48 = TSM Offshore; Tidewater Marine Australia new root | 48 |
+| S19 | Accepted: 749 into 97, 816 into 815, 755 into 35 | 97, 749, 815, 816, 35, 755 |
+| S20 | Accepted: 779 into 733; 720 child of 733 | 733, 779, 720 |
+| S21 | Accepted: 736 into 73; 71 child of 73; 767 kept pending identification | 73, 736, 71, 767 |
+| S22 | Accepted: batch keep, contractor, confidence L | the 47 rows with `open_question = S22` |
+| S23 | Accepted: all six out of universe | 714, 751, 752, 773, 829, 782 |
+| S24 | Accepted: placeholders and union staff as proposed | 800, 813, 741, 795 |
+| S25 | Accepted | 713, 782 |
+| S26 | Accepted: `operator_tier2` | 694, 719 |
+| S27 | Accepted | 778 |
+| S28 | Accepted, including the `abr` alias source (DA2.1 migration) | 58, 19, 29, 54 |
+| S29 | Accepted: all new rows N1–N12 and the conditional children the answers require; DEME deferred | new rows only (not in the worksheet) |
+| S30 | Accepted: R1 / R2 / R3 split and ordering | none specific |
+
+Plan §6 amended the same day: D12 (S12) and a D3 note (S10–S14, including Isologics under KAEFER).
+
+Consequences for §2.1 counts. The §2.1 proposals already treated 57 as a merge and 798, 827 and 18 as children, so:
+- Merges: unchanged at 24 (10 workgroup + 14).
+- Children: 12 (+88 under 704).
+- Keep: 130.
+- The predicted campaign deltas stay at 57 +2, with 48 +6 deferred to R3 (S13).

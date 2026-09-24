@@ -1090,3 +1090,4 @@ No real-looking person field appeared in any result (all rows were synthetic `Fi
 | Step | File | Outcome | Values pasted |
 |---|---|---|---|
 | P1 | `prod/P1_preflight_before.sql` | matched (post-DA0.2 counts) | 05:46 UTC: employers 179 md5 `af799c7b87825cbba61caca92e2fd8a0`, worksites 190 md5 `822105ff5346facb75af36ee351020d4`; emp aliases merge=39 (max id 41); ws aliases import=8 (max id 8); workers 5900, raw columns absent (0 set); no DA0.3 objects; CHECKs merge/manual and import/manual/merge; view md5s workers_view `50325839…`, organising_universe_view `41c50b64…`, worksite_employer_eba_status `85ee20ac…`, principal_employer_eba_summary `ce7161fb…`; ledger row 0, max 20260924010000; hygiene log present; no env marker |
+| P2 | `prod/P2_migration.sql` | **committed; matched exactly** | version 20260922120000, name da0_3_name_match_reviews, nmr_present t, fold_name_present t, decide_present t, raw_columns 3 |

@@ -378,16 +378,21 @@ upcoming-project or SMS list references the scope.
   snapshot's `after_state`; every logged table still exists with a primary key; the 19 entity rows absent; 741 and 185 present by name; 1536 exactly `emp=741 ws=185 cwm=50
   profiles=50`; no logged delete row is already back; every logged update row still exists; no user trigger
   on a logged table is already disabled.
-- **Replay**: user triggers on every logged table disabled (`ALTER TABLE … DISABLE TRIGGER USER`; foreign-key
-  triggers stay live); the pending rows replayed in reverse `log_id` order — `delete` → `INSERT … SELECT …
-  FROM jsonb_populate_record(NULL::table, before_row)` with an explicit column list (generated columns
-  excluded, `OVERRIDING SYSTEM VALUE` when the table has a `GENERATED ALWAYS` identity column), `update` →
-  `UPDATE … SET (cols) = (SELECT … FROM jsonb_populate_record(…, before_row))` by primary key (every column
-  including `updated_at`, identity-always columns excluded). An insert that hits a foreign-key violation
-  (a same-depth mutual reference such as `email_lists.draft_id` ↔ `campaign_comms_drafts.email_list_id`)
-  is deferred and retried after each pass; if a pass makes no progress the remaining rows are inserted with
-  their nullable foreign-key columns that point at logged tables set NULL and completed by a full-row
-  update once every row is in. Triggers re-enabled; the forward rows stamped `rolled_back_at = now()`; each
+- **Replay** (fix round 4 — independent of the log order): user triggers on every logged table disabled
+  (`ALTER TABLE … DISABLE TRIGGER USER`; foreign-key triggers stay live). The pending *tables* are put in a
+  parents-first topological order computed from `pg_constraint` (single-column keys between pending tables;
+  self-references ignored; `DEFERRABLE` keys treated as absent): a table is placed once every table it
+  references is placed; when nothing is ready (a genuine cycle) the table whose unplaced parents are all
+  reached through *nullable* columns is placed next with those columns relaxed (inserted `NULL`, completed by
+  a full-row update once its parents have landed); a cycle with no such table stops the file. `delete` rows
+  are reinserted table by table in that order, by `log_id` ascending, via `INSERT … SELECT … FROM
+  jsonb_populate_record(NULL::table, before_row)` with an explicit column list (generated columns excluded,
+  `OVERRIDING SYSTEM VALUE` when the table has a `GENERATED ALWAYS` identity column). After every delete-row
+  has landed and the relaxed rows are completed, the `update` rows (SET NULL restorations, 1536's re-point)
+  are applied newest-first by primary key (every column including `updated_at`, identity-always columns
+  excluded). A retry loop remains as a safety net: a row that still hits a foreign-key violation is deferred,
+  passes continue while any row lands, and the file stops only when a whole pass lands nothing — naming the
+  row, its table, the violated constraint and the parent table. Triggers re-enabled; the forward rows stamped `rolled_back_at = now()`; each
   replayed row logged under `script = '90_rollback'` (`insert` with `after_row`, or `update` with the
   pre-restore row as `before_row`).
 - **Post-assertions** (review finding 2 — deltas against the rollback's own before-state, so the file is
@@ -637,8 +642,13 @@ preflight prediction by anything the weekly batch cannot explain (only `campaign
   and enforces snapshot byte-identity only under `_oux_env_marker` (finding 2); (d) `10` takes SHARE ROW
   EXCLUSIVE locks on the three organiser-written tables (finding 10); (e) self-referencing keys join the SET
   NULL step and the delete ordering (finding 5); (f) the temp functions are dropped before `COMMIT` (finding
-  14); (g) `00`'s `env_marker` row is guarded so the file runs on production, where the marker table does not
-  exist (found while re-running the preflight). Predicted log rows unchanged at 3,139 / 2,653.
+  14); (g) `00`'s `env_marker` row is guarded so the file runs on production, where the marker table does not  exist (found while re-running the preflight). Predicted log rows unchanged at 3,139 / 2,653.
+- **2026-09-24, fix round 4 (planner, operator-authorised rehearsal continuation):** `90`'s replay no
+  longer relies on reverse log order (§3.3); and its clone/dev byte-identity check on worker 1536 now compares
+  only the keys present in the snapshot (`before_state->'w1536'`, 49 keys): DA0.3's migration added three
+  nullable columns to `workers` on the clone after forward 1 (`employer_name_raw`, `worksite_name_raw`,
+  `names_import_id`, all absent from the snapshot), and the check is about the values the script changed,
+  not later schema drift. Every snapshot key is still a `workers` column on the clone.
 - **2026-09-24, fix round 2 (planner):** the clone rehearsal stopped in `10`'s `$preconditions$` block
   (`record "r" is not assigned yet`: the SQL alias `r` on `campaign_unit_rules` collided with the block's
   DECLAREd `r record`); the alias is now `cur`. **Rehearsal procedure change:** before the real forward run on
@@ -1013,6 +1023,341 @@ The transaction rolled back automatically before `COMMIT`; nothing in this submi
 
 **Per the verifier's stop rule: no further step was run.** Steps 5–7 (00 #3, forward 2, 00 #4) were **not executed**. The clone is still not in a state that proves reversibility; production must not be run until `90_rollback.sql`'s reinsert-ordering/fallback is fixed for this case and the rehearsal (from step 4, or from a fresh 00 if the fix requires a clean run) is repeated successfully.
 
+---
+
+### Resumed after fix round 4, 2026-09-24 — verifier (Sonnet), via the connector under the orchestrator's approval
+
+Fix round 4 confirmed applied to `scripts/data-hygiene/da0.2/90_rollback.sql`: a parents-first topological table order computed from `pg_constraint` (self-references ignored, `DEFERRABLE` keys treated as absent), cycle-breaking by relaxing nullable columns for the table whose unplaced parents are all reached through nullable keys (the `campaign_comms_drafts` ↔ `email_lists` cycle), retry passes that continue while any row lands (cap raised to 50 passes), an error naming the row, table, violated constraint and parent table, and worker 1536's identity check narrowed to only the snapshot's own keys (so DA0.3's added `workers` columns are excluded from the comparison). `10_remove_test_dataset.sql` unchanged. Resumed from step 4 against the clone's current state (unchanged since the previous attempt: post-forward-1, "00 #2" — 19 scoped entities absent, worker 1536 on 741/185/cwm=50, 2,653 pending `10_remove_test_dataset` log rows).
+
+#### Step 4 — `90_rollback.sql` — STOP (error)
+
+A third, different error — this time before the reinsert phase even begins, while building the parents-first table order.
+
+```text
+ERROR:  42804: column "ord" is of type integer but expression is of type text
+HINT:  You will need to rewrite or cast the expression.
+QUERY:  INSERT INTO _da02_torder (tbl, ord, relax_cols)
+  SELECT DISTINCT p.table_name, NULL, NULL FROM _da02_pending p WHERE p.action = 'delete'
+CONTEXT:  PL/pgSQL function inline_code_block line 31 at SQL statement
+```
+
+**Diagnosis (verified against the committed file, not a transcription error):** `scripts/data-hygiene/da0.2/90_rollback.sql:290–291` seeds `_da02_torder` (`tbl text PRIMARY KEY, ord int, relax_cols text[]`, declared at `:156`) with `INSERT INTO _da02_torder (tbl, ord, relax_cols) SELECT DISTINCT p.table_name, NULL, NULL FROM _da02_pending p WHERE p.action = 'delete'`. Under `SELECT DISTINCT`, Postgres must resolve a concrete type for every output column before it can apply the `DISTINCT` comparison, and with no other type information the two bare `NULL` literals resolve to `text` rather than staying the polymorphic "unknown" type a plain `INSERT ... VALUES (..., NULL, NULL)` would keep; a `text` value does not implicitly cast to `integer` on assignment, so the insert into `ord` (`integer`) fails. This is deterministic on every run (it fires before any row is touched) and is a bug in the committed script — the two `NULL`s need explicit casts (`NULL::int, NULL::text[]`), not a data or environment problem.
+
+The transaction rolled back automatically before `COMMIT`; nothing in this submission persisted. **The clone remains unchanged, still in the same post-forward-1 state** (00 #2: 19 scoped entities absent, worker 1536 on 741/185/cwm=50, 2,653 pending log rows).
+
+**Per the verifier's stop rule: no further step was run.** Steps 5–7 (00 #3, forward 2, 00 #4, leave forward) were **not executed**. Reversibility remains unproven; production must not be run until this cast is fixed and the rehearsal resumes successfully from step 4.
+
+---
+
+### Resumed after fix round 4a, 2026-09-24 — verifier (Sonnet), via the connector under the orchestrator's approval
+
+Fix confirmed applied: `scripts/data-hygiene/da0.2/90_rollback.sql:291` now reads `SELECT DISTINCT p.table_name, NULL::int, NULL::text[] FROM _da02_pending p WHERE p.action = 'delete'`; nothing else changed (632 lines, same as fix round 4). Resumed from step 4 against the clone's unchanged current state (post-forward-1, "00 #2": 19 scoped entities absent, worker 1536 on 741/185/cwm=50, 2,653 pending `10_remove_test_dataset` log rows).
+
+#### Step 4 — `90_rollback.sql` — STOP (error)
+
+The cast fix works — table ordering, reinsertion and the retry/relax logic all ran without error. A **fourth**, different error occurred at the very end, in step 7 (re-enabling triggers), after all rows had been reinserted/restored:
+
+```text
+ERROR:  55006: cannot ALTER TABLE "campaign_organising_units" because it has pending trigger events
+CONTEXT:  SQL statement "ALTER TABLE public.campaign_organising_units ENABLE TRIGGER USER"
+PL/pgSQL function inline_code_block line 177 at EXECUTE
+```
+
+**Diagnosis (verified against the committed file, not a transcription error):** `90_rollback.sql:436` (step 7) runs `ALTER TABLE public.%I ENABLE TRIGGER USER` for every logged table, including `campaign_organising_units`. Per §3.1.1 of this plan, `campaign_organising_units.group_id → campaign_groups` is one of the two `NO ACTION` keys that are `DEFERRABLE INITIALLY DEFERRED` (the other is `campaign_worker_ou.group_id`). Step 3 reinserts `campaign_organising_units` rows (`10` deleted 3 of them under campaigns 15/37); each reinsert queues a pending deferred trigger event for that FK, to be checked at `COMMIT` (or an explicit `SET CONSTRAINTS ... IMMEDIATE`). Postgres refuses `ALTER TABLE` on a table with a pending trigger event still queued in the same transaction — `ALTER TABLE ... ENABLE TRIGGER USER` in step 7 hits exactly that refusal. This is a gap in `90_rollback.sql`: it never accounts for the two deferrable keys into `campaign_groups` when re-enabling triggers, even though §3.1.1 explicitly calls them out. Not a data or environment problem — deterministic given the deferred constraint firing on every run that reinserts `campaign_organising_units` or `campaign_worker_ou` rows.
+
+The transaction rolled back automatically before `COMMIT`; nothing in this submission persisted (including the reinserts and restores that appeared to succeed earlier in the same transaction — none of it survives past the failed `ALTER TABLE`). **The clone remains unchanged, still in the same post-forward-1 state** (00 #2: 19 scoped entities absent, worker 1536 on 741/185/cwm=50, 2,653 pending log rows).
+
+**Per the verifier's stop rule: no further step was run.** Steps 5–7 of this attempt (00 #3, forward 2, 00 #4, leave forward) were **not executed**. Reversibility remains unproven; production must not be run until this is fixed (e.g. `SET CONSTRAINTS ALL IMMEDIATE` before step 7's `ENABLE TRIGGER USER` loop, or re-ordering so the deferred FK is checked before the `ALTER TABLE` calls) and the rehearsal resumes successfully from step 4.
+
+---
+
+### Resumed after fix round 4b, 2026-09-24 — verifier (Sonnet), via the connector under the orchestrator's approval
+
+Fix confirmed applied: `scripts/data-hygiene/da0.2/90_rollback.sql:434–439` now fires `SET CONSTRAINTS ALL IMMEDIATE;` (with an explanatory comment) immediately before step 7's `ENABLE TRIGGER USER` loop; nothing else changed (637 lines). Resumed from step 4 against the clone's unchanged state (post-forward-1, "00 #2": 19 scoped entities absent, worker 1536 on 741/185/cwm=50, 2,653 pending `10_remove_test_dataset` log rows).
+
+#### Step 4 — `90_rollback.sql` — SUCCESS
+
+All prior errors are resolved. Appended read-only `SELECT`:
+
+```text
+forward_rows_pending=0, campaigns_15_37=2, employers_787_794=8, worksites_196_199=4,
+workers_active=2293, w1536='emp=791 ws=197 cwm=37/50/64'
+```
+
+Matches §3.3's expectation exactly (`forward_rows_pending 0, campaigns_15_37 2, employers_787_794 8, worksites_196_199 4, workers_active` = this run's before + 664 = 2293 on the clone, `w1536 emp=791 ws=197 cwm=37/50/64`).
+
+#### Step 5 — `00_preflight.sql` ("00 #3", after rollback) — compared with "00 #1" (2026-09-24 rerun)
+
+248 rows returned. Every row outside section K is **identical** to "00 #1": `all_total/active` 2407/2293, `scope_664_ids_md5` f6589df6e2507a35542632026c3d0c34, all A/B/C/D rows, `E Σ` 2633/72, `F Σ` 16, `G Σ` 2, `G2 Σ` 20/2110, all H cross-checks, every I campaign checksum **including campaign 64 restored to `mem_n=276 mem_md5=7136269b71a6a2e4bc17f4725f9ac5c7`** (its pre-forward digest, byte-for-byte), and every J pack row.
+
+```text
+A identity | campaign:15 | Test2 (created 2026-04-16, status active, episode false, standing false, parent null)
+A identity | campaign:37 | testco (created 2026-04-28, status active, episode false, standing false, parent null)
+A identity | campaign:50 | Offshore Allliance internal (created 2026-05-28, status active, episode false, standing false, parent null)
+A identity | campaign:64 | ROV sector wide (created 2026-08-20, status active, episode false, standing false, parent null)
+A identity | employer:741 | Australian Workers' Union WA Branch (created 2026-04-01)
+A identity | employer:787 | TestCo Energy (created 2026-04-09)
+A identity | employer:788 | Fortis Maintenance Services (created 2026-04-09)
+A identity | employer:789 | Pacific Coatings & Insulation (created 2026-04-09)
+A identity | employer:790 | Alliance Site Services (created 2026-04-09)
+A identity | employer:791 | TestCo 2 (created 2026-04-16)
+A identity | employer:792 | Aegis Offshore Maintenance Pty Ltd (created 2026-04-16)
+A identity | employer:793 | NorthStar Marine Coatings (created 2026-04-16)
+A identity | employer:794 | Offshore Crew Services Ltd (created 2026-04-16)
+A identity | ids_present | 8 employers, 4 worksites, 2 campaigns, 1 program, 4 projects (expected 8, 4, 2, 1, 4)
+A identity | program:6 | TEST · TestCo 2 Offshore Maintenance Program (principal 791)
+A identity | project:18 | Test Onshore Gas Plant Brownfields (worksite 196)
+A identity | project:19 | TEST · TestCo 2 — Alpha — brownfields (worksite 197)
+A identity | project:20 | TEST · TestCo 2 — Bravo — maintenance (worksite 198)
+A identity | project:21 | TEST · TestCo 2 — Charlie — maintenance (worksite 199)
+A identity | worksite:185 | AWU Head Office (created 2026-04-01, principal null)
+A identity | worksite:196 | Test Onshore Gas Plant (created 2026-04-09, principal 787)
+A identity | worksite:197 | TEST · TestCo 2 — Alpha FPSO (created 2026-04-16, principal 791)
+A identity | worksite:198 | TEST · TestCo 2 — Bravo Platform (created 2026-04-16, principal 791)
+A identity | worksite:199 | TEST · TestCo 2 — Charlie FPU (created 2026-04-16, principal 791)
+B workers | all_total/active | 2407/2293
+B workers | by_created:2026-04-09 | 350 (ids 322-671)
+B workers | by_created:2026-04-16 | 312 (ids 672-983)
+B workers | by_created:2026-05-27 | 1 (ids 1537-1537)
+B workers | by_created:2026-06-03 | 1 (ids 1541-1541)
+B workers | by_employer:787 | 80/80
+B workers | by_employer:788 | 120/120
+B workers | by_employer:789 | 55/55
+B workers | by_employer:790 | 95/95
+B workers | by_employer:791 | 72/72
+B workers | by_employer:792 | 108/108
+B workers | by_employer:793 | 48/48
+B workers | by_employer:794 | 84/84
+B workers | by_employer:null | 2/2
+B workers | by_project:18 | 350
+B workers | by_project:19 | 104
+B workers | by_project:20 | 104
+B workers | by_project:21 | 104
+B workers | by_project:null | 2
+B workers | by_updated:2026-08-20 | 664
+B workers | by_worksite:196 | 350/350
+B workers | by_worksite:197 | 106/106
+B workers | by_worksite:198 | 104/104
+B workers | by_worksite:199 | 104/104
+B workers | cwm_664_other_campaigns | none
+B workers | cwo_664_other_campaigns | none
+B workers | email_not_test_patterned_ids | 1537
+B workers | email_shared_with_outside | 0
+B workers | email_test_patterned (contains "test") | 663
+B workers | employer_in_scope_but_worksite_not | 0
+B workers | member_number_not_null | 304
+B workers | member_number_shape | alpha1digits:7=160,alpha1digits:8=144,null=360
+B workers | member_number_shared_with_outside | 0
+B workers | membership_sync_rows_for_664 (transitions/history) | 0/0
+B workers | name_collisions_with_outside (first+last) | 6
+B workers | outside_scope_member_number_not_null/reference_id_not_null | 0/770
+B workers | phone_e164_shared_with_outside | 0
+B workers | reference_id_not_null | 0
+B workers | scope_664_ids_md5 | f6589df6e2507a35542632026c3d0c34
+B workers | scope_664_total/active | 664/664
+B workers | scope_incl_1536 | 665
+B workers | workers_on_741/185 | 0/0
+B workers | worksite_in_scope_but_employer_not_ids | 681,1537
+C w1536 | activist_profiles (campaign) | 37,50,64
+C w1536 | cwm (membership_id:campaign) | 2589:37,4451:50,11434:64
+C w1536 | cwo (campaign:ou) | 37:25
+C w1536 | row | emp=791 ws=197 proj=null active=true role_type=8 activist_like=true member_number_null=true reference_id_null=true created=2026-05-26
+C w1536 | rows_in_campaign_64 | campaign_activist_profiles=1,campaign_leader_worker_links=0,campaign_worker_list_items=2,campaign_worker_membership=1,campaign_worker_ou=0,email_list_items=3
+C w1536 | sms_conversations/sms_interactions/email_conversations (kept) | 4/58/1
+D structure | activities/ratings_15_37 | 10/11
+D structure | campaign_employers_15_37 | 15:791,37:791
+D structure | campaign_groups_15_37 (campaign:group:kind) | 37:3:worksite
+D structure | campaign_worksites_15_37 | 15:197,15:198,15:199,37:197,37:198,37:199
+D structure | cwm_15_37_by_class | in664=145,w1536=1
+D structure | delete_trigger_tables_in_scope (worker_campaign_facts / campaign_agreements) | 0/0
+D structure | employer_worksite_roles (id:employer:worksite) | 82:787:196,83:788:196,84:789:196,85:790:196,87:791:197,89:793:197,91:791:198,93:793:198,95:791:199,97:793:199
+D structure | organising_units_15_37 (campaign:ou:group:container) | 37:25:3:false,37:26:3:false,37:27:3:false
+D structure | program_worksites_6 (id:worksite) | 13:197,14:198,15:199
+D structure | project_employers (project:employer) | 18:787,18:788,18:789,18:790,19:791,19:792,19:793,20:791,20:792,20:793,21:791,21:792,21:793
+D structure | set_null_rows (sms_conversations/soc_sessions/worker_notes with campaign 15/37) | 3,4,5 / 4,5,6 / 1
+D structure | worksite_scopes/employer_scopes | 36/18
+E doomed | activity_ambitions | 5 (max depth 3)
+E doomed | an_tag_sync_log | 16 (max depth 1)
+E doomed | call_attempt_outcomes | 2 (max depth 4)
+E doomed | call_attempts | 1 (max depth 3)
+E doomed | call_list_items | 146 (max depth 2)
+E doomed | call_list_scripts | 1 (max depth 2)
+E doomed | call_lists | 7 (max depth 1)
+E doomed | call_outcome_definitions | 3 (max depth 1)
+E doomed | call_script_sections | 1 (max depth 2)
+E doomed | call_scripts | 1 (max depth 1)
+E doomed | call_share_form_events | 14 (max depth 3)
+E doomed | call_share_tokens | 6 (max depth 2)
+E doomed | call_step_outcomes | 1 (max depth 4)
+E doomed | campaign_activist_profiles | 16 (max depth 1)
+E doomed | campaign_activities | 10 (max depth 1)
+E doomed | campaign_activity_ratings | 11 (max depth 2)
+E doomed | campaign_ambitions | 5 (max depth 1)
+E doomed | campaign_comms_drafts | 6 (max depth 1)
+E doomed | campaign_employers | 2 (max depth 1)
+E doomed | campaign_groups | 1 (max depth 1)
+E doomed | campaign_leader_form_events | 17 (max depth 4)
+E doomed | campaign_leader_tokens | 2 (max depth 3)
+E doomed | campaign_leader_worker_links | 58 (max depth 1)
+E doomed | campaign_organisers | 2 (max depth 1)
+E doomed | campaign_organising_units | 3 (max depth 1)
+E doomed | campaign_situation_analyses | 1 (max depth 1)
+E doomed | campaign_stage_plans | 13 (max depth 1)
+E doomed | campaign_task_list_items | 23 (max depth 3)
+E doomed | campaign_task_lists | 5 (max depth 2)
+E doomed | campaign_worker_list_items | 336 (max depth 2)
+E doomed | campaign_worker_lists | 57 (max depth 1)
+E doomed | campaign_worker_membership | 146 (max depth 1)
+E doomed | campaign_worker_ou | 74 (max depth 2)
+E doomed | campaign_worksites | 6 (max depth 1)
+E doomed | campaigns | 2 (max depth 0)
+E doomed | email_click_tokens | 2 (max depth 3)
+E doomed | email_list_items | 133 (max depth 2)
+E doomed | email_lists | 5 (max depth 1)
+E doomed | email_send_log | 133 (max depth 2)
+E doomed | employer_scopes | 18 (max depth 1)
+E doomed | employer_worksite_roles | 10 (max depth 1)
+E doomed | employers | 8 (max depth 0)
+E doomed | gate_definitions | 10 (max depth 1)
+E doomed | oauth_send_batches | 5 (max depth 2)
+E doomed | phone_call_action_lists | 7 (max depth 2)
+E doomed | phone_call_actions | 6 (max depth 1)
+E doomed | plan_ambitions | 37 (max depth 2)
+E doomed | plan_capacities | 16 (max depth 2)
+E doomed | plan_revision_notes | 1 (max depth 1)
+E doomed | plan_theory_of_winning | 1 (max depth 2)
+E doomed | plan_where_to_play | 12 (max depth 2)
+E doomed | plan_wtp_ambitions | 7 (max depth 3)
+E doomed | program_worksites | 3 (max depth 1)
+E doomed | programs | 1 (max depth 0)
+E doomed | project_employers | 13 (max depth 1)
+E doomed | projects | 4 (max depth 0)
+E doomed | reporting_snapshots | 8 (max depth 1)
+E doomed | section_plan_situation_snippets | 1 (max depth 2)
+E doomed | section_plans | 2 (max depth 1)
+E doomed | sms_send_log | 4 (max depth 2)
+E doomed | sms_survey_definition_versions | 1 (max depth 2)
+E doomed | sms_survey_questions | 10 (max depth 2)
+E doomed | sms_survey_sessions | 4 (max depth 2)
+E doomed | sms_surveys | 1 (max depth 1)
+E doomed | worker_activity_log | 2 (max depth 2)
+E doomed | worker_an_tags | 386 (max depth 1)
+E doomed | worker_campaign_connections | 2 (max depth 1)
+E doomed | worker_notes | 2 (max depth 1)
+E doomed | worker_tags | 74 (max depth 1)
+E doomed | workers | 664 (max depth 0)
+E doomed | worksite_scopes | 36 (max depth 1)
+E doomed | worksites | 4 (max depth 0)
+E doomed | Σ rows / tables | 2633 / 72
+F set-null | sms_conversations.campaign_id -> campaigns | 3
+F set-null | sms_conversations.worker_id -> workers | 3
+F set-null | soc_sessions.campaign_id -> campaigns | 3
+F set-null | soc_sessions.capacity_id -> plan_capacities | 3
+F set-null | soc_sessions.plan_id -> campaign_stage_plans | 3
+F set-null | worker_notes.campaign_id -> campaigns | 1
+F set-null | Σ update log rows 10 will write | 16
+G BLOCKER | workers.employer_id -> employers | 1
+G BLOCKER | workers.worksite_id -> worksites | 1
+G BLOCKER | Σ rows (expected 2: worker 1536 via employer_id and worksite_id) | 2
+G2 NO ACTION within closure | campaign_organising_units.group_id -> campaign_groups (deferrable) | 3
+G2 NO ACTION within closure | campaign_worker_ou.group_id -> campaign_groups (deferrable) | 74
+G2 NO ACTION within closure | programs.principal_employer_id -> employers | 1
+G2 NO ACTION within closure | projects.worksite_id -> worksites | 4
+G2 NO ACTION within closure | workers.employer_id -> employers | 662
+G2 NO ACTION within closure | workers.project_id -> projects | 662
+G2 NO ACTION within closure | workers.worksite_id -> worksites | 664
+G2 NO ACTION within closure | worksite_scopes.employer_id -> employers | 36
+G2 NO ACTION within closure | worksites.principal_employer_id -> employers | 4
+G2 NO ACTION within closure | Σ (keys total / rows) | 20 / 2110
+H cross-checks | agreements_employer_in_scope | 0
+H cross-checks | campaign_employers/worksites_in_scope_other_campaigns | 0/0
+H cross-checks | campaigns_parent_in_scope | 0
+H cross-checks | composite_fks_to_root_tables | 0
+H cross-checks | documents_employer/campaign_in_scope | 0/0
+H cross-checks | employers_parent_in_scope | 0
+H cross-checks | programs_with_principal_in_scope | 6
+H cross-checks | projects_absorbed_into_scope | 0
+H cross-checks | sms_lists_15_37 | 0
+H cross-checks | unit_basis/unit_rules_referencing_scope_other_campaigns | 0/0
+H cross-checks | upcoming_project_employers_in_scope | 0
+H cross-checks | workers_on_projects_18_21_outside_664 | 0
+H cross-checks | worksite_contracts_in_scope | 0
+H cross-checks | worksites_parent_in_scope | 0
+H cross-checks | worksites_with_principal_or_operator_in_scope | 196,197,198,199
+I checksums | campaign:015 | mem_n=72 mem_md5=b751b5c2a8a9b2cf53e9e5640d281a34 ou_n=0 ou_md5=-
+I checksums | campaign:021 | mem_n=146 mem_md5=eb1620a94589f1af3a1c6c635b405e90 ou_n=0 ou_md5=-
+I checksums | campaign:023 | mem_n=48 mem_md5=f34b53b239b9fd56ca94fc7cb6cc225c ou_n=48 ou_md5=09ff42f537438944a8d3b2f94011d5d2
+I checksums | campaign:026 | mem_n=216 mem_md5=b4269d914fbd8bfac345e176ad363252 ou_n=284 ou_md5=324322f19429a54158564c895b906096
+I checksums | campaign:027 | mem_n=80 mem_md5=cc2ec66e0618ac90f302740ebfe17fe7 ou_n=15 ou_md5=a752065f2b97c70c15eec56fe06c859c
+I checksums | campaign:037 | mem_n=74 mem_md5=4055c684d3e0a83a260bbfc99d014b24 ou_n=74 ou_md5=844df0fbe36847ba9ba6312f8b0c2232
+I checksums | campaign:041 | mem_n=61 mem_md5=3001d5cf0785e7aa5276dd4a6910c44f ou_n=61 ou_md5=f6f391cda8752629015da30fde8a286d
+I checksums | campaign:042 | mem_n=212 mem_md5=0684c5c5720da040c254258ac3c997f7 ou_n=236 ou_md5=5f03d021e0d04e58ab63930e8cd852a6
+I checksums | campaign:047 | mem_n=223 mem_md5=16bd5db083ed0b753a026ae1f7226e38 ou_n=85 ou_md5=72334c25b42643e7a0b2ee37e68ab283
+I checksums | campaign:048 | mem_n=219 mem_md5=4a22632a0272b0c714b76ccc4a934228 ou_n=0 ou_md5=-
+I checksums | campaign:049 | mem_n=0 mem_md5=- ou_n=0 ou_md5=-
+I checksums | campaign:050 | mem_n=8 mem_md5=e32c927b307976328bd90e447284e248 ou_n=0 ou_md5=-
+I checksums | campaign:055 | mem_n=11 mem_md5=e8cf11c48e46d8f34039b5b35a77640c ou_n=11 ou_md5=b6ea2d85d5601356f1e3286b3c5ef2c6
+I checksums | campaign:057 | mem_n=305 mem_md5=88ea6e21af475cfcd6b8efc1c54addfc ou_n=606 ou_md5=768839e6dbebae44921bf7d7e9b1146c
+I checksums | campaign:058 | mem_n=28 mem_md5=3787f32edb4f999314087158fb662100 ou_n=28 ou_md5=46ef975145f25459b0843c97f3c35e98
+I checksums | campaign:059 | mem_n=196 mem_md5=2b32133f470a84cd7beb149b218ac909 ou_n=196 ou_md5=d99f4d4ac3287e2fb1d0549a50a7962b
+I checksums | campaign:060 | mem_n=224 mem_md5=8dbf2decb5fbe06ccd283a194650c690 ou_n=0 ou_md5=-
+I checksums | campaign:061 | mem_n=48 mem_md5=e235cb0622d6e925f9dc3486f7f55f73 ou_n=11 ou_md5=1a4747a6a422a702db6a133a8c8cacf4
+I checksums | campaign:062 | mem_n=64 mem_md5=f1dfbed6a6a17dba8543b9dff36cf663 ou_n=0 ou_md5=-
+I checksums | campaign:064 | mem_n=276 mem_md5=7136269b71a6a2e4bc17f4725f9ac5c7 ou_n=266 ou_md5=44160600fd8b9db457e9f1d9ea2e5353
+I checksums | campaign:065 | mem_n=55 mem_md5=999f5a93438dfe8ba039746b572f1e74 ou_n=0 ou_md5=-
+I checksums | campaign:066 | mem_n=160 mem_md5=93e2ee6beca5f4b77594580a4e0d30ca ou_n=0 ou_md5=-
+J pack | 05 employer cluster `testco` | 787:TestCo Energy || 791:TestCo 2
+J pack | 05 worksite cluster `test` | 196:Test Onshore Gas Plant || 197:TEST · TestCo 2 — Alpha FPSO || 198:TEST · TestCo 2 — Bravo Platform || 199:TEST · TestCo 2 — Charlie FPU
+J pack | campaign_employers | 46
+J pack | campaign_groups | 20
+J pack | campaign_organising_units | 239
+J pack | campaign_worker_membership | 2726
+J pack | campaign_worker_ou | 1921
+J pack | campaign_worksites | 122
+J pack | campaigns | 22
+J pack | employer_scopes | 28
+J pack | employer_worksite_roles | 251
+J pack | employers | 171
+J pack | import_logs (untouched) | 42
+J pack | membership_update_batches (untouched) | table absent
+J pack | program_worksites | 10
+J pack | programs | 4
+J pack | projects | 20
+J pack | workers | 2407
+J pack | workers_active | 2293
+J pack | worksite_scopes | 49
+J pack | worksites | 174
+J pack | worksites_active | 168
+K environment | can_set_session_replication_role | false
+K environment | disabled_user_triggers | none
+K environment | env_marker | clone (2026-09-12)
+K environment | fp_fk_edges | 4935f890045d8c94d4c40b846c969e64
+K environment | fp_triggers | ac616370c2916c7044dcc381a4563bf4
+K environment | hygiene_log | _oux_hygiene_log rows=5741
+K environment | hygiene_log_da02_pending/rolled_back | 0/2653
+K environment | identity_always/generated_columns | campaign_ambition_revisions.id,_oux_wp21_canonical_basis.mapping_id / intractable_bargaining_tracker.nine_month_threshold_at,pabo_applications.voter_turnout_pct
+K environment | matview worksite_hierarchy_report_rows_mv rows/rows_in_scope | 55/0
+K environment | pg_version | PostgreSQL 17.6 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit
+K environment | role postgres super/bypassrls | false/true
+```
+
+**Comparison verdict: NOT fully identical.** Two section-K rows differ that are **outside the permitted allowance** (only `hygiene_log rows=` and `hygiene_log_da02_pending/rolled_back` are permitted to differ):
+
+| row | 00 #1 (2026-09-24, before forward 1) | 00 #3 (2026-09-24, after rollback) | permitted? |
+|---|---|---|---|
+| `K environment \| hygiene_log` | `_oux_hygiene_log rows=346` | `_oux_hygiene_log rows=5741` | yes (permitted) |
+| `K environment \| hygiene_log_da02_pending/rolled_back` | `0/0` | `0/2653` | yes (permitted) |
+| `K environment \| fp_fk_edges` | `2b7d6ab91d81159de92a4266d0ed6f59` | `4935f890045d8c94d4c40b846c969e64` | **no — not permitted** |
+| `K environment \| fp_triggers` | `eae74d6efa782f8a1ac9f7ae48089e67` | `ac616370c2916c7044dcc381a4563bf4` | **no — not permitted** |
+
+Every other row (sections A–J and the rest of K — `env_marker`, `matview...`, `role postgres...`, `can_set_session_replication_role`, `disabled_user_triggers` = `none`, `identity_always/generated_columns`, `pg_version`) is byte-identical between 00 #1 and 00 #3, including every campaign checksum (campaign 64 restored exactly to `mem_n=276 mem_md5=7136269b71a6a2e4bc17f4725f9ac5c7`) and every J-pack table count. `disabled_user_triggers = none` confirms `90`'s own trigger-state post-assertion (which passed, since the run committed) — no trigger was left disabled by this run.
+
+**Assessment:** `fp_fk_edges` and `fp_triggers` are schema-catalog fingerprints (over `pg_constraint`/`pg_trigger`), not data. Nothing in `10_remove_test_dataset.sql` or `90_rollback.sql` runs DDL against the schema (no `CREATE`/`ALTER`/`DROP` on any permanent table or constraint) — both scripts only ever run `ALTER TABLE … {DISABLE,ENABLE} TRIGGER USER` (which changes `pg_trigger.tgenabled`, would show only in `fp_triggers`, and is asserted back to the pre-run state before `COMMIT` — confirmed here since `fp_triggers` for 00 #1 and 00 #3 both derive from `tgenabled` and `disabled_user_triggers` reads `none` in both). Since the same DA0.2 scripts ran between 00 #1 and 00 #2 today with **no** fingerprint change (see 00 #2 above, not re-diffed for K's non-log rows but consistent with 00 #1's baseline throughout `10`'s own internal count-based checks), and neither `fp_fk_edges` nor `fp_triggers` is derived from any table DA0.2 touches, the most likely explanation is an external migration or DDL change applied to the shared clone by another concurrent workstream (the coordinator's own note names DA0.3 and DA0.5 as sharing this clone) between the "00 #1" preflight run earlier today and this "00 #3" run — not anything DA0.2's own scripts did. No campaign, worker, employer, worksite, program, project, junction or checksum row differs; the closure/E/F/G/G2/H/I/J sections are all identical, which would not be true if DA0.2's own rollback had left the database in a different *data* state.
+
+**Paused before step 6, pending confirmation.** This was a difference outside the explicitly permitted section-K rows, so the verifier did not treat 00 #3 as "identical" to 00 #1 without checking first. **No data was changed by the pause** — `90` had already committed successfully and left the clone in the pre-forward (00 #1-equivalent) state; step 6 (forward 2) had not yet run.
+
+**Orchestrator's explanation (2026-09-24), confirmed:** the fingerprint changes are caused by DA0.3's clone rehearsal, which ran on this same shared clone between this run's "00 #1" and "00 #3" and added `name_match_reviews` (with its own foreign keys and two triggers) and the `workers.names_import_id` key, leaving that migration applied. This is DA0.3's doing, not DA0.2's — confirmed independently above (no DDL in `10_remove_test_dataset.sql` or `90_rollback.sql`; every data-derived section, including every campaign checksum, is byte-identical between 00 #1 and 00 #3). **00 #3 is treated as matching 00 #1** for the purposes of this rehearsal: the only differences are the two permitted hygiene-log rows plus these two externally-caused fingerprint rows, none of which reflect anything DA0.2's scripts did. Proceeding to step 6.
+
 ## 10. Review
 
 **2026-09-22 — Reviewer: Fable, round 1.** Read `00_preflight.sql`, `10_remove_test_dataset.sql`, `90_rollback.sql`
@@ -1250,6 +1595,69 @@ temp table and CTE against every column its consumers reference, and every snaps
   = `after_state->>'rows_logged'` 2652.
 No other change. The clone stays in its hold state (§11) until P7 is answered.
 
+**Fix round 4 — applied (operator-authorised rehearsal continuation), 2026-09-24.** The resumed `90` stopped
+at its step-4 fallback: `email_send_log {"send_id": 274} cannot be reinserted (foreign-key violation with no
+nullable key to relax)`. Cause, read from the clone's pending log rows (ids only): `email_send_log.draft_id`
+(NOT NULL) → `campaign_comms_drafts` 47, logged at 4371 under step B, later than the send row (4230, also B), so
+in reverse log order draft 47 came first — but draft 47 was itself deferred, because
+`campaign_comms_drafts.email_list_id` (nullable) → `email_lists` 17, logged at 4093–4097 (B), *earlier* than
+the drafts and therefore *later* in reverse order, while `email_lists.draft_id` (nullable) points back at the
+drafts: a genuine mutual reference. Both tables were deferred; the single retry pass could not land either;
+the fallback then relaxed and inserted the drafts, and in the same loop reached send 274 — which has no
+nullable key of its own — and raised, although one more retry pass would have landed it. (The same reverse-
+order inversion also exists for `call_list_items.list_id` → `call_lists`: 98 items are logged under step B
+before the lists (4253–4259) but 48 more under step C (up to 4443) after them; the old retry would have
+handled that one.) Changes:
+1. `90` orders the pending *tables* topologically from `pg_constraint` (parents first; self-references ignored;
+   `DEFERRABLE` keys treated as absent), breaks a cycle by choosing the table whose unplaced parents are all
+   reached through nullable columns (relaxed on insert, completed by a full-row update after its parents are
+   in), inserts each table's rows by `log_id` ascending, and applies the `update` rows only after every
+   delete-row has landed (newest first, so a row nulled through several keys ends at its original state).
+   For the clone's pending set the only cycle is `campaign_comms_drafts.email_list_id` ↔ `email_lists.draft_id`
+   (both nullable); the order places `email_lists` first with `draft_id` relaxed (its other parent `campaigns`
+   is placed already), then `campaign_comms_drafts`, then `email_send_log`, `oauth_send_batches`,
+   `sms_send_log`, `email_click_tokens`.
+2. The retry loop stays as a safety net, continues while *any* row lands (up to 50 passes) and raises only
+   when a whole pass lands nothing; the message names the row (`row_pk`), its table, the violated constraint
+   (`GET STACKED DIAGNOSTICS … CONSTRAINT_NAME`, `MESSAGE_TEXT`) and the parent table looked up from
+   `_da02_edges` by constraint name.
+3. Every pending table with a NOT NULL key into another pending table (clone, 2,652 pending rows; parents
+   named after `→`), all placed after their parents by the order in 1: `activity_ambitions` → `campaign_activities`,
+   `plan_ambitions`; `an_tag_sync_log` → `campaigns`; `call_attempt_outcomes` → `call_attempts`,
+   `call_outcome_definitions`; `call_attempts` → `call_list_items`; `call_list_items` → `workers`, `call_lists`
+   (the step-B/step-C split above); `call_list_scripts` → `call_lists`, `call_scripts`; `call_lists` →
+   `campaigns`; `call_script_sections` → `call_scripts`; `call_scripts` → `campaigns`; `call_share_form_events`
+   → `call_share_tokens`; `call_share_tokens` → `call_lists`; `call_step_outcomes` → `call_attempts`,
+   `call_script_sections`; `campaign_activist_profiles` → `campaigns`, `workers`; `campaign_activities` →
+   `campaigns`; `campaign_activity_ratings` → `campaign_activities`, `workers`; `campaign_ambitions` →
+   `campaigns`; `campaign_comms_drafts` → `campaigns`; `campaign_employers` → `campaigns`, `employers`;
+   `campaign_groups` → `campaigns`; `campaign_leader_form_events` → `campaign_leader_tokens`;
+   `campaign_leader_tokens` → `campaign_task_lists`; `campaign_leader_worker_links` → `campaigns`, `workers`
+   (×2); `campaign_organisers` → `campaigns`; `campaign_organising_units` → `campaigns`;
+   `campaign_situation_analyses` → `campaigns`; `campaign_stage_plans` → `campaigns`;
+   `campaign_task_list_items` → `campaign_task_lists`; `campaign_task_lists` → `campaigns`;
+   `campaign_worker_list_items` → `campaign_worker_lists`, `workers`; `campaign_worker_lists` → `campaigns`;
+   `campaign_worker_membership` → `campaigns`, `workers`; `campaign_worker_ou` → `campaign_organising_units`,
+   `workers` (and `campaign_groups`, deferrable); `campaign_worksites` → `campaigns`; `email_click_tokens` →
+   `email_send_log`; `email_list_items` → `email_lists`, `workers`; `email_lists` → `campaigns`;
+   `email_send_log` → `campaign_comms_drafts`, `workers`; `employer_scopes` → `employers`;
+   `employer_worksite_roles` → `employers`, `worksites`; `phone_call_action_lists` → `phone_call_actions`,
+   `call_lists`; `phone_call_actions` → `campaigns`; `plan_revision_notes` → `campaigns`; `plan_wtp_ambitions`
+   → `plan_ambitions`, `plan_where_to_play`; `program_worksites` → `programs`, `worksites`; `project_employers`
+   → `employers`, `projects`; `projects` → `worksites`; `reporting_snapshots` → `campaigns`;
+   `section_plan_situation_snippets` → `section_plans`; `section_plans` → `campaigns`; `sms_send_log` →
+   `campaign_comms_drafts`, `workers`; `sms_survey_definition_versions`, `sms_survey_questions`,
+   `sms_survey_sessions` → `sms_surveys` (sessions also → `workers`); `sms_surveys` → `campaigns`;
+   `worker_activity_log` → `worker_campaign_connections`; `worker_an_tags`, `worker_notes`, `worker_tags` →
+   `workers`; `worker_campaign_connections` → `campaigns`, `workers`; `worksite_scopes` → `worksites`. The
+   roots `campaigns`, `workers`, `employers`, `worksites`, `programs`, `projects` have only nullable keys
+   between them (`workers.employer_id/worksite_id/project_id`, `projects.worksite_id` is NOT NULL →
+   `worksites` placed first, `programs.principal_employer_id`, `worksites.principal_employer_id/operator_id`),
+   so the order is well defined without relaxation among the roots.
+4. The clone/dev byte-identity check on worker 1536 compares only the snapshot's 49 keys (§8).
+No mutating SQL was run; the clone stays in its hold state until the verifier resumes from step 4 under the
+operator's continuation authorisation.
+
 **2026-09-23 — Reviewer: Fable, round 2.** Re-read `00_preflight.sql` (286 lines), `10_remove_test_dataset.sql`
 (861) and `90_rollback.sql` (607) in full and the fix-round entries above; ran the revised preflight's B/D/E/F/G/G2/K
 rows read-only on the clone. Verdict: **APPROVE WITH ADVISORIES** — every round-1 finding is resolved; nothing
@@ -1349,6 +1757,13 @@ Advisories A–C of round 2 applied by the orchestrator, 2026-09-23 (plan §3.2 
 | 8 | leave clone forward | **NOT APPLICABLE YET** — the clone is currently forward from forward-1 only (not a completed forward-back-forward rehearsal); reversibility is unproven pending a fix to `90_rollback.sql` | 2026-09-24 | verifier (Sonnet) |
 | 4 (resumed after P7) | `90_rollback.sql` (fix round 3: `_da02_pending` now projects `after_row`) | **ERROR — STOP.** `P0001: 90: email_send_log {"send_id": 274} cannot be reinserted (foreign-key violation with no nullable key to relax)` — a NOT-NULL FK from `email_send_log` into a still-pending table has no nullable column to relax (the replay's step-4 fallback only handles nullable-FK cycles). Not the byte-identity/DA0.3-column issue flagged; occurs earlier, during reinsertion. Transaction rolled back automatically; clone unchanged, still in the post-forward-1 (00 #2) state | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
 | 5–7 (resumed) | `00_preflight.sql` / `10_remove_test_dataset.sql` | **NOT RUN** — verifier stopped at step 4 per the stop rule | — | — |
+| 4 (resumed after fix round 4) | `90_rollback.sql` (fix round 4: parents-first topological order, cycle relaxation, continuing retry passes, detailed error, narrowed 1536 identity check) | **ERROR — STOP.** `42804: column "ord" is of type integer but expression is of type text` — `_da02_torder`'s seeding `INSERT ... SELECT DISTINCT p.table_name, NULL, NULL ...` (line 291) resolves the two bare `NULL`s to `text` under `DISTINCT`, which does not implicitly cast to `ord`'s `integer` type. Fails before any row is touched (before the reinsert phase). Transaction rolled back automatically; clone unchanged, still in the post-forward-1 (00 #2) state | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| 5–7 (resumed after fix round 4) | `00_preflight.sql` / `10_remove_test_dataset.sql` | **NOT RUN** — verifier stopped at step 4 per the stop rule | — | — |
+| 4 (resumed after fix round 4a) | `90_rollback.sql` (fix round 4a: `NULL::int, NULL::text[]` cast at line 291) | **ERROR — STOP.** `55006: cannot ALTER TABLE "campaign_organising_units" because it has pending trigger events` — step 7's `ALTER TABLE ... ENABLE TRIGGER USER` hits a pending deferred-constraint check queued by reinserting `campaign_organising_units` rows (its `group_id → campaign_groups` FK is `DEFERRABLE INITIALLY DEFERRED`, per §3.1.1). Cast fix worked; table ordering, reinsertion and retry/relax logic all completed. Transaction rolled back automatically; clone unchanged, still in the post-forward-1 (00 #2) state | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| 5–7 (resumed after fix round 4a) | `00_preflight.sql` / `10_remove_test_dataset.sql` | **NOT RUN** — verifier stopped at step 4 per the stop rule | — | — |
+| 4 (resumed after fix round 4b) | `90_rollback.sql` (fix round 4b: `SET CONSTRAINTS ALL IMMEDIATE;` before the ENABLE TRIGGER loop) | **SUCCESS.** Appended SELECT matches §3.3 exactly: `forward_rows_pending=0, campaigns_15_37=2, employers_787_794=8, worksites_196_199=4, workers_active=2293, w1536='emp=791 ws=197 cwm=37/50/64'` | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| 5 (resumed after fix round 4b) | `00_preflight.sql` ("00 #3", vs "00 #1" of the 2026-09-24 rerun) | 248 rows. Every row outside section K identical, including campaign 64's checksum restored exactly (`mem_n=276 mem_md5=7136269b71a6a2e4bc17f4725f9ac5c7`). **Not fully identical:** `fp_fk_edges` (2b7d6ab9… → 4935f890…) and `fp_triggers` (eae74d6e… → ac616370…) both changed — a difference **outside** the permitted allowance (only `hygiene_log rows=` and `hygiene_log_da02_pending/rolled_back` are permitted to differ). Assessed as likely external schema drift on the shared clone (DA0.3/DA0.5 also rehearse there), not caused by DA0.2's scripts (no DDL in `10`/`90`; all other sections, including every checksum, are identical) — but per the stop rule this is reported as a mismatch, not silently passed | 2026-09-24 | verifier (Sonnet), via the connector under the orchestrator's approval |
+| 6–8 (resumed after fix round 4b) | `10_remove_test_dataset.sql` (forward 2) / `00_preflight.sql` (00 #4) / leave forward | **NOT RUN** — verifier stopped at step 5's comparison per the stop rule pending confirmation the fingerprint drift is external and safe to proceed past | — | — |
 
 ## 12. Operator decisions received (session, 2026-09-24)
 
@@ -1358,3 +1773,7 @@ Advisories A–C of round 2 applied by the orchestrator, 2026-09-23 (plan §3.2 
 | P1 | The 304 synthetic workers carrying `workers.member_number` are synthetic data and are removed | `10`'s reading stands; no change to scope |
 | P2 | Workers 681, 1537 and 1541 confirmed synthetic | as planned |
 | P6 | Clarification requested (10 vs 11 roles): the scope is defined by the entities, not by a role list; the ten rows are every `employer_worksite_roles` row whose employer is 787–794 or whose worksite is 196–199 (ids 82, 83, 84, 85, 87, 89, 91, 93, 95, 97: TestCo Energy Operator, Fortis Maintenance Services Principal_Contractor, Pacific Coatings & Insulation Subcontractor and Alliance Site Services Principal_Contractor at Test Onshore Gas Plant; TestCo 2 Operator and NorthStar Marine Coatings Subcontractor at each of Alpha FPSO, Bravo Platform and Charlie FPU). Employers 792 and 794 hold no role row. The gaps in the id sequence (86 is Toll Energy at Gorgon LNG; 88, 90, 92, 94, 96 do not exist) are unrelated. The plan's "11" was a written count with no list behind it | pending the operator's acknowledgement |
+
+**Fix round 4a (orchestrator, 2026-09-24):** `90_rollback.sql:291` — the two bare `NULL`s in the `INSERT INTO _da02_torder … SELECT DISTINCT` resolved to `text` under DISTINCT and could not be assigned to `ord int`; cast to `NULL::int, NULL::text[]`. No other change.
+
+**Fix round 4b (orchestrator, 2026-09-24):** `90_rollback.sql` step 7 — `SET CONSTRAINTS ALL IMMEDIATE;` before the `ENABLE TRIGGER USER` loop, because the reinserted `campaign_organising_units` rows leave pending deferred-constraint events on the two DEFERRABLE keys into `campaign_groups`, and `ALTER TABLE` refuses a table with pending trigger events (55006). Same mechanism as `oux-wp2.1/03a_rollback.sql`. No other change.

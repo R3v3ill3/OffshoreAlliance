@@ -37,12 +37,11 @@ Answer these in the session (or by editing the plan files' §5 tables); the run 
 
 1. Open the Supabase dashboard → project → **SQL Editor**, signed in as the project owner (the `postgres` role).
 2. Paste **one file per submission**, unmodified, from the committed path named in the step.
-3. On **production only**, for every mutating file: insert the line `SET LOCAL oux.env = 'production';` immediately
-   after the first `BEGIN;` in the pasted text. Without it the file refuses to run (that is the guard working).
-   Never add that line on a clone or dev, and never edit anything else in the file.
-4. The editor shows only the **last** statement's result. Every mutating file ends with a read-only `SELECT` after
-   `COMMIT;`, and that is what you paste back. Read-only files with several blocks (DA0.5's `00_catalog_check.sql`,
-   DA0.2's `00_preflight.sql` is a single statement) are submitted one block at a time.
+3. The `prod/` files already contain the production guard line (`SET LOCAL oux.env = 'production';` after `BEGIN;`),
+   so nothing needs editing. Never paste a `prod/` file into the clone or dev.
+4. The editor shows only the **last** statement's result. Every file under a package's `prod/` folder returns exactly
+   one result row, and that row is what you paste back. Use the `prod/` files; the parent-folder scripts are the
+   committed sources they were generated from.
 5. If a submission errors, the transaction has already rolled back; nothing changed. Paste the error verbatim and stop.
 6. Never use the connector's `apply_migration`, `supabase db push` or any `supabase` CLI command against production for
    these files. The migrations are applied by pasting the file as one `BEGIN; … COMMIT;` submission and then inserting
@@ -59,38 +58,39 @@ before the next step; the orchestrator (or you) records it in the package's `wp/
 | Step | File | What it does | Expect |
 |---|---|---|---|
 | 1 | `scripts/data-hygiene/da0.2/00_preflight.sql` (read-only) | Identity check, child-row closure, blockers, per-campaign checksums | 250 rows. Section E Σ = 3,119 rows / 72 tables; F Σ = 16; G BLOCKER Σ = 2 (worker 1536 only); scope md5 `f6589df6e2507a35542632026c3d0c34`; `workers_active` 5,749. Any other BLOCKER row or a different md5: stop |
-| 2 | `10_remove_test_dataset.sql` **with `SET LOCAL oux.env = 'production';` after `BEGIN;`** | Re-points 1536 to AWU WA Branch (741) / AWU Head Office (185), removes it from campaign 64, deletes campaigns 15 and 37, the 664 workers, projects 18–21, program 6, worksites 196–199, employers 787–794, logging every row | `workers_active 5085, workers_total 5900, campaigns_15_37 0, employers_787_794 0, worksites_196_199 0, roles 0, w1536 'emp=741 ws=185 cwm=50', test_worksite_cluster 0, log_rows_pending 3139, snapshot_rows_logged 3138`. Anything else: run `90_rollback.sql` (same `SET LOCAL` line) and report |
+| 2 | `10_remove_test_dataset.sql` (a ready-to-paste `prod/P2` file is generated once the rollback rehearsal passes) | Re-points 1536 to AWU WA Branch (741) / AWU Head Office (185), removes it from campaign 64, deletes campaigns 15 and 37, the 664 workers, projects 18–21, program 6, worksites 196–199, employers 787–794, logging every row | `workers_active 5085, workers_total 5900, campaigns_15_37 0, employers_787_794 0, worksites_196_199 0, roles 0, w1536 'emp=741 ws=185 cwm=50', test_worksite_cluster 0, log_rows_pending 3139, snapshot_rows_logged 3138`. Anything else: run `90_rollback.sql` (same `SET LOCAL` line) and report |
 | 3 | `00_preflight.sql` again | | Entities gone; every campaign checksum other than 15/37/64 identical to step 1; 64 has one membership fewer |
 | 4 | The profiling pack `scripts/data-hygiene/oa-universe/00`–`07` (read-only) | Re-measure | `workers_active 5085`; `05` shows no `test` worksite cluster. Paste into `wp/da0.2.md` §11 |
 
 Keep the hygiene-log rows for at least 30 days (WP0.4 retention rule): `90_rollback.sql` restores everything from
 them until they are cleaned up.
 
-### 3.2 DA0.5 — record the vessel-tracking migration in the ledger (after O-1)
+### 3.2 DA0.5 — record the vessel-tracking migration in the ledger (O-1 confirmed 24 Sep)
+
+Ready-to-paste files in `scripts/data-hygiene/da0.5/prod/` (the `SET LOCAL` line is already in the mutating file; each
+file returns one row). Run in order, paste each row back before the next:
 
 | Step | File | Expect |
 |---|---|---|
-| 1 | `scripts/data-hygiene/da0.5/00_catalog_check.sql`, **block O only** (read-only) | `tables_present 16, ledger_row_present f, ledger_max_version 20260921030000, ledger_rows 16` |
-| 2 | `10_record_ledger_row.sql` **with the `SET LOCAL` line** | `ledger_row_present t, ledger_name mobilisation_radar, ledger_rows 17, tables_present 16, policies 27, triggers 8, audit_function_present t, log_rows_written 1` |
-| 3 | `00_catalog_check.sql`, blocks A–J and K–N, one block per submission (read-only) | Blocks A–I identical to `wp/da0.5.md` §9.1; K–N: vessels 3 linked / 0 mismatched / 0 synthetic, watch contractors 2 / 0 / 0, 4 alias strings missing |
+| P1 | `P1_before.sql` (read-only) | tables 16, columns 171, constraints 72, indexes 33, policies 27, triggers 8, function md5 `764235c6…`, `ledger_row_present f`, ledger max `20260921030000`, ledger rows 16, vessels 25/3/0/0, contractors 14/2/0/0, 4 alias strings missing |
+| P2 | `P2_record_ledger_row.sql` (mutating: one ledger row) | `ledger_row_present t, ledger_name mobilisation_radar, ledger_rows 17, tables_present 16, policies 27, triggers 8, audit_function_present t, log_rows_written 1` |
+| P3 | `P3_after.sql` (read-only) | as P1 except `ledger_row_present t`, ledger max `20260922040000`, ledger rows 17 |
 
-The migration file `20260922040000_mobilisation_radar.sql` is **never** submitted to production: its tables already
-exist there and its `CREATE POLICY` statements would fail (`wp/da0.5.md` §3.2).
+The migration file `20260922040000_mobilisation_radar.sql` is **never** submitted to production (its tables already
+exist; its `CREATE POLICY` statements would fail).
 
 ### 3.3 DA0.3 — stop the bleed (migration, then merge, then the next weekly batch)
 
-Two human tasks precede it if you want the full evidence (`PROGRESS.md` human tasks): the two contract suites on dev
-(`OUX_CONTRACT_*` accounts) and the replay of `scripts/data-hygiene/da0.3/fixtures/replay_status_sync.xlsx` through
-the membership wizard on the dev-backed preview (`E2E_USER_*`). The migration and code are otherwise fully rehearsed.
+Ready-to-paste files in `scripts/data-hygiene/da0.3/prod/`. The two contract suites and the preview replay
+(`PROGRESS.md` human tasks) are optional extra evidence; the migration and code are fully rehearsed.
 
 | Step | File | Expect |
 |---|---|---|
-| 1 | `scripts/data-hygiene/da0.3/00_preflight.sql` (read-only) | `employers 187 / worksites 194` with their md5s; aliases `merge 39` / `import 8`; DA0.3 objects absent; both CHECKs two- and three-valued; ledger max `20260922040000` (after 3.2) |
-| 2 | `supabase/migrations/20260922120000_da0_3_name_match_reviews.sql` pasted as one submission: `BEGIN; SET LOCAL oux.env = 'production';` + the file + `COMMIT;` | `[]` (no error) |
-| 3 | As its own statement: `INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('20260922120000','da0_3_name_match_reviews');` | 1 row |
-| 4 | `00_preflight.sql` again | `name_match_reviews`, `fold_name`, `decide_name_match` present; 2 triggers, 1 policy, 7 indexes; three `workers` columns present with 0 set; both CHECKs `{merge,manual,import,oa_universe,fwc}`; employers/worksites md5 unchanged; the four view md5s unchanged |
-| 5 | Merge the branch into `main` (open the pull request from `claude/determined-hypatia-y2cqau`; the promotion gate is now satisfied because the migration is on production). The gen-types workflow regenerates `packages/db-types/generated.ts` from production; the hand-added DA0.3 types are expected to produce no diff | Vercel Production green; `/name-reviews` visible in the admin block |
-| 6 | Import the next weekly membership batch as usual | `00_preflight.sql` afterwards shows queue rows in `name_match_reviews` and **0 new employers or worksites** since step 4 (Phase 0 exit criterion). Work the queue at `/name-reviews` |
+| P1 | `P1_preflight_before.sql` (read-only) | employers 187 / worksites 194 with md5s; aliases merge 39 / import 8; DA0.3 objects absent; raw columns 0 |
+| P2 | `P2_migration.sql` (the migration + ledger row, one transaction) | one row: `20260922120000 / da0_3_name_match_reviews / t / t / t / 3` |
+| P3 | `P3_preflight_after.sql` (read-only) | same counts, md5s and view md5s as P1; objects present; both CHECKs `merge, manual, import, oa_universe, fwc` |
+| 4 | Merge the branch into `main` (open the pull request from `claude/determined-hypatia-y2cqau`); the gen-types workflow regenerates `packages/db-types/generated.ts` from production (expected no diff) | Vercel Production green; `/name-reviews` in the admin block |
+| 5 | Import the next weekly membership batch as usual, then run `P3_preflight_after.sql` again | queue rows in `name_match_reviews`; employers/worksites md5 unchanged since P3 (Phase 0 exit criterion). Work the queue at `/name-reviews` |
 
 ### 3.4 Phase 0 exit check
 

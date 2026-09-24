@@ -3,17 +3,21 @@
 -- again) and recovery elsewhere.
 --
 -- Reverses the whole run from public._oux_hygiene_log: every row logged by
--- 10_remove_test_dataset with rolled_back_at IS NULL is replayed in reverse log order —
--- 'delete' rows are reinserted from before_row with their original primary keys (serial and
--- IDENTITY BY DEFAULT columns accept explicit values; OVERRIDING SYSTEM VALUE is added for any
--- table with a GENERATED ALWAYS identity column; generated columns are left to the server), and
--- 'update' rows (the SET NULL columns, the re-point of worker 1536) are restored to before_row
--- in full, updated_at included. Reverse log order is parents-first (10 logged each root's
--- closure in topological order, children before parents, and the roots in the order campaigns → workers → projects →
--- program → worksites → employers); an insert that still hits a foreign-key violation (a
--- same-depth reference such as email_lists.draft_id ↔ campaign_comms_drafts.email_list_id) is
--- retried after the pass, and as a last resort inserted with its nullable foreign-key columns
--- NULL and completed by a full-row update once every row is in.
+-- 10_remove_test_dataset with rolled_back_at IS NULL is replayed — 'delete' rows are
+-- reinserted from before_row with their original primary keys (serial and IDENTITY BY DEFAULT
+-- columns accept explicit values; OVERRIDING SYSTEM VALUE is added for any table with a
+-- GENERATED ALWAYS identity column; generated columns are left to the server), and 'update'
+-- rows (the SET NULL columns, the re-point of worker 1536) are restored to before_row in full,
+-- updated_at included. The reinsert order does not depend on the log order at all (fix round
+-- 4): the pending TABLES are put in a parents-first topological order computed from
+-- pg_constraint (single-column keys between pending tables; self-references ignored; DEFERRABLE
+-- keys treated as absent); a genuine cycle (campaign_comms_drafts.email_list_id ↔
+-- email_lists.draft_id) is broken by inserting the table whose unplaced parents are all reached
+-- through nullable columns with those columns NULL and completing it by a full-row update once
+-- its parents have landed; within a table rows go in by log_id ascending; the 'update' rows are
+-- applied after every delete-row has landed. A retry loop remains as a safety net: passes
+-- continue while any row lands and the file stops only when a whole pass lands nothing, naming
+-- the row, its table, the violated constraint and the parent table.
 --
 -- User triggers on every table in the log are disabled for the duration of the transaction
 -- (ALTER TABLE … DISABLE TRIGGER USER; re-enabled before COMMIT, and the pre-run state of every
@@ -81,7 +85,9 @@ SELECT cl.relname::text  AS child,
        format_type(ra.atttypid, ra.atttypmod) AS ref_type,
        c.confdeltype::text AS del,
        c.conname::text AS conname,
-       a.attnotnull     AS col_notnull
+       a.attnotnull     AS col_notnull,
+       c.condeferrable  AS is_deferrable,
+       (c.conrelid = c.confrelid) AS is_self
 FROM pg_constraint c
 JOIN pg_class cl  ON cl.oid  = c.conrelid
 JOIN pg_class pcl ON pcl.oid = c.confrelid
@@ -145,8 +151,9 @@ WHERE n.nspname = 'public' AND NOT tg.tgisinternal
   AND cl.relname IN (SELECT DISTINCT table_name FROM _da02_pending WHERE table_name <> '_da02_snapshot');
 
 CREATE TEMP TABLE _da02_log_ids (log_id bigint PRIMARY KEY) ON COMMIT DROP;
-CREATE TEMP TABLE _da02_deferred (log_id bigint PRIMARY KEY, attempts int NOT NULL DEFAULT 0) ON COMMIT DROP;
+CREATE TEMP TABLE _da02_deferred (log_id bigint PRIMARY KEY, attempts int NOT NULL DEFAULT 0, last_error text, last_constraint text) ON COMMIT DROP;
 CREATE TEMP TABLE _da02_fixups (log_id bigint PRIMARY KEY) ON COMMIT DROP;
+CREATE TEMP TABLE _da02_torder (tbl text PRIMARY KEY, ord int, relax_cols text[]) ON COMMIT DROP;
 
 -- ---------------------------------------------------------------------------
 -- Preconditions: exactly the state 10 leaves.
@@ -258,146 +265,140 @@ DECLARE
   v_sql    text;
   v_n      bigint;
   v_pass   int := 0;
+  v_ord    int := 0;
+  v_pick   text;
+  v_relax  text[];
   v_progress boolean;
-  v_null_cols text;
   v_row    jsonb;
+  v_msg    text;
+  v_con    text;
+  v_detail text;
+  v_parent text;
 BEGIN
   -- 1. Triggers off.
   FOR r IN SELECT DISTINCT table_name FROM _da02_pending WHERE table_name <> '_da02_snapshot' LOOP
     EXECUTE format('ALTER TABLE public.%I DISABLE TRIGGER USER', r.table_name);
   END LOOP;
 
-  -- 2. One pass in reverse log order.
-  FOR r IN SELECT * FROM _da02_pending WHERE table_name <> '_da02_snapshot' ORDER BY log_id DESC LOOP
-    SELECT * INTO pk   FROM _da02_pk   WHERE tbl = r.table_name;
+  -- 2. A parents-first order of the pending TABLES (fix round 4). Edges are the single-column
+  --    foreign keys between two pending tables, self-references ignored, DEFERRABLE keys treated as
+  --    absent (they are checked at COMMIT). A table is ready when every table it references is
+  --    placed. When nothing is ready (a genuine cycle, e.g. campaign_comms_drafts.email_list_id ↔
+  --    email_lists.draft_id), the table whose every unplaced parent is reached only through
+  --    NULLABLE columns is placed next with those columns relaxed (inserted NULL, completed in
+  --    step 5 once the parents have landed). A cycle with no such table stops the file.
+  INSERT INTO _da02_torder (tbl, ord, relax_cols)
+  SELECT DISTINCT p.table_name, NULL::int, NULL::text[] FROM _da02_pending p WHERE p.action = 'delete';
+  LOOP
+    v_relax := NULL;
+    SELECT t.tbl INTO v_pick
+    FROM _da02_torder t
+    WHERE t.ord IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM _da02_edges e JOIN _da02_torder pt ON pt.tbl = e.parent AND pt.ord IS NULL
+        WHERE e.child = t.tbl AND NOT e.is_self AND NOT e.is_deferrable)
+    ORDER BY t.tbl LIMIT 1;
+    IF v_pick IS NULL THEN
+      SELECT t.tbl,
+             (SELECT array_agg(DISTINCT e.col ORDER BY e.col) FROM _da02_edges e JOIN _da02_torder pt ON pt.tbl = e.parent AND pt.ord IS NULL
+               WHERE e.child = t.tbl AND NOT e.is_self AND NOT e.is_deferrable)
+        INTO v_pick, v_relax
+      FROM _da02_torder t
+      WHERE t.ord IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM _da02_edges e JOIN _da02_torder pt ON pt.tbl = e.parent AND pt.ord IS NULL
+          WHERE e.child = t.tbl AND NOT e.is_self AND NOT e.is_deferrable AND e.col_notnull)
+      ORDER BY t.tbl LIMIT 1;
+      IF v_pick IS NULL THEN
+        EXIT WHEN NOT EXISTS (SELECT 1 FROM _da02_torder WHERE ord IS NULL);
+        RAISE EXCEPTION '90: foreign-key cycle among pending tables with no nullable key to relax: %',
+          (SELECT string_agg(tbl, ', ' ORDER BY tbl) FROM _da02_torder WHERE ord IS NULL);
+      END IF;
+      RAISE NOTICE '90: cycle broken at % (columns relaxed: %)', v_pick, v_relax;
+    END IF;
+    v_ord := v_ord + 1;
+    UPDATE _da02_torder SET ord = v_ord, relax_cols = v_relax WHERE tbl = v_pick;
+  END LOOP;
+
+  -- 3. Reinsert, table by table in that order, rows by log_id ascending. A foreign-key violation
+  --    defers the row to the retry passes (safety net; none is expected).
+  FOR r IN
+    SELECT p.*, t.relax_cols FROM _da02_pending p JOIN _da02_torder t ON t.tbl = p.table_name
+    WHERE p.action = 'delete' ORDER BY t.ord, p.log_id
+  LOOP
     SELECT * INTO cols FROM _da02_cols WHERE tbl = r.table_name;
-    IF r.action = 'delete' THEN
+    v_row := r.before_row;
+    IF r.relax_cols IS NOT NULL THEN
+      v_row := v_row - r.relax_cols;
+      INSERT INTO _da02_fixups (log_id) VALUES (r.log_id);
+    END IF;
+    v_sql := format('INSERT INTO public.%I (%s) %s SELECT %s FROM jsonb_populate_record(NULL::public.%I, $1)',
+                    r.table_name, cols.ins_cols,
+                    CASE WHEN cols.has_identity_always THEN 'OVERRIDING SYSTEM VALUE' ELSE '' END,
+                    cols.ins_cols, r.table_name);
+    BEGIN
+      EXECUTE v_sql USING v_row;
+      WITH x AS (
+        INSERT INTO public._oux_hygiene_log (script, action, table_name, row_pk, before_row, after_row, note)
+        VALUES ('90_rollback', 'insert', r.table_name, r.row_pk, NULL, r.before_row,
+                format('DA0.2 (da0.2.md §3.3): 10_remove_test_dataset reversed — row reinserted (forward log_id %s%s)',
+                       r.log_id, CASE WHEN r.relax_cols IS NOT NULL THEN ', keys ' || array_to_string(r.relax_cols, '/') || ' relaxed then completed' ELSE '' END))
+        RETURNING log_id)
+      INSERT INTO _da02_log_ids (log_id) SELECT log_id FROM x;
+    EXCEPTION WHEN foreign_key_violation THEN
+      GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT, v_con = CONSTRAINT_NAME;
+      INSERT INTO _da02_deferred (log_id, attempts, last_error, last_constraint) VALUES (r.log_id, 1, v_msg, v_con);
+    END;
+  END LOOP;
+
+  -- 4. Retry passes: continue while any deferred row lands; stop only when a whole pass lands
+  --    nothing, naming the row, the table, the violated constraint and its parent table.
+  LOOP
+    EXIT WHEN (SELECT count(*) FROM _da02_deferred) = 0;
+    v_pass := v_pass + 1;
+    IF v_pass > 50 THEN RAISE EXCEPTION '90: more than 50 retry passes'; END IF;
+    v_progress := false;
+    FOR r IN
+      SELECT p.*, t.relax_cols FROM _da02_pending p JOIN _da02_deferred x ON x.log_id = p.log_id
+      JOIN _da02_torder t ON t.tbl = p.table_name ORDER BY t.ord, p.log_id
+    LOOP
+      SELECT * INTO cols FROM _da02_cols WHERE tbl = r.table_name;
+      v_row := r.before_row;
+      IF r.relax_cols IS NOT NULL THEN v_row := v_row - r.relax_cols; END IF;
       v_sql := format('INSERT INTO public.%I (%s) %s SELECT %s FROM jsonb_populate_record(NULL::public.%I, $1)',
                       r.table_name, cols.ins_cols,
                       CASE WHEN cols.has_identity_always THEN 'OVERRIDING SYSTEM VALUE' ELSE '' END,
                       cols.ins_cols, r.table_name);
       BEGIN
-        EXECUTE v_sql USING r.before_row;
+        EXECUTE v_sql USING v_row;
+        DELETE FROM _da02_deferred WHERE log_id = r.log_id;
+        v_progress := true;
         WITH x AS (
           INSERT INTO public._oux_hygiene_log (script, action, table_name, row_pk, before_row, after_row, note)
           VALUES ('90_rollback', 'insert', r.table_name, r.row_pk, NULL, r.before_row,
-                  format('DA0.2 (da0.2.md §3.3): 10_remove_test_dataset reversed — row reinserted (forward log_id %s)', r.log_id))
+                  format('DA0.2 (da0.2.md §3.3): 10_remove_test_dataset reversed — row reinserted on retry pass %s (forward log_id %s)', v_pass, r.log_id))
           RETURNING log_id)
         INSERT INTO _da02_log_ids (log_id) SELECT log_id FROM x;
       EXCEPTION WHEN foreign_key_violation THEN
-        INSERT INTO _da02_deferred (log_id, attempts) VALUES (r.log_id, 1);
+        GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT, v_con = CONSTRAINT_NAME;
+        UPDATE _da02_deferred SET attempts = attempts + 1, last_error = v_msg, last_constraint = v_con WHERE log_id = r.log_id;
       END;
-    ELSE
-      v_sql := format('UPDATE public.%I t SET (%s) = (SELECT %s FROM jsonb_populate_record(NULL::public.%I, $2)) WHERE %s',
-                      r.table_name, cols.upd_cols, cols.upd_cols, r.table_name, pk.pk_match);
-      BEGIN
-        EXECUTE format('SELECT to_jsonb(t) FROM public.%I t WHERE %s', r.table_name, pk.pk_match) INTO v_row USING r.row_pk;
-        EXECUTE v_sql USING r.row_pk, r.before_row;
-        GET DIAGNOSTICS v_n = ROW_COUNT;
-        IF v_n <> 1 THEN
-          RAISE EXCEPTION '90: restoring % % updated % row(s), expected 1', r.table_name, r.row_pk, v_n;
-        END IF;
-        WITH x AS (
-          INSERT INTO public._oux_hygiene_log (script, action, table_name, row_pk, before_row, after_row, note)
-          VALUES ('90_rollback', 'update', r.table_name, r.row_pk, v_row, r.before_row,
-                  format('DA0.2 (da0.2.md §3.3): 10_remove_test_dataset reversed — row restored (forward log_id %s)', r.log_id))
-          RETURNING log_id)
-        INSERT INTO _da02_log_ids (log_id) SELECT log_id FROM x;
-      EXCEPTION WHEN foreign_key_violation THEN
-        INSERT INTO _da02_deferred (log_id, attempts) VALUES (r.log_id, 1);
-      END;
-    END IF;
-  END LOOP;
-
-  -- 3. Retry passes for rows that referenced a row not yet back.
-  LOOP
-    EXIT WHEN (SELECT count(*) FROM _da02_deferred) = 0;
-    v_pass := v_pass + 1;
-    IF v_pass > 20 THEN RAISE EXCEPTION '90: more than 20 retry passes'; END IF;
-    v_progress := false;
-    FOR r IN SELECT p.* FROM _da02_pending p JOIN _da02_deferred x ON x.log_id = p.log_id ORDER BY p.log_id DESC LOOP
-      SELECT * INTO pk   FROM _da02_pk   WHERE tbl = r.table_name;
-      SELECT * INTO cols FROM _da02_cols WHERE tbl = r.table_name;
-      IF r.action = 'delete' THEN
-        v_sql := format('INSERT INTO public.%I (%s) %s SELECT %s FROM jsonb_populate_record(NULL::public.%I, $1)',
-                        r.table_name, cols.ins_cols,
-                        CASE WHEN cols.has_identity_always THEN 'OVERRIDING SYSTEM VALUE' ELSE '' END,
-                        cols.ins_cols, r.table_name);
-        BEGIN
-          EXECUTE v_sql USING r.before_row;
-          DELETE FROM _da02_deferred WHERE log_id = r.log_id;
-          v_progress := true;
-          WITH x AS (
-            INSERT INTO public._oux_hygiene_log (script, action, table_name, row_pk, before_row, after_row, note)
-            VALUES ('90_rollback', 'insert', r.table_name, r.row_pk, NULL, r.before_row,
-                    format('DA0.2 (da0.2.md §3.3): 10_remove_test_dataset reversed — row reinserted on retry pass %s (forward log_id %s)', v_pass, r.log_id))
-            RETURNING log_id)
-          INSERT INTO _da02_log_ids (log_id) SELECT log_id FROM x;
-        EXCEPTION WHEN foreign_key_violation THEN
-          UPDATE _da02_deferred SET attempts = attempts + 1 WHERE log_id = r.log_id;
-        END;
-      ELSE
-        v_sql := format('UPDATE public.%I t SET (%s) = (SELECT %s FROM jsonb_populate_record(NULL::public.%I, $2)) WHERE %s',
-                        r.table_name, cols.upd_cols, cols.upd_cols, r.table_name, pk.pk_match);
-        BEGIN
-          EXECUTE format('SELECT to_jsonb(t) FROM public.%I t WHERE %s', r.table_name, pk.pk_match) INTO v_row USING r.row_pk;
-          EXECUTE v_sql USING r.row_pk, r.before_row;
-          DELETE FROM _da02_deferred WHERE log_id = r.log_id;
-          v_progress := true;
-          WITH x AS (
-            INSERT INTO public._oux_hygiene_log (script, action, table_name, row_pk, before_row, after_row, note)
-            VALUES ('90_rollback', 'update', r.table_name, r.row_pk, v_row, r.before_row,
-                    format('DA0.2 (da0.2.md §3.3): 10_remove_test_dataset reversed — row restored on retry pass %s (forward log_id %s)', v_pass, r.log_id))
-            RETURNING log_id)
-          INSERT INTO _da02_log_ids (log_id) SELECT log_id FROM x;
-        EXCEPTION WHEN foreign_key_violation THEN
-          UPDATE _da02_deferred SET attempts = attempts + 1 WHERE log_id = r.log_id;
-        END;
-      END IF;
     END LOOP;
-
-    -- 4. No progress: mutual references. Insert the remaining rows with every nullable
-    --    foreign-key column that points at a logged table set NULL; complete them in step 5.
     IF NOT v_progress THEN
-      FOR r IN SELECT p.* FROM _da02_pending p JOIN _da02_deferred x ON x.log_id = p.log_id WHERE p.action = 'delete' ORDER BY p.log_id DESC LOOP
-        SELECT * INTO cols FROM _da02_cols WHERE tbl = r.table_name;
-        SELECT string_agg(quote_literal(e.col), ',') INTO v_null_cols
-        FROM _da02_edges e
-        WHERE e.child = r.table_name AND NOT e.col_notnull
-          AND e.parent IN (SELECT DISTINCT table_name FROM _da02_pending);
-        IF v_null_cols IS NULL THEN
-          RAISE EXCEPTION '90: % % cannot be reinserted (foreign-key violation with no nullable key to relax)', r.table_name, r.row_pk;
-        END IF;
-        EXECUTE format('SELECT $1 - ARRAY[%s]::text[]', v_null_cols) INTO v_row USING r.before_row;
-        v_sql := format('INSERT INTO public.%I (%s) %s SELECT %s FROM jsonb_populate_record(NULL::public.%I, $1)',
-                        r.table_name, cols.ins_cols,
-                        CASE WHEN cols.has_identity_always THEN 'OVERRIDING SYSTEM VALUE' ELSE '' END,
-                        cols.ins_cols, r.table_name);
-        BEGIN
-          EXECUTE v_sql USING v_row;
-          DELETE FROM _da02_deferred WHERE log_id = r.log_id;
-          INSERT INTO _da02_fixups (log_id) VALUES (r.log_id);
-          v_progress := true;
-          WITH x AS (
-            INSERT INTO public._oux_hygiene_log (script, action, table_name, row_pk, before_row, after_row, note)
-            VALUES ('90_rollback', 'insert', r.table_name, r.row_pk, NULL, r.before_row,
-                    format('DA0.2 (da0.2.md §3.3): 10_remove_test_dataset reversed — row reinserted with nullable keys relaxed then completed (forward log_id %s)', r.log_id))
-            RETURNING log_id)
-          INSERT INTO _da02_log_ids (log_id) SELECT log_id FROM x;
-        EXCEPTION WHEN foreign_key_violation THEN
-          UPDATE _da02_deferred SET attempts = attempts + 1 WHERE log_id = r.log_id;
-        END;
-      END LOOP;
-      IF NOT v_progress THEN
-        RAISE EXCEPTION '90: % row(s) cannot be reinserted (foreign-key violations persist): %',
-          (SELECT count(*) FROM _da02_deferred),
-          (SELECT string_agg(p.table_name || ' ' || p.row_pk::text, '; ') FROM _da02_pending p JOIN _da02_deferred x ON x.log_id = p.log_id);
-      END IF;
+      SELECT p.table_name, p.row_pk::text, x.last_constraint, x.last_error,
+             (SELECT e.parent FROM _da02_edges e WHERE e.child = p.table_name AND e.conname = x.last_constraint LIMIT 1)
+        INTO v_pick, v_detail, v_con, v_msg, v_parent
+      FROM _da02_deferred x JOIN _da02_pending p ON p.log_id = x.log_id ORDER BY x.log_id LIMIT 1;
+      RAISE EXCEPTION '90: % row(s) cannot be reinserted; first: table % row % violates constraint % (parent table %): %',
+        (SELECT count(*) FROM _da02_deferred), v_pick, v_detail, coalesce(v_con, '?'), coalesce(v_parent, '?'), v_msg;
     END IF;
   END LOOP;
 
-  -- 5. Complete the relaxed rows with a full-row update from before_row.
-  FOR r IN SELECT p.* FROM _da02_pending p JOIN _da02_fixups f ON f.log_id = p.log_id ORDER BY p.log_id DESC LOOP
+  -- 5. Complete the relaxed rows with a full-row update from before_row (their parents are in now).
+  FOR r IN
+    SELECT p.* FROM _da02_pending p JOIN _da02_fixups f ON f.log_id = p.log_id
+    JOIN _da02_torder t ON t.tbl = p.table_name ORDER BY t.ord, p.log_id
+  LOOP
     SELECT * INTO pk   FROM _da02_pk   WHERE tbl = r.table_name;
     SELECT * INTO cols FROM _da02_cols WHERE tbl = r.table_name;
     EXECUTE format('UPDATE public.%I t SET (%s) = (SELECT %s FROM jsonb_populate_record(NULL::public.%I, $2)) WHERE %s',
@@ -409,14 +410,40 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 6. Triggers back on.
+  -- 6. The 'update' rows (the SET NULL restorations and worker 1536's re-point), newest first so a
+  --    row nulled through several keys ends at its original state; every parent row is in by now.
+  FOR r IN SELECT * FROM _da02_pending WHERE action = 'update' AND table_name <> '_da02_snapshot' ORDER BY log_id DESC LOOP
+    SELECT * INTO pk   FROM _da02_pk   WHERE tbl = r.table_name;
+    SELECT * INTO cols FROM _da02_cols WHERE tbl = r.table_name;
+    EXECUTE format('SELECT to_jsonb(t) FROM public.%I t WHERE %s', r.table_name, pk.pk_match) INTO v_row USING r.row_pk;
+    EXECUTE format('UPDATE public.%I t SET (%s) = (SELECT %s FROM jsonb_populate_record(NULL::public.%I, $2)) WHERE %s',
+                   r.table_name, cols.upd_cols, cols.upd_cols, r.table_name, pk.pk_match)
+    USING r.row_pk, r.before_row;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    IF v_n <> 1 THEN
+      RAISE EXCEPTION '90: restoring % % updated % row(s), expected 1', r.table_name, r.row_pk, v_n;
+    END IF;
+    WITH x AS (
+      INSERT INTO public._oux_hygiene_log (script, action, table_name, row_pk, before_row, after_row, note)
+      VALUES ('90_rollback', 'update', r.table_name, r.row_pk, v_row, r.before_row,
+              format('DA0.2 (da0.2.md §3.3): 10_remove_test_dataset reversed — row restored (forward log_id %s)', r.log_id))
+      RETURNING log_id)
+    INSERT INTO _da02_log_ids (log_id) SELECT log_id FROM x;
+  END LOOP;
+
+  -- 7. Triggers back on. The two DEFERRABLE INITIALLY DEFERRED keys into campaign_groups
+  --    (campaign_organising_units.group_id, campaign_worker_ou.group_id; da0.2.md §3.1.1) queue
+  --    their checks until COMMIT, and Postgres refuses ALTER TABLE on a table with pending
+  --    trigger events, so the deferred checks are fired here first (the WP2.1 03a_rollback
+  --    precedent). A violation raises now, inside the transaction, instead of at COMMIT.
+  SET CONSTRAINTS ALL IMMEDIATE;
   FOR r IN SELECT DISTINCT table_name FROM _da02_pending WHERE table_name <> '_da02_snapshot' LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE TRIGGER USER', r.table_name);
   END LOOP;
 END;
 $replay$;
 
--- 7. Stamp the forward rows (WP0.4 convention; makes a re-run of 10 possible and this file idempotent).
+-- 8. Stamp the forward rows (WP0.4 convention; makes a re-run of 10 possible and this file idempotent).
 UPDATE public._oux_hygiene_log
 SET rolled_back_at = now()
 WHERE script = '10_remove_test_dataset' AND rolled_back_at IS NULL;
@@ -473,7 +500,10 @@ BEGIN
   IF v_txt IS DISTINCT FROM 'cwm=37/50/64,emp=791,profiles=37/50/64,ws=197' THEN
     RAISE EXCEPTION '90 post-check failed: worker 1536 is % (expected emp=791 ws=197 cwm=37/50/64 profiles=37/50/64)', v_txt;
   END IF;
-  IF (SELECT to_jsonb(w) FROM public.workers w WHERE worker_id = 1536) IS DISTINCT FROM (v_snap->'w1536') THEN
+  -- Only the keys the snapshot holds are compared: a column added to workers after the forward run
+  -- (schema drift, e.g. DA0.3's nullable columns on the clone) is not this script's business.
+  IF (SELECT jsonb_object_agg(x.key, x.value) FROM public.workers w, jsonb_each(to_jsonb(w)) x
+      WHERE w.worker_id = 1536 AND (v_snap->'w1536') ? x.key) IS DISTINCT FROM (v_snap->'w1536') THEN
     IF v_own.strict_snapshot THEN
       RAISE EXCEPTION '90 post-check failed (clone/dev): worker 1536 differs from the snapshot';
     ELSE

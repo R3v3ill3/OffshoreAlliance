@@ -970,3 +970,9 @@ and 34 indexes against the radar file's 171 and 33. The package therefore gains 
 `pnpm validate:migrations` counts 20. The clone rehearsal of `12` (apply the two files as one submission each, then
 `12`, then `91`, then `12`) is recorded in §9.5 when run. Deviation 3, recorded here: the §5 row's "a fresh clone
 carries the 16 tables" is now seventeen, and the D17 fresh clone will carry all three ledger rows once P2/P2b have run.
+
+### 11.1 Production run (operator, SQL Editor, 2026-09-24)
+
+| Step | File | Outcome | Values pasted |
+|---|---|---|---|
+| P1 | `prod/P1_before.sql` | matched | tables 16, columns 173, constraints 72, indexes 34, policies 27, triggers 8, audit md5 `764235c6343f9cc8189502ba271571e5`, recipients_table t / 2 policies, signals_new_columns 2, mobilisation_ledger_rows null, ledger_max_version 20260921030000, ledger_rows 16, vessels 25/3/0/0, contractors 14/2/0/0, alias strings missing 4 |

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_FETCH_TIMEOUT_UPLOAD_MS, fetchApi } from "@/lib/api/fetch-api";
 import { MembershipImportWizard } from "@/components/import/membership-import-wizard";
+import { MembershipMovementCharts } from "@/components/administration/membership-movement-charts";
 import type { ParsedMembershipRow } from "@/lib/import/membership-import-types";
 import {
   MEMBERSHIP_UPDATE_KIND_LABELS,
@@ -395,6 +396,7 @@ export function WeeklyUpdatesTab() {
       {(data.snapshots ?? []).length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-medium">Membership movement</h3>
+          <MembershipMovementCharts snapshots={data.snapshots} />
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-xs text-muted-foreground">

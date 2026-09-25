@@ -61,6 +61,11 @@
   --sidebar-foreground: 240 5.3% 26.1%;
   --sidebar-accent: 240 4.8% 95.9%;
   --sidebar-accent-foreground: 240 5.9% 10%;
+  /* Categorical chart series, in fixed order (validated for colour-blind separation). */
+  --chart-series-1: #2a78d6;
+  --chart-series-2: #eb6834;
+  --chart-series-3: #1baf7a;
+  --chart-series-4: #eda100;
 }
 
 .dark {
@@ -87,6 +92,10 @@
   --sidebar-foreground: 210 40% 98%;
   --sidebar-accent: 217.2 32.6% 12%;
   --sidebar-accent-foreground: 210 40% 98%;
+  --chart-series-1: #3987e5;
+  --chart-series-2: #d95926;
+  --chart-series-3: #199e70;
+  --chart-series-4: #c98500;
 }
 
 /* Script variation batch generation — indeterminate activity bar */
